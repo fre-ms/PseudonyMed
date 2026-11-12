@@ -58,7 +58,9 @@ lexikon_an
 lexikon_klein
 appauthor
 
-# dataclass fields, attributes of foreign objects, the *exc of __exit__
+# dataclass fields, attributes of foreign objects (PyMuPDF widgets in a test), the *exc of __exit__
+_.field_name
+_.field_type
 einmalschluessel
 vcard
 _.row_factory

@@ -3,7 +3,7 @@ analysis copy, the spans the user marks, the replaced text and its check."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
@@ -18,9 +18,8 @@ from pseudonymed.ablauf.ausgabe import (
 from pseudonymed.ablauf.erkennen import ergaenze_treffer, gemerkte_verwerfen, merke_fachbegriffe
 from pseudonymed.ablauf.optionen import Ablaufoptionen, Ergebnis, zielpfad
 from pseudonymed.ablauf.ruestzeug import Ruestzeug, analysehinweise
-from pseudonymed.ablauf.seiten import Box, Seite, ohne_rand
-from pseudonymed.ablauf.vorbereitung import Entscheidungen
-from pseudonymed.dokument import aufbereitung as aufmodul
+from pseudonymed.ablauf.seiten import Seite, ohne_rand
+from pseudonymed.ablauf.vorbereitung import Vorbereitungsbasis
 from pseudonymed.dokument import textdatei as textmodul
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import zahlwoerter
@@ -35,11 +34,10 @@ from pseudonymed.pruefung.gegenprobe import (
     toleranzschluessel,
 )
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
-from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 
-@dataclass
-class Textvorbereitung(Entscheidungen):
+@dataclass(kw_only=True)
+class Textvorbereitung(Vorbereitungsbasis):
     """Phase one for a text file (transcript, note, subtitles).
 
     Same surface as :class:`Vorbereitung` as far as a user interface needs it:
@@ -50,50 +48,19 @@ class Textvorbereitung(Entscheidungen):
 
     ist_text: ClassVar[bool] = True
 
-    quelle: Path
-    patient: Patient
-    opt: Ablaufoptionen
-    speicher: Pseudonymspeicher
-    eigener_speicher: bool
-    kennung: str
-    vergabe: Pseudonymvergabe
-    regeln: list[Regel]
-    ziele: list[Ziel]
     text: str
-    seiten: list[Seite]
     ausgabe_endung: str = ".txt"  # the input's own for text and subtitles, .txt for JSON/e-mail
-    ohne_text: list[int] = field(default_factory=list)
-    warnungen: list[str] = field(default_factory=list)
-    hinweise: list[str] = field(default_factory=list)
-    verworfen: list[Fundstelle] = field(default_factory=list)
-    abgeschlossen: bool = False
-    version: int = 0
-    wiederhergestellt: set[tuple[str, str]] = field(default_factory=set)
-    aufbereitet: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
 
     @property
     def fundstellen(self) -> list[Fundstelle]:
         """Every hit, in text order."""
         return sorted((f for s in self.seiten for f in s.fundstellen), key=lambda f: f.start)
 
-    @property
-    def ocr_seiten(self) -> list[int]:
-        """A text file has no OCR pages."""
-        return []
-
-    def fachbegriffe_rects(self, nummer: int) -> list[Box]:
-        """A text file has no page geometry."""
-        return []
-
     def fachbegriffe_spannen(self, nummer: int) -> list[tuple[int, int]]:
         """Offsets of the medical terms, not where a hit lies."""
         belegt = [(f.start, f.ende) for f in self.seiten[nummer].fundstellen]
         return [(a, b) for a, b in self.seiten[nummer].fachspannen
                 if not any(a < y and b > x for x, y in belegt)]
-
-    def unsichere_rects(self, nummer: int) -> list[Box]:
-        """A text file has no uncertain OCR words."""
-        return []
 
     def markiere(self, nummer: int, start: int, ende: int,
                  pseudonym: str = "[geschwärzt]") -> Fundstelle:

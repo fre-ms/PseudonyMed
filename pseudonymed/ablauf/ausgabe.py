@@ -5,36 +5,15 @@ report file."""
 from __future__ import annotations
 
 from collections.abc import Iterable
-from pathlib import Path
-from typing import Protocol
 
 from pseudonymed.ablauf.optionen import Ablaufoptionen, Ergebnis, zielpfad
+from pseudonymed.ablauf.vorbereitung import Vorbereitungsbasis
 from pseudonymed.erkennung import fachbegriffe as fachmodul
-from pseudonymed.kern.modell import Fundstelle, Patient
+from pseudonymed.kern.modell import Fundstelle
 from pseudonymed.pruefung import restrisiko as risikomodul
 from pseudonymed.pruefung.bericht import speichere_bericht
 from pseudonymed.pseudonyme import kapsel as kapselmodul
 from pseudonymed.pseudonyme import pgp as pgpmodul
-from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
-from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
-
-
-class Vorbereitet(Protocol):
-    """What the side outputs need from a preparation, PDF or text alike."""
-
-    quelle: Path
-    patient: Patient
-    opt: Ablaufoptionen
-    speicher: Pseudonymspeicher
-    kennung: str
-    vergabe: Pseudonymvergabe
-    verworfen: list[Fundstelle]
-    wiederhergestellt: set[tuple[str, str]]
-
-    @property
-    def toleriert(self) -> set[tuple[str, str]]:
-        """The rule/text pairs of the discarded hits."""
-        ...
 
 VOKABULAR_KOPF = ("# PseudonyMed: im Prüfschritt verworfene Rate-Treffer (NER, unscharfe Suche),"
                   " ein Begriff je Zeile.\n# In „3 Fachvokabular“ als Nutzervokabular importierbar;"
@@ -56,12 +35,12 @@ def vokabular_aus(verworfen: Iterable[Fundstelle]) -> list[str]:
     return sorted(gesehen.values(), key=str.casefold)
 
 
-def pseudonyme_von(v: Vorbereitet, fundstellen: list[Fundstelle]) -> list[str]:
+def pseudonyme_von(v: Vorbereitungsbasis, fundstellen: list[Fundstelle]) -> list[str]:
     """Every pseudonym the output may contain: the patient's mapping and the hits' own."""
     return list(v.vergabe.zuordnung) + [f.pseudonym for f in fundstellen]
 
 
-def kapsel_schreiben(v: Vorbereitet, ergebnis: Ergebnis, hinweise: list[str]) -> None:
+def kapsel_schreiben(v: Vorbereitungsbasis, ergebnis: Ergebnis, hinweise: list[str]) -> None:
     """For a recipient: the mapping of this document, encrypted to their key."""
     if not v.opt.empfaenger:
         return
@@ -76,14 +55,14 @@ def kapsel_schreiben(v: Vorbereitet, ergebnis: Ergebnis, hinweise: list[str]) ->
                     " den Empfänger, nie an das Sprachmodell.")
 
 
-def restrisiko(v: Vorbereitet, text: str) -> risikomodul.Restrisiko:
+def restrisiko(v: Vorbereitungsbasis, text: str) -> risikomodul.Restrisiko:
     """The k-map estimate of the pseudonymised text (see :mod:`pseudonymed.pruefung.restrisiko`)."""
     fach = fachmodul.standard() if v.opt.fachbegriffe else None
     return risikomodul.schaetze(text, v.patient.geschlecht, v.opt.referenzpopulation,
                                 [o for o in v.opt.eigene_orte.split(",") if o.strip()], fach)
 
 
-def vokabular_schreiben(v: Vorbereitet, ergebnis: Ergebnis, hinweise: list[str]) -> None:
+def vokabular_schreiben(v: Vorbereitungsbasis, ergebnis: Ergebnis, hinweise: list[str]) -> None:
     """The discarded guesses as a vocabulary file next to the output, when asked for."""
     if not v.opt.vokabular:
         return
@@ -98,7 +77,7 @@ def vokabular_schreiben(v: Vorbereitet, ergebnis: Ergebnis, hinweise: list[str])
                     f" ({ziel.name}); in „3 Fachvokabular“ importierbar.")
 
 
-def entscheidungen_merken(v: Vorbereitet) -> None:
+def entscheidungen_merken(v: Vorbereitungsbasis) -> None:
     """Store (or forget) the user's discard decisions for this patient when asked to."""
     if not v.opt.verworfene_merken:
         return

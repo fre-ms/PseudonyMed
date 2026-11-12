@@ -32,14 +32,61 @@ from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 
-class Entscheidungen:
-    """What the review changes, shared by the PDF and the text preparation: hits are
-    dropped and restored, the tolerated pairs follow, every change bumps ``version``."""
+@dataclass(kw_only=True)
+class Vorbereitungsbasis:
+    """What the PDF and the text preparation share: the source, the patient, the options,
+    the store, the identity and the rules, and the review's decisions (hits dropped and
+    restored, the tolerated pairs, a version that grows with every change)."""
 
+    ist_text: ClassVar[bool]
+
+    quelle: Path
+    patient: Patient
+    opt: Ablaufoptionen
+    speicher: Pseudonymspeicher
+    eigener_speicher: bool
+    kennung: str
+    vergabe: Pseudonymvergabe
+    regeln: list[Regel]
+    ziele: list[Ziel]
     seiten: list[Seite]
-    verworfen: list[Fundstelle]
-    wiederhergestellt: set[tuple[str, str]]
-    version: int
+    ohne_text: list[int] = field(default_factory=list)
+    warnungen: list[str] = field(default_factory=list)
+    hinweise: list[str] = field(default_factory=list)
+    verworfen: list[Fundstelle] = field(default_factory=list)
+    aufbereitet: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
+    abgeschlossen: bool = False
+    version: int = 0  # grows with every change the user makes in the review
+    wiederhergestellt: set[tuple[str, str]] = field(default_factory=set)
+
+    @property
+    def ocr_seiten(self) -> list[int]:
+        """Numbers (1-based) of the pages that were read by OCR."""
+        return [s.nummer + 1 for s in self.seiten if s.ocr is not None]
+
+    @property
+    def fachbegriffe_anzahl(self) -> int:
+        """How many medical terms the vocabulary marked over all pages."""
+        return sum(s.fachanzahl for s in self.seiten)
+
+    def fachbegriffe_rects(self, nummer: int) -> list[Box]:
+        """Rectangles of the medical terms on page ``nummer`` (0-based), for display; not
+        where a hit lies (a medication redacted on request, a patient called Herz)."""
+        belegt = [r for f in self.seiten[nummer].fundstellen for r in f.rects]
+        return [r for r in self.seiten[nummer].fachrects
+                if not any(ueberlappen(r, b) for b in belegt)]
+
+    def unsichere_rects(self, nummer: int) -> list[Box]:
+        """Boxes of OCR words read with low confidence on page ``nummer``: uncertain,
+        worth a look, not hits."""
+        seite = self.seiten[nummer]
+        if seite.ocr is None:
+            return []
+        rects: list[Box] = []
+        for (a, b), konf in zip(seite.ocr.wortspannen, seite.ocr.konfidenzen, strict=True):
+            if konf < ocrmodul.UNSICHER_KONFIDENZ:
+                rects += [tuple(r) for r in seite.ocr.rects(a, b)]
+        return rects
 
     def verwerfe(self, fundstelle: Fundstelle) -> None:
         """Drop a hit the user judged a false positive; the re-check will tolerate
@@ -66,14 +113,9 @@ class Entscheidungen:
         """The rule/text pairs of the discarded hits, which the re-check lets pass."""
         return {toleranzschluessel(f.regel, f.text) for f in self.verworfen if f.text}
 
-    @property
-    def fachbegriffe_anzahl(self) -> int:
-        """How many medical terms the vocabulary marked over all pages."""
-        return sum(s.fachanzahl for s in self.seiten)
 
-
-@dataclass
-class Vorbereitung(Entscheidungen):
+@dataclass(kw_only=True)
+class Vorbereitung(Vorbereitungsbasis):
     """Phase one: the document is read and the hits are known, nothing is changed yet.
 
     A user interface can drop hits (``verwerfe``) and add boxes (``kasten``)
@@ -83,44 +125,14 @@ class Vorbereitung(Entscheidungen):
 
     ist_text: ClassVar[bool] = False
 
-    quelle: Path
-    patient: Patient
-    opt: Ablaufoptionen
-    speicher: Pseudonymspeicher
-    eigener_speicher: bool
-    kennung: str
-    vergabe: Pseudonymvergabe
-    regeln: list[Regel]
-    ziele: list[Ziel]
     backend: ocrmodul.OCRBackend | None
     doc: pymupdf.Document
     original: pymupdf.Document
-    seiten: list[Seite]
-    ohne_text: list[int]
-    warnungen: list[str] = field(default_factory=list)
-    hinweise: list[str] = field(default_factory=list)
-    verworfen: list[Fundstelle] = field(default_factory=list)
-    aufbereitet: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
-    abgeschlossen: bool = False
-    version: int = 0  # grows with every change the user makes in the review
-    wiederhergestellt: set[tuple[str, str]] = field(default_factory=set)
 
     @property
     def fundstellen(self) -> list[Fundstelle]:
         """Every hit of every page, in page order."""
         return [f for s in self.seiten for f in s.fundstellen]
-
-    @property
-    def ocr_seiten(self) -> list[int]:
-        """Numbers (1-based) of the pages that were read by OCR."""
-        return [s.nummer + 1 for s in self.seiten if s.ocr is not None]
-
-    def fachbegriffe_rects(self, nummer: int) -> list[Box]:
-        """Rectangles of the medical terms on page ``nummer`` (0-based), for display; not
-        where a hit lies (a medication redacted on request, a patient called Herz)."""
-        belegt = [r for f in self.seiten[nummer].fundstellen for r in f.rects]
-        return [r for r in self.seiten[nummer].fachrects
-                if not any(ueberlappen(r, b) for b in belegt)]
 
     def fachbegriffe_spannen(self, nummer: int) -> list[tuple[int, int]]:
         """Text offsets of the medical terms on page ``nummer`` (0-based)."""
@@ -160,18 +172,6 @@ class Vorbereitung(Entscheidungen):
     def korrektur_treffer(self) -> list[Fundstelle]:
         """The text-only hits over the corrected OCR texts of all pages."""
         return [f for s in self.seiten for f in s.korrektur_treffer]
-
-    def unsichere_rects(self, nummer: int) -> list[Box]:
-        """Boxes of OCR words read with low confidence on page ``nummer``: uncertain,
-        worth a look, not hits."""
-        seite = self.seiten[nummer]
-        if seite.ocr is None:
-            return []
-        rects: list[Box] = []
-        for (a, b), konf in zip(seite.ocr.wortspannen, seite.ocr.konfidenzen, strict=True):
-            if konf < ocrmodul.UNSICHER_KONFIDENZ:
-                rects += [tuple(r) for r in seite.ocr.rects(a, b)]
-        return rects
 
     def kasten(self, nummer: int, rect: Box, pseudonym: str = "[geschwärzt]") -> list[Fundstelle]:
         """Add a manual box on page ``nummer`` (0-based); returns the hits it became."""
