@@ -16,6 +16,7 @@ GROESSEN = (16, 32, 48, 64, 128, 256, 512, 1024)
 
 
 def dateien() -> list[Path]:
+    """The rendered PNG files that exist, smallest first."""
     return [p for p in (ORDNER / f"pseudonymed_{n}.png" for n in GROESSEN) if p.exists()]
 
 

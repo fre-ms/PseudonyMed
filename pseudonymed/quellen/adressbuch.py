@@ -15,12 +15,15 @@ VCF_ENDUNGEN = (".vcf", ".vcard")
 
 @dataclass
 class Suchergebnis:
+    """What a search over every configured address book returns: the patients found, the sources
+    that failed, the sources searched."""
     patienten: list[Patient] = field(default_factory=list)
     fehler: list[str] = field(default_factory=list)  # sources that failed, as messages
     quellen: list[str] = field(default_factory=list)  # sources that were searched
 
 
 def lokale_dateien(pfad: str | Path) -> list[Path]:
+    """The vCard files behind ``pfad``: the file itself, or the .vcf files of a folder."""
     p = Path(pfad).expanduser()
     if p.is_file():
         return [p]
@@ -41,6 +44,7 @@ def suche_lokal(pfad: str | Path, begriff: str) -> list[Patient]:
 
 
 def eingerichtet(konfig_pfad: str | Path | None = None) -> bool:
+    """True when a local address book or a CardDAV account is configured."""
     return bool(lade_einstellungen(konfig_pfad).adressbuch_lokal) or \
         lade_konfig(konfig_pfad).vollstaendig
 

@@ -109,3 +109,16 @@ def test_datenordner_uebersteuerung(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
     r = runner.invoke(app, ["konfig"])
     assert r.exit_code == 0 and str(tmp_path / "daten") in r.output
+
+
+def test_modulstart_zeigt_die_hilfe(monkeypatch: pytest.MonkeyPatch,
+                                    capsys: pytest.CaptureFixture[str]) -> None:
+    """``python -m pseudonymed.cli`` runs the command line like the installed script."""
+    import runpy
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["pseudonymed", "--help"])
+    with pytest.raises(SystemExit) as ende:
+        runpy.run_module("pseudonymed.cli", run_name="__main__")
+    assert ende.value.code == 0
+    assert "pseudonymisieren" in re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)

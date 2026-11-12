@@ -10,6 +10,7 @@ CODE_DPI = 200
 
 
 def verfuegbar() -> bool:
+    """True when zxing-cpp (extra "codes") can be imported."""
     try:
         import zxingcpp  # noqa: F401
     except ImportError:

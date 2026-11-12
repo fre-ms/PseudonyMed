@@ -26,8 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.dokument import ocr as ocrmodul
+from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.arbeiter import Arbeiter
-from pseudonymed.gui.pruefen_seite import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.sitzung import Dokument, Sitzung
 
 

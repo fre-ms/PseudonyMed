@@ -39,16 +39,19 @@ class CardDAVFehler(Exception):
 
 @dataclass
 class Adressbuch:
+    """One address book of the CardDAV account: its href and display name."""
     href: str
     name: str
 
     @property
     def uri(self) -> str:
+        """The last path segment of the href, the name the server addresses the book by."""
         return urlsplit(self.href).path.rstrip("/").rsplit("/", 1)[-1]
 
 
 @dataclass
 class Kontakt:
+    """One contact of an address book: href, etag and the parsed vCard."""
     href: str
     etag: str
     vcard: VCard
@@ -106,6 +109,7 @@ def _server_begriff(begriff: str) -> str:
 
 
 class CardDAVClient:
+    """A small CardDAV client for Nextcloud: lists address books, fetches and searches contacts."""
     def __init__(self, url: str, benutzer: str, passwort: str, zeitlimit: float = 30.0) -> None:
         self.basis = url.strip().rstrip("/")
         teile = urlsplit(self.basis)
@@ -120,6 +124,7 @@ class CardDAVClient:
 
     @property
     def adressbuch_home(self) -> str:
+        """The URL under which Nextcloud lists the user's address books."""
         return f"{self.basis}/remote.php/dav/addressbooks/users/{quote(self.benutzer)}/"
 
     def _anfrage(
@@ -157,6 +162,7 @@ class CardDAVClient:
         return wurzel.findall("d:response", NS)
 
     def adressbuecher(self) -> list[Adressbuch]:
+        """Every address book of the account, as the server lists them."""
         daten = self._anfrage("PROPFIND", self.adressbuch_home, _PROPFIND, tiefe="1")
         buecher: list[Adressbuch] = []
         for antwort in self._antworten(daten):
@@ -170,6 +176,7 @@ class CardDAVClient:
         return buecher
 
     def adressbuch(self, name_oder_uri: str = "") -> Adressbuch:
+        """The address book named by display name or uri; the only one when the name is empty."""
         buecher = self.adressbuecher()
         if not buecher:
             raise CardDAVFehler("Der Server meldet kein Adressbuch für diesen Benutzer.")
@@ -198,9 +205,11 @@ class CardDAVClient:
         return kontakte
 
     def alle(self, buch: Adressbuch) -> list[Kontakt]:
+        """Every contact of ``buch``, sorted by name."""
         return self._sortiert(self._kontakte(self._anfrage("REPORT", buch.href, _query(""), "1")))
 
     def suche(self, buch: Adressbuch, begriff: str) -> list[Kontakt]:
+        """The contacts of ``buch`` matching ``begriff`` on the server and in the local check."""
         daten = self._anfrage("REPORT", buch.href, _query(_server_begriff(begriff)), "1")
         return self._sortiert([k for k in self._kontakte(daten) if passt(k.patient, begriff)])
 

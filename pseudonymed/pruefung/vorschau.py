@@ -8,6 +8,7 @@ import pymupdf
 
 
 def schreibe_vorschau(doc: pymupdf.Document, ordner: Path, dpi: int = 100) -> list[Path]:
+    """Write one PNG per page of ``doc`` into ``ordner``; returns the paths in page order."""
     ordner.mkdir(parents=True, exist_ok=True)
     pfade: list[Path] = []
     for i, page in enumerate(doc, 1):

@@ -15,8 +15,9 @@ from PySide6.QtCore import QBuffer, QIODevice, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage  # noqa: E402
 from PySide6.QtWidgets import QApplication, QGraphicsRectItem  # noqa: E402
 
-from pseudonymed.gui import pruefen_seite as modul  # noqa: E402
-from pseudonymed.gui.pruefen_seite import PruefenSeite, Seitenansicht, Textansicht  # noqa: E402
+from pseudonymed.gui import ansichten as modul  # noqa: E402
+from pseudonymed.gui.ansichten import Seitenansicht, Textansicht  # noqa: E402
+from pseudonymed.gui.pruefen_seite import PruefenSeite  # noqa: E402
 from pseudonymed.gui.sitzung import Sitzung  # noqa: E402
 from pseudonymed.kern.modell import Art, Fundstelle, Patient  # noqa: E402
 

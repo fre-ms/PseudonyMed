@@ -68,10 +68,12 @@ class Pseudonymvergabe:
 
     # -- the main person -----------------------------------------------------------------------
     def hauptperson(self) -> str:
+        """The patient's own pseudonym, "Patient" or "Patientin" with the identifier."""
         wort = "Patientin" if self.patient.weiblich else "Patient"
         return self._merke(f"{wort} {self.kennung}", self.patient.vollname, Art.NAME)
 
     def geburtsdatum(self) -> str:
+        """The birth-date pseudonym: the year or the age, as the options say."""
         d = self.patient.geburtsdatum
         if d is None:
             return "[Geburtsdatum]"
@@ -89,6 +91,8 @@ class Pseudonymvergabe:
         return hash_kennung(self.geheimnis, identitaet)
 
     def strasse(self, person: Person | None = None) -> str:
+        """The street pseudonym of ``person`` (the patient without one): a code, or the
+        placeholder."""
         person = person or self.patient
         if self.geheimnis is None or not person.strasse:
             eigene = person is self.patient
@@ -98,6 +102,7 @@ class Pseudonymvergabe:
         return self._merke(f"[Straße {code}]", person.strasse, Art.ADRESSE)
 
     def ort(self, person: Person | None = None) -> str:
+        """The town pseudonym of ``person`` (the patient without one)."""
         person = person or self.patient
         if self.geheimnis is None or not person.ort:
             return self._merke(PLATZHALTER[Art.ORT], person.ort, Art.ORT)
@@ -105,6 +110,7 @@ class Pseudonymvergabe:
         return self._merke(f"[Ort {code}]", person.ort, Art.ORT)
 
     def plz_ort(self, person: Person | None = None) -> str:
+        """The pseudonym of postcode and town together."""
         person = person or self.patient
         klartext = f"{person.plz} {person.ort}".strip()
         if self.geheimnis is None or not person.ort:
@@ -117,20 +123,25 @@ class Pseudonymvergabe:
         return self.strasse()
 
     def telefon(self) -> str:
+        """The placeholder for the patient's phone numbers."""
         return self._merke(PLATZHALTER[Art.TELEFON], "; ".join(self.patient.telefone), Art.TELEFON)
 
     def email(self) -> str:
+        """The placeholder for the patient's e-mail addresses."""
         return self._merke(PLATZHALTER[Art.EMAIL], "; ".join(self.patient.emails), Art.EMAIL)
 
     def versichertennummer(self) -> str:
+        """The placeholder for the insurance number."""
         return self._merke(PLATZHALTER[Art.VERSICHERTENNUMMER], self.patient.versichertennummer,
                            Art.VERSICHERTENNUMMER)
 
     def patienten_id(self) -> str:
+        """The placeholder for the patient id."""
         return self._merke(PLATZHALTER[Art.PATIENTEN_ID], self.patient.patienten_id,
                            Art.PATIENTEN_ID)
 
     def aktenzeichen(self) -> str:
+        """The placeholder for the file numbers."""
         return self._merke(PLATZHALTER[Art.AKTENZEICHEN], "; ".join(self.patient.aktenzeichen),
                            Art.AKTENZEICHEN)
 
@@ -140,13 +151,16 @@ class Pseudonymvergabe:
 
     # -- people around the patient -------------------------------------------------------------
     def angehoerige(self, nummer: int, person: Person) -> str:
+        """The pseudonym of the ``nummer``-th relative, derived from the patient's identifier."""
         return self._merke(f"Angehörige {self.kennung}-{nummer}", person.vollname, Art.NAME)
 
     def zuweiser(self, nummer: int, person: Person) -> str:
+        """The pseudonym of the ``nummer``-th referring doctor."""
         klartext = " ".join(t for t in (person.titel, person.vollname) if t)
         return self._merke(f"Dr. Z{nummer}", klartext, Art.NAME)
 
     def begriff(self, nummer: int, text: str) -> str:
+        """The pseudonym of the ``nummer``-th term the user listed."""
         return self._merke(f"[Begriff {nummer}]", text, Art.BEGRIFF)
 
     # -- identifiers from the lexicon: professions, hospitals, studies, titles ---------------------

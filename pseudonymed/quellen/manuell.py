@@ -35,6 +35,7 @@ def vorlage() -> str:
 
 
 def lade_patient(pfad: str | Path) -> Patient:
+    """The patient from a JSON or TOML file written after the template."""
     pfad = Path(pfad)
     if pfad.suffix.lower() == ".toml":
         with pfad.open("rb") as f:

@@ -60,6 +60,7 @@ def kennung_gueltig(kennung: str) -> bool:
 
 
 def ist_hashkennung(kennung: str) -> bool:
+    """True for an identifier of the hash scheme (four or more code characters)."""
     return len(kennung) >= 4 and MUSTER_KENNUNG.fullmatch(kennung) is not None
 
 

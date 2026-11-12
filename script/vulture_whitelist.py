@@ -28,6 +28,10 @@ identifikatoren_importieren
 identifikatoren_pruefen
 einrichten
 kontakte_lokal
+adressbuecher
+suchen
+zeigen
+export
 
 # Qt virtuals and model methods
 _.dragEnterEvent
@@ -56,6 +60,7 @@ datenordner_isoliert
 carddav_umgebung
 lexikon_an
 lexikon_klein
+ohne_variablen
 appauthor
 
 # dataclass fields, attributes of foreign objects (PyMuPDF widgets in a test), the *exc of __exit__

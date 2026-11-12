@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import ocr as ocrmodul
-from pseudonymed.gui.pruefen_seite import VORSCHAU_DPI, Seitenansicht
+from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.sitzung import Dokument, Sitzung
 
 
