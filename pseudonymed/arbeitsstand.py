@@ -46,12 +46,9 @@ from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import gliederung as gliedmodul
 from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.erkennung import fachbegriffe as fachmodul
-from pseudonymed.erkennung.deterministisch import Regel
-from pseudonymed.erkennung.unscharf import Ziel
 from pseudonymed.kern.modell import Fundstelle, Patient
 from pseudonymed.pruefung.gegenprobe import toleranzschluessel
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
-from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 from pseudonymed.schwaerzen.pdf import Schwaerzoptionen
 
 MARKE = "pseudonymed_arbeitsstand"
@@ -323,29 +320,6 @@ def _ladehinweis(a: Arbeitsstand) -> str:
             f" {a.daten.get('werkzeug', '?')}).")
 
 
-@dataclass(frozen=True)
-class _Gemeinsam:
-    """The keyword fields both preparations take from a state: whose document, with which
-    options, store and gear, and what the review had decided (discards, restores, version,
-    clean-up plan)."""
-
-    quelle: Path
-    patient: Patient
-    opt: Ablaufoptionen
-    speicher: Pseudonymspeicher
-    eigener_speicher: bool
-    kennung: str
-    vergabe: Pseudonymvergabe
-    regeln: list[Regel]
-    ziele: list[Ziel]
-    warnungen: list[str]
-    hinweise: list[str]
-    verworfen: list[Fundstelle]
-    version: int
-    wiederhergestellt: set[tuple[str, str]]
-    aufbereitet: dict[int, aufmodul.Aufbereitung]
-
-
 def _meldungen_der_vorbereitung(a: Arbeitsstand, r: Ruestzeug) -> tuple[list[str], list[str]]:
     """The saved warnings and hints without an earlier load hint, the current one added, and
     a warning when this database issues another identifier than the state was saved under."""
@@ -362,49 +336,39 @@ def _meldungen_der_vorbereitung(a: Arbeitsstand, r: Ruestzeug) -> tuple[list[str
 
 
 def _gemeinsam_aus(a: Arbeitsstand, r: Ruestzeug, patient: Patient, opt: Ablaufoptionen,
-                   speicher: Pseudonymspeicher, eigener_speicher: bool) -> _Gemeinsam:
-    """The common fields of a restored preparation: the gear's identifier and lists, the
-    messages, and the review's decisions read back from the state."""
+                   speicher: Pseudonymspeicher, eigener_speicher: bool) -> dict[str, Any]:
+    """The keyword fields of :class:`Vorbereitungsbasis` both preparations take from a
+    state, all but ``seiten``: whose document, with which options, store and gear, the
+    messages, and what the review had decided (discards, restores, version, plan)."""
     warnungen, hinweise = _meldungen_der_vorbereitung(a, r)
-    return _Gemeinsam(
-        quelle=a.quelle, patient=patient, opt=opt, speicher=speicher,
-        eigener_speicher=eigener_speicher, kennung=r.kennung, vergabe=r.vergabe,
-        regeln=r.regeln, ziele=r.ziele, warnungen=warnungen, hinweise=hinweise,
-        verworfen=[Fundstelle.aus_dict(f) for f in a.daten.get("verworfen", [])],
-        version=int(a.daten.get("version", 0)),
-        wiederhergestellt={(str(k[0]), str(k[1]))
-                           for k in a.daten.get("wiederhergestellt", [])},
-        aufbereitet=_plan_aus(a.daten),
-    )
+    return {
+        "quelle": a.quelle, "patient": patient, "opt": opt, "speicher": speicher,
+        "eigener_speicher": eigener_speicher, "kennung": r.kennung, "vergabe": r.vergabe,
+        "regeln": r.regeln, "ziele": r.ziele, "warnungen": warnungen, "hinweise": hinweise,
+        "verworfen": [Fundstelle.aus_dict(f) for f in a.daten.get("verworfen", [])],
+        "version": int(a.daten.get("version", 0)),
+        "wiederhergestellt": {(str(k[0]), str(k[1]))
+                              for k in a.daten.get("wiederhergestellt", [])},
+        "aufbereitet": _plan_aus(a.daten),
+    }
 
 
-def _textvorbereitung_aus(a: Arbeitsstand, g: _Gemeinsam) -> Textvorbereitung:
+def _textvorbereitung_aus(a: Arbeitsstand, gemeinsam: dict[str, Any]) -> Textvorbereitung:
     """The text variant: the saved clear text, its output extension, and pages that have no
     PDF page behind them."""
     return Textvorbereitung(
-        quelle=g.quelle, patient=g.patient, opt=g.opt, speicher=g.speicher,
-        eigener_speicher=g.eigener_speicher, kennung=g.kennung, vergabe=g.vergabe,
-        regeln=g.regeln, ziele=g.ziele, warnungen=g.warnungen, hinweise=g.hinweise,
-        verworfen=g.verworfen, version=g.version, wiederhergestellt=g.wiederhergestellt,
-        aufbereitet=g.aufbereitet,
-        text=a.dokument.decode("utf-8"),
+        **gemeinsam, text=a.dokument.decode("utf-8"),
         seiten=[_seite_aus(d, None, None) for d in a.daten["seiten"]],
         ausgabe_endung=str(a.daten["dokument"].get("ausgabe_endung", ".txt")))
 
 
-def _pdfvorbereitung_aus(a: Arbeitsstand, g: _Gemeinsam) -> Vorbereitung:
+def _pdfvorbereitung_aus(a: Arbeitsstand, gemeinsam: dict[str, Any]) -> Vorbereitung:
     """The PDF variant: pages and documents come from a rebuilt reading, which is thereby
     used up."""
-    lesung = lesung_aus(a, g.opt)
+    lesung = lesung_aus(a, gemeinsam["opt"])
     lesung.verbraucht = True
-    return Vorbereitung(
-        quelle=g.quelle, patient=g.patient, opt=g.opt, speicher=g.speicher,
-        eigener_speicher=g.eigener_speicher, kennung=g.kennung, vergabe=g.vergabe,
-        regeln=g.regeln, ziele=g.ziele, warnungen=g.warnungen, hinweise=g.hinweise,
-        verworfen=g.verworfen, version=g.version, wiederhergestellt=g.wiederhergestellt,
-        aufbereitet=g.aufbereitet,
-        backend=None, doc=lesung.doc, original=lesung.original, seiten=lesung.seiten,
-        ohne_text=lesung.ohne_text)
+    return Vorbereitung(**gemeinsam, backend=None, doc=lesung.doc, original=lesung.original,
+                        seiten=lesung.seiten, ohne_text=lesung.ohne_text)
 
 
 def _seite_wiederherstellen(s: Seite, d: dict[str, Any], ist_text: bool,
