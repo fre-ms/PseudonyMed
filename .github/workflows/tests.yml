@@ -39,7 +39,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - run: uv sync --dev --group quality --extra ocr --extra codes --extra gui --extra pgp --extra carddav
+      - run: uv sync --dev --group quality --extra ocr --extra codes --extra gui --extra pgp --extra carddav --extra ner
       - run: >
           sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-deu
           libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4

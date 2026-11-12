@@ -78,7 +78,9 @@ REGRESSION_KEYS: tuple[tuple[str, str], ...] = (
     ("duplication", "blocks"),
     ("docstrings", "public_missing"),
 )
-COVERAGE_SPIELRAUM = 0.5  # half a point of measurement noise
+# A point of noise: the baseline is measured on macOS, CI on Linux, and a few lines of
+# platform handling (key paths, program look-up) are only ever covered on one of them.
+COVERAGE_SPIELRAUM = 1.0
 
 # Qt virtuals a widget overrides; their meaning is Qt's documentation, not ours.
 _QT_OVERRIDES = re.compile(r"^(?:[a-z]+[A-Z]\w*|run|data|flags|headerData|rowCount|columnCount"
