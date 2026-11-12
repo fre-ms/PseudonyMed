@@ -773,7 +773,7 @@ def _vokabular_vergessen() -> None:
     """Drop the cached vocabulary matcher so the next analysis sees the imported words."""
     from pseudonymed.erkennung.fachbegriffe import standard
 
-    standard.cache_clear()  # type: ignore[attr-defined]
+    standard.cache_clear()
 
 
 def _leer(db: Path) -> bool:

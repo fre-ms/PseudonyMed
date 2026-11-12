@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from pseudonymed.kern.modell import Patient
 from pseudonymed.pseudonyme.rueckersetzung import rueckersetzen
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
@@ -85,3 +87,25 @@ def test_hashkennung_und_pruefzeichen(patient: Patient) -> None:
     assert r.verbleibend == [f"Patient {falsch}"]
     assert "Prüfzeichen falsch" in r.hinweise[f"Patient {falsch}"]
     assert k in r.hinweise[f"Patient {falsch}"]
+
+
+def test_hinweise_und_reste(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The leftover pass keeps first-seen order without duplicates; the hint names a
+    wrong check character and suggests the one stored code an edit away."""
+    from pseudonymed.pseudonyme import rueckersetzung as modul
+    from pseudonymed.pseudonyme.kennung import hash_kennung
+
+    k = hash_kennung(bytes(32), "657|47|1959-07-21")
+    falsch = k[:-1] + ("A" if k[-1] != "A" else "B")
+    reste = modul._verbleibende(f"Dr. Z2 und Patient {falsch}, dann Dr. Z2 und [Alter 9].")
+    assert reste == [f"Patient {falsch}", "Dr. Z2", "[Alter 9]"]
+    assert modul._hinweis("[Alter 9]", [k]) == ""  # not a hash code
+    assert modul._hinweis(f"Patient {falsch}", []) == "Prüfzeichen falsch, vermutlich verschrieben"
+    assert modul._hinweis(f"Angehörige {falsch}-1", [k]).endswith(f"gemeint wohl {k}")
+    assert modul._hinweis(f"[Straße {falsch}]", [k, k]) == (
+        "Prüfzeichen falsch, vermutlich verschrieben")  # two candidates: no suggestion
+    monkeypatch.setattr(modul, "kennung_gueltig", lambda code: True)
+    assert modul._hinweis(f"Patient {falsch}", [k]) == f"unbekannt; ähnlich: {k}"
+    assert modul._hinweis(f"Patient {falsch}", []) == ""
+    assert modul._hinweise_zu([f"Patient {falsch}", "[Alter 9]"], [k]) == {
+        f"Patient {falsch}": f"unbekannt; ähnlich: {k}"}

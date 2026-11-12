@@ -35,6 +35,9 @@ def variable(name: str, standard: str | None = None) -> str | None:
 
 
 def _umgezogen(pfad_fuer: Callable[..., Path]) -> Path:
+    """The folder under the current name; a folder of the former name is renamed to it
+    once, so an existing installation keeps its data.  When the rename fails (another
+    volume, permissions), the old folder stays in use rather than starting empty."""
     neu = pfad_fuer(NAME, appauthor=False)
     alt = pfad_fuer(FRUEHERER_NAME, appauthor=False)
     if not neu.exists() and alt.is_dir():

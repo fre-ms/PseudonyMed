@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import pymupdf
 
-from pseudonymed.dokument.textebene import lese_seite
-from pseudonymed.erkennung.deterministisch import Regel, finde, finde_im_text, regeln_fuer
-from pseudonymed.kern.modell import Patient
+from pseudonymed.dokument.textebene import Seitentext, lese_seite
+from pseudonymed.erkennung.deterministisch import (
+    Regel,
+    finde,
+    finde_im_text,
+    kasten_zu_fundstellen,
+    regeln_fuer,
+)
+from pseudonymed.kern.modell import Art, Patient
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 
@@ -108,3 +115,48 @@ def test_gegenprobe_schuetzt_verlesene_pseudonyme() -> None:
     treffer = [(text[a:b].rstrip("."), r.id) for a, b, r in finde_im_text(text, regeln)
                if not in_pseudonym(a, b, spannen)]
     assert treffer == [("2023/171", "muster.aktenzeichen.etikett")], treffer
+
+
+def _regel(id_: str, muster: str, prio: int) -> Regel:
+    return Regel(id_, re.compile(muster), Art.BEGRIFF, "[x]", prio, None)
+
+
+def test_kandidaten_ohne_rand_und_mit_wertgruppe() -> None:
+    """Blanks a pattern swallowed are cut off, a labelled pattern yields only its value,
+    and a match of nothing but blanks is no candidate."""
+    from pseudonymed.erkennung.deterministisch import _kandidaten
+
+    regeln = [_regel("leer", r"\s*X\s*", 10), _regel("etikett", r"Nr\.\s*(?P<wert>\d+)", 5),
+              _regel("nichts", r"\s+", 1)]
+    text = "a  X  b Nr. 42"
+    assert [(text[a:b], r.id) for a, b, r in _kandidaten(text, regeln)] == [
+        ("X", "leer"), ("42", "etikett")]
+
+
+def test_auswahl_laenge_vor_prioritaet_vor_reihenfolge() -> None:
+    """The longest candidate wins, at equal length the higher priority, then the earlier
+    rule; whatever overlaps a chosen hit is dropped."""
+    from pseudonymed.erkennung.deterministisch import _ohne_ueberlappung
+
+    lang, hoch = _regel("lang", "x", 1), _regel("hoch", "x", 9)
+    frueh, spaet = _regel("frueh", "x", 5), _regel("spaet", "x", 5)
+    kandidaten = [(0, 2, frueh), (0, 2, spaet), (0, 2, hoch), (2, 8, lang), (3, 5, hoch),
+                  (9, 12, spaet), (9, 12, frueh)]
+    assert [(a, b, r.id) for a, b, r in _ohne_ueberlappung(kandidaten)] == [
+        (0, 2, "hoch"), (2, 8, "lang"), (9, 12, "spaet")]
+
+
+def test_kasten_gruppiert_je_zeile() -> None:
+    """A box over two lines becomes one hit per line (a word gap does not split a line),
+    the drawn box itself is kept on the first hit, and an image page yields the box only."""
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "Erste Zeile hier", fontname="helv")
+    page.insert_text((72, 120), "Zweite Zeile", fontname="helv")
+    rect = (70.0, 88.0, 200.0, 124.0)
+    treffer = kasten_zu_fundstellen(lese_seite(page), rect, "[x]")
+    assert [f.text for f in treffer] == ["Erste Zeile hier", "Zweite Zeile"]
+    assert treffer[0].rects[-1] == rect and all(f.regel == "manuell" for f in treffer)
+    leer = Seitentext(nummer=2, breite=595.0, hoehe=842.0, text="Bild")
+    (einzig,) = kasten_zu_fundstellen(leer, rect, "[x]", "maske")
+    assert (einzig.start, einzig.ende, einzig.rects, einzig.regel) == (0, 0, [rect], "maske")

@@ -28,6 +28,7 @@ import sqlite3
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from pseudonymed import umgebung
 
@@ -75,17 +76,20 @@ GEMTEX = {"Beruf": "PROFESSION", "Titel": "NAME_TITLE", "Klinik": "LOCATION_HOSP
 Zeile = tuple[str, str, str, str, str]  # begriff, klasse, rolle, kennung, zusatz (JSON)
 
 
-def _offen(pfad: Path):
+def _offen(pfad: Path) -> TextIO:
+    """A UTF-8 text handle on a plain or gzip-compressed data file."""
     return gzip.open(pfad, "rt", encoding="utf-8") if pfad.suffix == ".gz" else \
         pfad.open(encoding="utf-8")
 
 
 def _csv(pfad: Path) -> Iterator[dict[str, str]]:
+    """The records of a CSV data file with a header line, comment lines skipped."""
     with _offen(pfad) as f:
         yield from csv.DictReader(z for z in f if not z.startswith("#"))
 
 
 def _liste(pfad: Path) -> Iterator[str]:
+    """Non-empty, non-comment lines of a plain list file, stripped."""
     with _offen(pfad) as f:
         for z in f:
             z = z.strip()
@@ -94,11 +98,13 @@ def _liste(pfad: Path) -> Iterator[str]:
 
 
 def _json(**werte: object) -> str:
+    """Compact JSON of the given details without empty values ("" when nothing remains)."""
     sauber = {k: v for k, v in werte.items() if v not in ("", None)}
     return json.dumps(sauber, ensure_ascii=False, separators=(",", ":")) if sauber else ""
 
 
 def _zahl(text: str | None) -> int | None:
+    """The integer in a CSV cell (``"12.0"`` included), None when empty or not a number."""
     try:
         return int(float(text)) if text not in (None, "") else None
     except ValueError:
@@ -107,18 +113,23 @@ def _zahl(text: str | None) -> int | None:
 
 # -- sources ---------------------------------------------------------------------------------------
 def _fachklassen(pfad: Path) -> Iterator[Zeile]:
+    """Rows of the Wikidata class table: term, medical class and the item as ``kennung``."""
     for z in _csv(pfad):
         yield z["begriff"], z["klasse"], FACH, z.get("kennung", ""), ""
 
 
 def _liste_als(klasse: str) -> Callable[[Path], Iterator[Zeile]]:
+    """A reader that files every line of a plain list under the medical class ``klasse``."""
     def lesen(pfad: Path) -> Iterator[Zeile]:
+        """One ``fach`` row per list line, without identifier or details."""
         for b in _liste(pfad):
             yield b, klasse, FACH, "", ""
     return lesen
 
 
 def _berufe(pfad: Path) -> Iterator[Zeile]:
+    """Professions (KldB) and employment statuses with their base form; ``nachname`` marks
+    the professions that are also common surnames."""
     for z in _csv(pfad):
         yield (z["begriff"], z.get("klasse") or "Beruf", MERKMAL, z.get("kennung", ""),
                _json(grundform=z.get("grundform", ""),
@@ -138,6 +149,8 @@ def _titel(pfad: Path) -> Iterator[Zeile]:
 
 
 def _kliniken(pfad: Path) -> Iterator[Zeile]:
+    """Hospitals of the DACH directories, keyed by country and directory number, with place,
+    beds and provider as details."""
     for z in _csv(pfad):
         land = z.get("land", "")
         yield (z["name"], "Klinik", MERKMAL, f"{land}:{z.get('kennung', '')}",
@@ -163,6 +176,7 @@ def _studien(pfad: Path) -> Iterator[Zeile]:
 
 
 def _eponyme() -> Iterator[Zeile]:
+    """The eponyms of the NER step (four characters or more) as ``fach`` rows."""
     from pseudonymed.erkennung.ner import EPONYME
 
     for e in sorted(EPONYME):
@@ -172,6 +186,9 @@ def _eponyme() -> Iterator[Zeile]:
 
 @dataclass(frozen=True)
 class Quelle:
+    """A bundled source: its name in ``lexikon_meta``, its file (None for a source computed
+    in code) and the reader that yields its rows."""
+
     name: str
     datei: Path | None
     lesen: Callable[..., Iterator[Zeile]]
@@ -191,6 +208,7 @@ QUELLEN: tuple[Quelle, ...] = (
 
 
 def _stand(q: Quelle) -> str:
+    """Short hash of a source's current content: its file bytes, or the rows it computes."""
     if q.datei is None:
         zeilen = "\n".join("\t".join(z) for z in q.lesen())
         return hashlib.sha256(zeilen.encode("utf-8")).hexdigest()[:16]
@@ -198,7 +216,50 @@ def _stand(q: Quelle) -> str:
 
 
 def aktiv() -> bool:
+    """Is loading switched on (``PSEUDONYMED_LEXIKON`` is not ``0``)?"""
     return umgebung.variable("LEXIKON", "1") != "0"
+
+
+def _zu_laden(q: Quelle, namen: set[str] | None) -> bool:
+    """Is a bundled source present on disk and, when names were given, among them?"""
+    if q.datei is not None and not q.datei.exists():
+        return False
+    return not namen or q.name in namen
+
+
+def _zeilen_von(q: Quelle) -> Iterator[Zeile]:
+    """The rows of a source with inner whitespace collapsed; terms shorter than
+    ``MIN_LAENGE`` are left out."""
+    args = () if q.datei is None else (q.datei,)
+    for b, k, r, ke, zu in q.lesen(*args):
+        if len(b.strip()) >= MIN_LAENGE:
+            yield " ".join(b.split()), k, r, ke, zu
+
+
+def _lade_quelle(verbindung: sqlite3.Connection, q: Quelle, stand: str) -> int:
+    """Replaces the rows of one source and records ``stand`` in ``lexikon_meta``; returns
+    the number of rows inserted."""
+    verbindung.execute("DELETE FROM lexikon WHERE quelle = ?", (q.name,))
+    vorher = verbindung.total_changes
+    verbindung.executemany(
+        "INSERT OR IGNORE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        ((b, k, r, q.name, ke, zu) for b, k, r, ke, zu in _zeilen_von(q)))
+    n = verbindung.total_changes - vorher
+    verbindung.execute(
+        "INSERT OR REPLACE INTO lexikon_meta (quelle, stand, anzahl, geladen)"
+        " VALUES (?, ?, ?, ?)",
+        (q.name, stand, n, dt.datetime.now().isoformat(timespec="seconds")))
+    return n
+
+
+def _geloeschte_entfernen(verbindung: sqlite3.Connection) -> None:
+    """Removes bundled rows the user deleted earlier (``lexikon_geloescht``) after a reload
+    brought them back; rows of the source ``Nutzer`` stay."""
+    verbindung.execute(
+        "DELETE FROM lexikon WHERE quelle != ? AND EXISTS (SELECT 1 FROM lexikon_geloescht g"
+        " WHERE g.begriff = lexikon.begriff AND g.klasse = lexikon.klasse"
+        " AND g.kennung = lexikon.kennung)", (NUTZER,))
 
 
 def sicherstellen(verbindung: sqlite3.Connection, erzwingen: bool = False,
@@ -210,33 +271,16 @@ def sicherstellen(verbindung: sqlite3.Connection, erzwingen: bool = False,
         return {}
     verbindung.executescript(SCHEMA)
     alt = dict(verbindung.execute("SELECT quelle, stand FROM lexikon_meta"))
-    geladen: dict[str, int] = {}
     namen = set(quellen) if quellen is not None else None
+    geladen: dict[str, int] = {}
     for q in QUELLEN:
-        if (q.datei is not None and not q.datei.exists()) or (namen and q.name not in namen):
+        if not _zu_laden(q, namen):
             continue
         stand = _stand(q)
-        if not erzwingen and alt.get(q.name) == stand:
-            continue
-        verbindung.execute("DELETE FROM lexikon WHERE quelle = ?", (q.name,))
-        vorher = verbindung.total_changes
-        args = () if q.datei is None else (q.datei,)
-        verbindung.executemany(
-            "INSERT OR IGNORE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            ((" ".join(b.split()), k, r, q.name, ke, zu) for b, k, r, ke, zu in q.lesen(*args)
-             if len(b.strip()) >= MIN_LAENGE))
-        n = verbindung.total_changes - vorher
-        verbindung.execute(
-            "INSERT OR REPLACE INTO lexikon_meta (quelle, stand, anzahl, geladen)"
-            " VALUES (?, ?, ?, ?)",
-            (q.name, stand, n, dt.datetime.now().isoformat(timespec="seconds")))
-        geladen[q.name] = n
+        if erzwingen or alt.get(q.name) != stand:
+            geladen[q.name] = _lade_quelle(verbindung, q, stand)
     if geladen:
-        verbindung.execute(
-            "DELETE FROM lexikon WHERE quelle != ? AND EXISTS (SELECT 1 FROM lexikon_geloescht g"
-            " WHERE g.begriff = lexikon.begriff AND g.klasse = lexikon.klasse"
-            " AND g.kennung = lexikon.kennung)", (NUTZER,))
+        _geloeschte_entfernen(verbindung)
         erhoehe_version(verbindung)
     verbindung.commit()
     return geladen
@@ -252,6 +296,7 @@ def version(verbindung: sqlite3.Connection) -> int:
 
 
 def erhoehe_version(verbindung: sqlite3.Connection) -> None:
+    """Increments the lexicon's version counter (creating it at 1); not committed here."""
     verbindung.execute(
         "INSERT INTO lexikon_version (id, version) VALUES (1, 1)"
         " ON CONFLICT(id) DO UPDATE SET version = version + 1")

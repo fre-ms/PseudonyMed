@@ -47,6 +47,7 @@ _NAMENSPARTIKEL = {"von", "van", "der", "den", "de", "zu", "zur", "zum", "da", "
 
 
 def ohne_akzente(text: str) -> str:
+    """The text with diacritics stripped and ß written as ss ("Müller" -> "Muller")."""
     zerlegt = unicodedata.normalize("NFKD", text.replace("ß", "ss"))
     return "".join(c for c in zerlegt if not unicodedata.combining(c))
 
@@ -71,6 +72,8 @@ def flex(form: str) -> str:
 
 
 def alternative(formen_: set[str]) -> str:
+    """A non-capturing alternation of the forms, longest first so that the regex engine
+    tries the fullest spelling before a shorter one that is its prefix."""
     return "(?:" + "|".join(flex(f) for f in sorted(formen_, key=len, reverse=True)) + ")"
 
 
@@ -166,6 +169,7 @@ def telefon_muster(nummer: str) -> str | None:
 
 
 def email_muster(email: str) -> str | None:
+    """The address as written, case-insensitive, as a whole token."""
     email = email.strip()
     if "@" not in email:
         return None
@@ -203,9 +207,9 @@ def adresse_muster(strasse: str) -> str | None:
     else:
         strassen_re = alternative(formen(name))
     nummer_re = ""
-    if nummer:
-        ziffern = re.match(r"\d+", nummer).group(0)
-        nummer_re = rf"(?:\s*,?\s*{ziffern}\s?[a-zA-Z]?(?:\s?[-/]\s?\d+\s?[a-zA-Z]?)?)?"
+    ziffern = re.match(r"\d+", nummer)  # the house number always starts with digits
+    if ziffern:
+        nummer_re = rf"(?:\s*,?\s*{ziffern.group(0)}\s?[a-zA-Z]?(?:\s?[-/]\s?\d+\s?[a-zA-Z]?)?)?"
     return rf"{L}{strassen_re}{nummer_re}(?![^\W_])"
 
 

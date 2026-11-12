@@ -36,7 +36,7 @@ from pathlib import Path
 
 from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.erkennung import lexikon
-from pseudonymed.erkennung.identifikatoren import Erkenner
+from pseudonymed.erkennung.identifikatoren import Erkenner, Kandidat
 from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
@@ -120,6 +120,7 @@ class Auswahl:
 
     @property
     def aktiv(self) -> bool:
+        """Whether any level is to be redacted at all."""
         return self.medikamente or self.dosierungen or self.laborwerte or self.messwerte
 
     @property
@@ -129,10 +130,12 @@ class Auswahl:
 
     @property
     def labornamen(self) -> bool:
+        """Whether lab names are needed (to redact them or to anchor the measurements)."""
         return self.laborwerte or self.messwerte
 
 
 def _norm(text: str) -> str:
+    """Key of a term: whitespace collapsed, case-folded, umlauts transliterated."""
     return " ".join(text.split()).casefold().translate(_TRANS)
 
 
@@ -148,22 +151,35 @@ def messwert(text: str, ende: int) -> tuple[int, int] | None:
 
 
 def _gueltiger_lauf(tokens: list[re.Match[str]]) -> bool:
+    """A run of dose tokens counts only with a unit or a word in it; bare counts alone
+    ("12", "3") are no dose."""
     return any(not _BARE.match(t.group()) for t in tokens)
+
+
+def _trennt_medikamente(trenner: str) -> bool:
+    """Whether the separator is a comma or semicolon, behind which a new amount with a
+    unit belongs to the next drug ("…, 1 Tbl. Paracetamol")."""
+    return "," in trenner or ";" in trenner
+
+
+def _dosis_token_nach(text: str, pos: int, im_lauf: bool) -> re.Match[str] | None:
+    """The next dose token behind ``pos``, or None where the run ends: at anything that
+    is no token, and inside a run at an amount with a unit behind a comma."""
+    sep = _SEP.match(text, pos)
+    trenner = sep.group() if sep else ""
+    tok = _DOSIS_TOKEN.match(text, sep.end() if sep else pos)
+    if tok is None or tok.end() == tok.start():
+        return None
+    if im_lauf and _trennt_medikamente(trenner) and _MENGE_MIT_EINHEIT.match(tok.group()):
+        return None
+    return tok
 
 
 def dosis_nach(text: str, ende: int) -> tuple[int, int] | None:
     """Span of the dose and schedule right after a drug name ending at ``ende``."""
     tokens: list[re.Match[str]] = []
     pos = ende
-    while True:
-        sep = _SEP.match(text, pos)
-        tok = _DOSIS_TOKEN.match(text, sep.end() if sep else pos)
-        if tok is None or tok.end() == tok.start():
-            break
-        # a new amount after a comma belongs to the next drug ("…, 1 Tbl. Paracetamol")
-        if sep and ("," in sep.group() or ";" in sep.group()) and tokens \
-                and _MENGE_MIT_EINHEIT.match(tok.group()):
-            break
+    while (tok := _dosis_token_nach(text, pos, bool(tokens))) is not None:
         tokens.append(tok)
         pos = tok.end()
     if not tokens or not _gueltiger_lauf(tokens):
@@ -215,6 +231,8 @@ class Medizinsuche:
     """The matcher over drug and lab names plus the chosen levels."""
 
     def __init__(self, zeilen: list[tuple[str, str]], auswahl: Auswahl) -> None:
+        """Index the ``(begriff, klasse)`` rows; drug names under three characters and the
+        everyday substances are left out, a term on both lists is noted in ``beide``."""
         self.auswahl = auswahl
         self.erkenner = Erkenner(registernummern=False)
         je_klasse: dict[str, set[str]] = {KLASSE_MEDIKAMENT: set(), KLASSE_LABORWERT: set()}
@@ -252,29 +270,36 @@ class Medizinsuche:
             return KLASSE_MEDIKAMENT
         return KLASSE_LABORWERT if self.auswahl.labornamen else KLASSE_MEDIKAMENT
 
+    def _medikamentenspannen(self, text: str, k: Kandidat) -> list[tuple[int, int, str]]:
+        """For a drug term: the name if asked, the doses before and behind it if asked."""
+        aus: list[tuple[int, int, str]] = []
+        if self.auswahl.medikamente:
+            aus.append((k.start, k.ende, KLASSE_MEDIKAMENT))
+        if self.auswahl.dosierungen:
+            aus += [(*spanne, PRAEFIX_DOSIERUNG)
+                    for spanne in (dosis_vor(text, k.start), dosis_nach(text, k.ende))
+                    if spanne is not None]
+        return aus
+
+    def _laborspannen(self, text: str, k: Kandidat) -> list[tuple[int, int, str]]:
+        """For a lab term: the name if asked, the measurement behind it if asked."""
+        aus: list[tuple[int, int, str]] = []
+        if self.auswahl.laborwerte:
+            aus.append((k.start, k.ende, KLASSE_LABORWERT))
+        spanne = messwert(text, k.ende) if self.auswahl.messwerte else None
+        if spanne is not None:
+            aus.append((*spanne, PRAEFIX_MESSWERT))
+        return aus
+
     def spannen(self, text: str) -> list[tuple[int, int, str]]:
         """(start, end, kind) of every element to redact, kind being the pseudonym prefix."""
         aus: list[tuple[int, int, str]] = []
         for k in self.erkenner.kandidaten(text):
             klasse = self._klasse(text, k.start, k.ende, k.klasse)
             if klasse == KLASSE_MEDIKAMENT:
-                if not self.auswahl.medikamentennamen:
-                    continue
-                if self.auswahl.medikamente:
-                    aus.append((k.start, k.ende, KLASSE_MEDIKAMENT))
-                if self.auswahl.dosierungen:
-                    for spanne in (dosis_vor(text, k.start), dosis_nach(text, k.ende)):
-                        if spanne is not None:
-                            aus.append((*spanne, PRAEFIX_DOSIERUNG))
+                aus += self._medikamentenspannen(text, k)
             else:
-                if not self.auswahl.labornamen:
-                    continue
-                if self.auswahl.laborwerte:
-                    aus.append((k.start, k.ende, KLASSE_LABORWERT))
-                if self.auswahl.messwerte:
-                    spanne = messwert(text, k.ende)
-                    if spanne is not None:
-                        aus.append((*spanne, PRAEFIX_MESSWERT))
+                aus += self._laborspannen(text, k)
         return sorted(set(aus))
 
     def finde(self, seite: Seitentext, vergabe: Pseudonymvergabe, vorhandene: list[Fundstelle],
@@ -295,33 +320,40 @@ class Medizinsuche:
 
 
 # -- the matcher used by the analysis ----------------------------------------------------------
-_cache: tuple[Path, int, int, Medizinsuche] | None = None
+class _Standardsuche:
+    """The matcher for the chosen medical levels, its lists kept until the lexicon or the
+    vocabulary changes; ``cache_clear`` makes the next call rebuild them.  A callable
+    object rather than a function with a bolted-on attribute, so that ``cache_clear`` is
+    typed."""
+
+    def __init__(self) -> None:
+        """Starts without cached lists."""
+        self._cache: tuple[Path, int, int, Medizinsuche] | None = None
+
+    def __call__(self, auswahl: Auswahl) -> Medizinsuche | None:
+        """The matcher for the chosen levels (None when none is chosen), its lists rebuilt
+        only when the lexicon or the vocabulary changed."""
+        if not auswahl.aktiv:
+            return None
+        from pseudonymed.erkennung.vokabular import Vokabular
+
+        try:
+            with Vokabular() as v:
+                versionen = (lexikon.version(v.verbindung), v.version())
+                if self._cache is not None and self._cache[0] == v.pfad \
+                        and self._cache[1:3] == versionen:
+                    return self._cache[3].mit(auswahl)
+                suche = Medizinsuche(_zeilen(v.verbindung), auswahl)
+                pfad = v.pfad
+        except (sqlite3.Error, OSError):
+            return Medizinsuche([], auswahl)
+        self._cache = (pfad, *versionen, suche)
+        return suche
+
+    def cache_clear(self) -> None:
+        """Forget the cached lists (the tests swap the lexicon underneath them)."""
+        self._cache = None
 
 
-def standard(auswahl: Auswahl) -> Medizinsuche | None:
-    """The matcher for the chosen levels (None when none is chosen), its lists rebuilt only
-    when the lexicon or the vocabulary changed."""
-    global _cache
-    if not auswahl.aktiv:
-        return None
-    from pseudonymed.erkennung.vokabular import Vokabular
+standard = _Standardsuche()
 
-    try:
-        with Vokabular() as v:
-            versionen = (lexikon.version(v.verbindung), v.version())
-            if _cache is not None and _cache[0] == v.pfad and _cache[1:3] == versionen:
-                return _cache[3].mit(auswahl)
-            suche = Medizinsuche(_zeilen(v.verbindung), auswahl)
-            pfad = v.pfad
-    except (sqlite3.Error, OSError):
-        return Medizinsuche([], auswahl)
-    _cache = (pfad, *versionen, suche)
-    return suche
-
-
-def _cache_clear() -> None:
-    global _cache
-    _cache = None
-
-
-standard.cache_clear = _cache_clear  # type: ignore[attr-defined]

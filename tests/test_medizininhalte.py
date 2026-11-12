@@ -259,3 +259,17 @@ def test_kommandozeile(lexikon_klein: Path, tmp_path: Path, patient: Patient) ->
     text = (tmp_path / "notiz_pseudonym.txt").read_text(encoding="utf-8")
     assert "Levetiracetam [Dosierung " in text and "TSH [Messwert " in text
     assert "500 mg" not in text and "2,3" not in text
+
+
+def test_dosislauf_endet_an_neuer_menge_nach_komma() -> None:
+    """Inside a run, an amount with a unit behind a comma belongs to the next drug; at the
+    start of a run the same token is taken."""
+    text = "400 mg bei Bedarf, 1 Tbl. Paracetamol"
+    erster = medmodul._dosis_token_nach(text, 0, im_lauf=False)
+    assert erster is not None and erster.group() == "400 mg"
+    zweiter = medmodul._dosis_token_nach(text, erster.end(), im_lauf=True)
+    assert zweiter is not None and zweiter.group() == "bei Bedarf"
+    assert medmodul._dosis_token_nach(text, zweiter.end(), im_lauf=True) is None
+    dritter = medmodul._dosis_token_nach(text, zweiter.end(), im_lauf=False)
+    assert dritter is not None and dritter.group() == "1 Tbl."
+    assert medmodul.dosis_nach(text, 0) == (0, len("400 mg bei Bedarf"))

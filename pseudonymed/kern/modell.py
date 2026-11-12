@@ -73,6 +73,7 @@ class Person:
 
     @property
     def vollname(self) -> str:
+        """First name and surname, whichever are present, separated by a space."""
         return " ".join(t for t in (self.vorname.strip(), self.nachname.strip()) if t)
 
     @property
@@ -82,10 +83,12 @@ class Person:
 
     @property
     def weiblich(self) -> bool:
+        """True for a gender recorded as "w"/"weiblich" or "f"/"female"."""
         return self.geschlecht.lower().startswith(("w", "f"))
 
     @property
     def maennlich(self) -> bool:
+        """True for a gender recorded as "m"/"männlich"/"male"."""
         return self.geschlecht.lower().startswith("m")
 
     def anredeform(self, kasus: str = "nominativ") -> str:
@@ -122,6 +125,7 @@ class Patient(Person):
         """Plain dict for the JSON patient file (``pseudonymed kontakte export``)."""
 
         def person(p: Person) -> dict[str, Any]:
+            """A person without empty fields, the birth date in ISO form."""
             d = asdict(p)
             d["geburtsdatum"] = p.geburtsdatum.isoformat() if p.geburtsdatum else ""
             return {k: v for k, v in d.items() if v not in ("", [], None)}
@@ -141,6 +145,7 @@ class Patient(Person):
         """Build a patient from a plain dict (JSON/TOML input, M1 CLI)."""
 
         def person(p: dict[str, Any]) -> Person:
+            """A relative or referrer from their plain dict."""
             return Person(**_personenfelder(p))
 
         felder = _personenfelder(d)
@@ -153,29 +158,36 @@ class Patient(Person):
         )
 
 
+_TEXTFELDER = ("nachname", "vorname", "geschlecht", "titel", "geburtsname", "strasse", "plz",
+               "ort", "versichertennummer", "patienten_id")
+
+
+def _datum_aus(wert: Any) -> dt.date | None:
+    """A birth date from a date string (ISO, German, compact), a date or a datetime
+    (TOML parses dates with a time as such); ``None`` for anything else or unreadable."""
+    if isinstance(wert, str) and wert:
+        return parse_datum(wert)
+    if isinstance(wert, dt.datetime):
+        return wert.date()
+    return wert if isinstance(wert, dt.date) else None
+
+
+def _liste_aus(wert: Any) -> list[str]:
+    """Non-empty strings from a list, or from a single string (a lone phone number or
+    e-mail address written without brackets)."""
+    werte = [wert] if isinstance(wert, str) else wert
+    return [str(w) for w in werte if w]
+
+
 def _personenfelder(d: dict[str, Any]) -> dict[str, Any]:
-    geburtsdatum = d.get("geburtsdatum")
-    if isinstance(geburtsdatum, str) and geburtsdatum:
-        geburtsdatum = parse_datum(geburtsdatum)
-    elif isinstance(geburtsdatum, dt.datetime):
-        geburtsdatum = geburtsdatum.date()
-    telefone = d.get("telefone", d.get("telefon", []))
-    emails = d.get("emails", d.get("email", []))
-    return {
-        "nachname": str(d.get("nachname", "")).strip(),
-        "vorname": str(d.get("vorname", "")).strip(),
-        "geschlecht": str(d.get("geschlecht", "")).strip(),
-        "titel": str(d.get("titel", "")).strip(),
-        "geburtsname": str(d.get("geburtsname", "")).strip(),
-        "geburtsdatum": geburtsdatum if isinstance(geburtsdatum, dt.date) else None,
-        "strasse": str(d.get("strasse", "")).strip(),
-        "plz": str(d.get("plz", "")).strip(),
-        "ort": str(d.get("ort", "")).strip(),
-        "telefone": [str(t) for t in ([telefone] if isinstance(telefone, str) else telefone) if t],
-        "emails": [str(e) for e in ([emails] if isinstance(emails, str) else emails) if e],
-        "versichertennummer": str(d.get("versichertennummer", "")).strip(),
-        "patienten_id": str(d.get("patienten_id", "")).strip(),
-    }
+    """The :class:`Person` constructor arguments read from a plain dict: text fields
+    stripped, the birth date parsed, phone numbers and e-mail addresses as lists (the
+    singular keys ``telefon``/``email`` are accepted too)."""
+    felder: dict[str, Any] = {name: str(d.get(name, "")).strip() for name in _TEXTFELDER}
+    felder["geburtsdatum"] = _datum_aus(d.get("geburtsdatum"))
+    felder["telefone"] = _liste_aus(d.get("telefone", d.get("telefon", [])))
+    felder["emails"] = _liste_aus(d.get("emails", d.get("email", [])))
+    return felder
 
 
 def parse_datum(text: str) -> dt.date | None:
@@ -223,6 +235,7 @@ class Fundstelle:
 
     @classmethod
     def aus_dict(cls, d: dict[str, Any]) -> Fundstelle:
+        """A hit from its :meth:`als_dict` form (the working state)."""
         return cls(
             seite=int(d["seite"]), start=int(d["start"]), ende=int(d["ende"]),
             text=str(d.get("text", "")), art=Art(d["art"]), regel=str(d["regel"]),
@@ -257,6 +270,8 @@ class Gegenprobe:
 
     @property
     def bestanden(self) -> bool:
+        """True when nothing was found again, the metadata are empty and the structure
+        is clean; only then may the file be released."""
         return not self.resttreffer and self.metadaten_leer and self.struktur_sauber
 
 
@@ -280,13 +295,16 @@ class Pruefbericht:
 
     @property
     def bestanden(self) -> bool:
+        """True when a re-check ran and passed."""
         return self.gegenprobe is not None and self.gegenprobe.bestanden
 
     def als_dict(self) -> dict[str, Any]:
+        """The JSON form of the report, with the verdict as an extra key."""
         d = asdict(self)
         d["bestanden"] = self.bestanden
         return d
 
     @staticmethod
     def jetzt() -> str:
+        """The current local time with offset, to the second, for the report."""
         return dt.datetime.now().astimezone().isoformat(timespec="seconds")

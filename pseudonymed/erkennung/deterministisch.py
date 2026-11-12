@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from pseudonymed.dokument.textebene import Seitentext
+from pseudonymed.dokument.textebene import Box, Seitentext
 from pseudonymed.erkennung import varianten as v
 from pseudonymed.erkennung.muster import GLOBALE_MUSTER
 from pseudonymed.kern.modell import Art, Fundstelle, Patient, Person, Rolle
@@ -18,6 +18,13 @@ from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 @dataclass
 class Regel:
+    """One compiled pattern with the pseudonym it yields and its priority.
+
+    Among candidates of equal length the higher priority wins.  ``rolle`` says
+    whose identifier the rule stands for (patient, relative, referrer) and is
+    None for the user's own terms and the global patterns.
+    """
+
     id: str
     muster: re.Pattern[str]
     art: Art
@@ -26,128 +33,204 @@ class Regel:
     rolle: Rolle | None = None
 
 
-def regeln_fuer(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
-    """Compile the rule set for one patient; pseudonyms come from ``vergabe``."""
-    regeln: list[Regel] = []
+Treffer = tuple[int, int, Regel]
 
-    def add(
-        id_: str,
-        pattern: str | None,
-        art: Art,
-        pseudonym: str,
-        prio: int,
-        rolle: Rolle | None,
-    ) -> None:
-        if pattern:
-            regeln.append(Regel(id_, re.compile(pattern), art, pseudonym, prio, rolle))
 
-    def namensregeln(prefix: str, person: Person, pseudonym: str, rolle: Rolle) -> None:
-        add(f"{prefix}.vollname", v.vollname_muster(person.vornamen, person.nachname),
-            Art.NAME, pseudonym, 30, rolle)
-        add(f"{prefix}.nachname", v.name_muster(person.nachname), Art.NACHNAME, pseudonym, 20,
-            rolle)
-        for teil in v.nachname_teile(person.nachname):
-            add(f"{prefix}.nachname.teil", v.name_muster(teil), Art.NACHNAME, pseudonym, 10, rolle)
-        for vorname in person.vornamen:
-            if len(vorname) >= 3:
-                add(f"{prefix}.vorname", v.name_muster(vorname), Art.VORNAME, pseudonym, 10, rolle)
-        if person.geburtsname:
-            add(f"{prefix}.geburtsname.vollname",
-                v.vollname_muster(person.vornamen, person.geburtsname), Art.NAME, pseudonym, 30,
-                rolle)
-            add(f"{prefix}.geburtsname", v.name_muster(person.geburtsname),
-                Art.GEBURTSNAME, pseudonym, 20, rolle)
+# -- the rule families ----------------------------------------------------------------------------
+def _regel(id_: str, muster: str | None, art: Art, pseudonym: str, prioritaet: int,
+           rolle: Rolle | None) -> list[Regel]:
+    """The compiled rule as a one-element list, empty when the pattern builder refused
+    the input as too short to be safe.  The pseudonym is handed in ready-made, so the
+    assignment has recorded it even when no rule results."""
+    if not muster:
+        return []
+    return [Regel(id_, re.compile(muster), art, pseudonym, prioritaet, rolle)]
 
-    p = patient
-    ps = vergabe.hauptperson()
-    namensregeln("name", p, ps, Rolle.PATIENT)
-    if p.geburtsdatum:
-        add("datum.geburtsdatum", v.datum_muster(p.geburtsdatum), Art.GEBURTSDATUM,
-            vergabe.geburtsdatum(), 20, Rolle.PATIENT)
-    def adressregeln(prefix: str, person: Person, rolle: Rolle) -> None:
-        if person.strasse:
-            add(f"{prefix}.strasse", v.adresse_muster(person.strasse), Art.ADRESSE,
-                vergabe.strasse(person), 20, rolle)
-        if person.ort:
-            add(f"{prefix}.plz_ort", v.plz_ort_muster(person.plz, person.ort), Art.ORT,
-                vergabe.plz_ort(person), 20, rolle)
-            add(f"{prefix}.ort", v.ort_muster(person.ort), Art.ORT, vergabe.ort(person), 15,
-                rolle)
 
-    adressregeln("adresse", p, Rolle.PATIENT)
-    for t in p.telefone:
-        add("telefon", v.telefon_muster(t), Art.TELEFON, vergabe.telefon(), 20, Rolle.PATIENT)
-    for e in p.emails:
-        add("email", v.email_muster(e), Art.EMAIL, vergabe.email(), 20, Rolle.PATIENT)
-    if p.versichertennummer:
-        add("versichertennummer", v.exakt_muster(p.versichertennummer), Art.VERSICHERTENNUMMER,
-            vergabe.versichertennummer(), 25, Rolle.PATIENT)
-    if p.patienten_id:
-        add("patienten_id", v.nummer_muster(p.patienten_id), Art.PATIENTEN_ID,
-            vergabe.patienten_id(), 25, Rolle.PATIENT)
-    for a in p.aktenzeichen:
-        add("aktenzeichen", v.exakt_muster(a), Art.AKTENZEICHEN, vergabe.aktenzeichen(), 25,
-            Rolle.PATIENT)
-
-    for i, person in enumerate(p.angehoerige, 1):
-        pseudonym = vergabe.angehoerige(i, person)
-        namensregeln(f"angehoerige{i}", person, pseudonym, Rolle.ANGEHOERIGE)
-        adressregeln(f"angehoerige{i}", person, Rolle.ANGEHOERIGE)
-        for t in person.telefone:
-            add(f"angehoerige{i}.telefon", v.telefon_muster(t), Art.TELEFON, "[Telefon]", 20,
-                Rolle.ANGEHOERIGE)
-        for e in person.emails:
-            add(f"angehoerige{i}.email", v.email_muster(e), Art.EMAIL, "[E-Mail]", 20,
-                Rolle.ANGEHOERIGE)
-
-    for i, person in enumerate(p.zuweiser, 1):
-        pseudonym = vergabe.zuweiser(i, person)
-        add(f"zuweiser{i}.name", v.titel_name_muster(person.vornamen, person.nachname), Art.NAME,
-            pseudonym, 30, Rolle.ZUWEISER)
-        for teil in v.nachname_teile(person.nachname):
-            add(f"zuweiser{i}.nachname.teil", v.name_muster(teil), Art.NACHNAME, pseudonym, 10,
-                Rolle.ZUWEISER)
-        adressregeln(f"zuweiser{i}", person, Rolle.ZUWEISER)
-        for t in person.telefone:
-            add(f"zuweiser{i}.telefon", v.telefon_muster(t), Art.TELEFON, "[Telefon]", 20,
-                Rolle.ZUWEISER)
-        for e in person.emails:
-            add(f"zuweiser{i}.email", v.email_muster(e), Art.EMAIL, "[E-Mail]", 20, Rolle.ZUWEISER)
-
-    for i, b in enumerate(p.begriffe, 1):
-        add("begriff", v.begriff_muster(b), Art.BEGRIFF, vergabe.begriff(i, b), 15, None)
-
-    for id_, muster, art in GLOBALE_MUSTER:
-        regeln.append(Regel(id_, muster, art, vergabe.generisch(art), 5, None))
+def _namensregeln(prefix: str, person: Person, pseudonym: str, rolle: Rolle) -> list[Regel]:
+    """Full name, surname, parts of a compound surname, first names and the birth name."""
+    regeln = _regel(f"{prefix}.vollname", v.vollname_muster(person.vornamen, person.nachname),
+                    Art.NAME, pseudonym, 30, rolle)
+    regeln += _regel(f"{prefix}.nachname", v.name_muster(person.nachname), Art.NACHNAME,
+                     pseudonym, 20, rolle)
+    for teil in v.nachname_teile(person.nachname):
+        regeln += _regel(f"{prefix}.nachname.teil", v.name_muster(teil), Art.NACHNAME, pseudonym,
+                         10, rolle)
+    for vorname in person.vornamen:
+        if len(vorname) >= 3:
+            regeln += _regel(f"{prefix}.vorname", v.name_muster(vorname), Art.VORNAME, pseudonym,
+                             10, rolle)
+    if person.geburtsname:
+        regeln += _regel(f"{prefix}.geburtsname.vollname",
+                         v.vollname_muster(person.vornamen, person.geburtsname), Art.NAME,
+                         pseudonym, 30, rolle)
+        regeln += _regel(f"{prefix}.geburtsname", v.name_muster(person.geburtsname),
+                         Art.GEBURTSNAME, pseudonym, 20, rolle)
     return regeln
 
 
-def finde_im_text(text: str, regeln: list[Regel]) -> list[tuple[int, int, Regel]]:
-    """Non-overlapping matches, longest first, then by rule priority."""
-    kandidaten: list[tuple[int, int, Regel]] = []
+def _geburtsdatumsregel(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """The birth date in every common spelling; nothing when the date is unknown."""
+    if not patient.geburtsdatum:
+        return []
+    return _regel("datum.geburtsdatum", v.datum_muster(patient.geburtsdatum), Art.GEBURTSDATUM,
+                  vergabe.geburtsdatum(), 20, Rolle.PATIENT)
+
+
+def _adressregeln(prefix: str, person: Person, rolle: Rolle,
+                  vergabe: Pseudonymvergabe) -> list[Regel]:
+    """Street, postcode with town, and the town on its own, each with its own code."""
+    regeln: list[Regel] = []
+    if person.strasse:
+        regeln += _regel(f"{prefix}.strasse", v.adresse_muster(person.strasse), Art.ADRESSE,
+                         vergabe.strasse(person), 20, rolle)
+    if person.ort:
+        regeln += _regel(f"{prefix}.plz_ort", v.plz_ort_muster(person.plz, person.ort), Art.ORT,
+                         vergabe.plz_ort(person), 20, rolle)
+        regeln += _regel(f"{prefix}.ort", v.ort_muster(person.ort), Art.ORT, vergabe.ort(person),
+                         15, rolle)
+    return regeln
+
+
+def _nummernregeln(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """The patient's phone numbers, e-mail addresses, insurance number, patient id and
+    file numbers."""
+    regeln: list[Regel] = []
+    for t in patient.telefone:
+        regeln += _regel("telefon", v.telefon_muster(t), Art.TELEFON, vergabe.telefon(), 20,
+                         Rolle.PATIENT)
+    for e in patient.emails:
+        regeln += _regel("email", v.email_muster(e), Art.EMAIL, vergabe.email(), 20, Rolle.PATIENT)
+    if patient.versichertennummer:
+        regeln += _regel("versichertennummer", v.exakt_muster(patient.versichertennummer),
+                         Art.VERSICHERTENNUMMER, vergabe.versichertennummer(), 25, Rolle.PATIENT)
+    if patient.patienten_id:
+        regeln += _regel("patienten_id", v.nummer_muster(patient.patienten_id), Art.PATIENTEN_ID,
+                         vergabe.patienten_id(), 25, Rolle.PATIENT)
+    for a in patient.aktenzeichen:
+        regeln += _regel("aktenzeichen", v.exakt_muster(a), Art.AKTENZEICHEN,
+                         vergabe.aktenzeichen(), 25, Rolle.PATIENT)
+    return regeln
+
+
+def _kontaktregeln(prefix: str, person: Person, rolle: Rolle) -> list[Regel]:
+    """Phone numbers and e-mail addresses of a relative or referrer; they share one
+    placeholder each and get no code of their own."""
+    regeln: list[Regel] = []
+    for t in person.telefone:
+        regeln += _regel(f"{prefix}.telefon", v.telefon_muster(t), Art.TELEFON, "[Telefon]", 20,
+                         rolle)
+    for e in person.emails:
+        regeln += _regel(f"{prefix}.email", v.email_muster(e), Art.EMAIL, "[E-Mail]", 20, rolle)
+    return regeln
+
+
+def _angehoerigenregeln(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """Names, address and contact details of every relative, numbered in order."""
+    regeln: list[Regel] = []
+    for i, person in enumerate(patient.angehoerige, 1):
+        pseudonym = vergabe.angehoerige(i, person)
+        prefix = f"angehoerige{i}"
+        regeln += _namensregeln(prefix, person, pseudonym, Rolle.ANGEHOERIGE)
+        regeln += _adressregeln(prefix, person, Rolle.ANGEHOERIGE, vergabe)
+        regeln += _kontaktregeln(prefix, person, Rolle.ANGEHOERIGE)
+    return regeln
+
+
+def _zuweiserregeln(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """Referring physicians: the name with its academic titles (so that "Dr. Z1" does not
+    end up as "Dr. Dr. Z1"), parts of a compound surname, address and contact details."""
+    regeln: list[Regel] = []
+    for i, person in enumerate(patient.zuweiser, 1):
+        pseudonym = vergabe.zuweiser(i, person)
+        prefix = f"zuweiser{i}"
+        regeln += _regel(f"{prefix}.name", v.titel_name_muster(person.vornamen, person.nachname),
+                         Art.NAME, pseudonym, 30, Rolle.ZUWEISER)
+        for teil in v.nachname_teile(person.nachname):
+            regeln += _regel(f"{prefix}.nachname.teil", v.name_muster(teil), Art.NACHNAME,
+                             pseudonym, 10, Rolle.ZUWEISER)
+        regeln += _adressregeln(prefix, person, Rolle.ZUWEISER, vergabe)
+        regeln += _kontaktregeln(prefix, person, Rolle.ZUWEISER)
+    return regeln
+
+
+def _begriffsregeln(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """The user's own terms (employer, nursing service, …), numbered in order."""
+    regeln: list[Regel] = []
+    for i, b in enumerate(patient.begriffe, 1):
+        regeln += _regel("begriff", v.begriff_muster(b), Art.BEGRIFF, vergabe.begriff(i, b), 15,
+                         None)
+    return regeln
+
+
+def _globale_regeln(vergabe: Pseudonymvergabe) -> list[Regel]:
+    """The patient-independent patterns (insurance number, IBAN, e-mail, labelled values)
+    with the lowest priority, so that a patient rule wins at equal length."""
+    return [Regel(id_, muster, art, vergabe.generisch(art), 5, None)
+            for id_, muster, art in GLOBALE_MUSTER]
+
+
+def regeln_fuer(patient: Patient, vergabe: Pseudonymvergabe) -> list[Regel]:
+    """Compile the rule set for one patient; pseudonyms come from ``vergabe``.
+
+    The families keep this order: at equal length and priority the earlier rule
+    wins (see :func:`finde_im_text`), and the assignment records the pseudonyms
+    in the order they are asked for.
+    """
+    hauptperson = vergabe.hauptperson()
+    return [
+        *_namensregeln("name", patient, hauptperson, Rolle.PATIENT),
+        *_geburtsdatumsregel(patient, vergabe),
+        *_adressregeln("adresse", patient, Rolle.PATIENT, vergabe),
+        *_nummernregeln(patient, vergabe),
+        *_angehoerigenregeln(patient, vergabe),
+        *_zuweiserregeln(patient, vergabe),
+        *_begriffsregeln(patient, vergabe),
+        *_globale_regeln(vergabe),
+    ]
+
+
+# -- matching -------------------------------------------------------------------------------------
+def _treffer_spanne(text: str, regel: Regel, m: re.Match[str]) -> tuple[int, int]:
+    """The span a match stands for: the ``wert`` group of a labelled pattern (the value
+    behind "KVNR", not the label), otherwise the whole match; trimmed of the whitespace
+    a pattern may have swallowed at either end."""
+    if "wert" in regel.muster.groupindex and m.group("wert"):
+        a, b = m.span("wert")
+    else:
+        a, b = m.start(), m.end()
+    teil = text[a:b]
+    a += len(teil) - len(teil.lstrip())
+    return a, a + len(teil.strip())
+
+
+def _kandidaten(text: str, regeln: list[Regel]) -> list[Treffer]:
+    """Every non-empty match of every rule, in rule order; overlaps not yet resolved."""
+    kandidaten: list[Treffer] = []
     for regel in regeln:
         for m in regel.muster.finditer(text):
-            if "wert" in regel.muster.groupindex and m.group("wert"):
-                a, b = m.span("wert")
-            else:
-                a, b = m.start(), m.end()
-            # trim surrounding whitespace the pattern may have swallowed
-            while a < b and text[a].isspace():
-                a += 1
-            while b > a and text[b - 1].isspace():
-                b -= 1
+            a, b = _treffer_spanne(text, regel, m)
             if b > a:
                 kandidaten.append((a, b, regel))
-    kandidaten.sort(key=lambda k: (-(k[1] - k[0]), -k[2].prioritaet, k[0]))
+    return kandidaten
+
+
+def _ohne_ueberlappung(kandidaten: list[Treffer]) -> list[Treffer]:
+    """Greedy choice in text order: the longest candidate first, at equal length the
+    higher priority, then the earlier one; whatever overlaps a chosen hit is dropped."""
     belegt: list[tuple[int, int]] = []
-    gewaehlt: list[tuple[int, int, Regel]] = []
-    for a, b, regel in kandidaten:
+    gewaehlt: list[Treffer] = []
+    for a, b, regel in sorted(kandidaten, key=lambda k: (-(k[1] - k[0]), -k[2].prioritaet, k[0])):
         if any(a < y and b > x for x, y in belegt):
             continue
         belegt.append((a, b))
         gewaehlt.append((a, b, regel))
-    gewaehlt.sort(key=lambda k: k[0])
-    return gewaehlt
+    return sorted(gewaehlt, key=lambda k: k[0])
+
+
+def finde_im_text(text: str, regeln: list[Regel]) -> list[tuple[int, int, Regel]]:
+    """Non-overlapping matches, longest first, then by rule priority."""
+    return _ohne_ueberlappung(_kandidaten(text, regeln))
 
 
 def verschmelze(treffer: list[tuple[int, int, Regel]], text: str) -> list[tuple[int, int, Regel]]:
@@ -190,6 +273,68 @@ def finde(seite: Seitentext, regeln: list[Regel]) -> list[Fundstelle]:
     return fundstellen
 
 
+# -- boxes drawn by the user ----------------------------------------------------------------------
+def _als_box(rect: tuple[float, float, float, float]) -> Box:
+    """The rectangle as a plain four-tuple, whatever sequence the caller handed in."""
+    x0, y0, x1, y1 = rect
+    return (x0, y0, x1, y1)
+
+
+def _bedeckt(kasten: Box, box: Box) -> bool:
+    """Whether the drawn box covers at least two fifths of the glyph box, so that a box
+    drawn a little below the line's centre still takes the line."""
+    x0, y0, x1, y1 = kasten
+    breite = min(x1, box[2]) - max(x0, box[0])
+    hoehe = min(y1, box[3]) - max(y0, box[1])
+    if breite <= 0 or hoehe <= 0:
+        return False
+    flaeche = max((box[2] - box[0]) * (box[3] - box[1]), 1e-6)
+    return breite * hoehe >= 0.4 * flaeche
+
+
+def _bedeckte_zeichen(seite: Seitentext, kasten: Box) -> list[int]:
+    """Indices of the printed characters the drawn box covers."""
+    return [i for i, box in enumerate(seite.boxen) if box is not None and _bedeckt(kasten, box)]
+
+
+def _setzt_fort(seite: Seitentext, start: int, vorher: int, i: int) -> bool:
+    """Whether character ``i`` continues the run begun at ``start``: the same line, and
+    nothing but whitespace between the previous covered character and this one."""
+    return seite.zeilen[i] == seite.zeilen[start] and all(
+        seite.text[k].isspace() for k in range(vorher + 1, i))
+
+
+def _zeilenlaeufe(seite: Seitentext, innen: list[int]) -> list[tuple[int, int]]:
+    """The covered characters as ``(start, ende)`` runs, one per line of the box."""
+    laeufe: list[tuple[int, int]] = []
+    start = vorher = innen[0]
+    for i in innen[1:]:
+        if not _setzt_fort(seite, start, vorher, i):
+            laeufe.append((start, vorher + 1))
+            start = i
+        vorher = i
+    laeufe.append((start, vorher + 1))
+    return laeufe
+
+
+def _manueller_treffer(seite: Seitentext, start: int, ende: int, pseudonym: str,
+                       quelle: str) -> Fundstelle:
+    """The hit for one run of covered characters, with its rectangles and font size."""
+    return Fundstelle(
+        seite=seite.nummer, start=start, ende=ende, text=seite.text[start:ende],
+        art=Art.MANUELL, regel=quelle, pseudonym=pseudonym,
+        rects=[tuple(r) for r in seite.rects(start, ende)],
+        schriftgroesse=seite.schriftgroesse(start, ende), quelle=quelle,
+    )
+
+
+def _kasten_ohne_text(seite: Seitentext, kasten: Box, pseudonym: str, quelle: str) -> Fundstelle:
+    """The hit for a box over an image page: no text span, the rectangle only."""
+    return Fundstelle(seite=seite.nummer, start=0, ende=0, text="", art=Art.MANUELL,
+                      regel=quelle, pseudonym=pseudonym, rects=[kasten], schriftgroesse=9.0,
+                      quelle=quelle)
+
+
 def kasten_zu_fundstellen(
     seite: Seitentext, rect: tuple[float, float, float, float], pseudonym: str = "[geschwärzt]",
     quelle: str = "manuell",
@@ -202,41 +347,12 @@ def kasten_zu_fundstellen(
     re-check see the same thing as the redaction.  Without characters (image
     page) the box is a hit of its own with the rectangle only.
     """
-    x0, y0, x1, y1 = rect
-
-    def bedeckt(box: tuple[float, float, float, float]) -> bool:
-        breite = min(x1, box[2]) - max(x0, box[0])
-        hoehe = min(y1, box[3]) - max(y0, box[1])
-        if breite <= 0 or hoehe <= 0:
-            return False
-        flaeche = max((box[2] - box[0]) * (box[3] - box[1]), 1e-6)
-        return breite * hoehe >= 0.4 * flaeche
-
-    innen = [i for i, box in enumerate(seite.boxen) if box is not None and bedeckt(box)]
+    kasten = _als_box(rect)
+    innen = _bedeckte_zeichen(seite, kasten)
     if not innen:
-        return [Fundstelle(seite=seite.nummer, start=0, ende=0, text="", art=Art.MANUELL,
-                           regel=quelle, pseudonym=pseudonym, rects=[tuple(rect)],
-                           schriftgroesse=9.0, quelle=quelle)]
-    treffer: list[Fundstelle] = []
-    start = innen[0]
-    vorher = innen[0]
-    for i in innen[1:] + [None]:
-        zusammen = (
-            i is not None and i == vorher + 1 and seite.zeilen[i] == seite.zeilen[start]
-        ) or (i is not None and seite.zeilen[i] == seite.zeilen[start]
-              and all(seite.text[k].isspace() for k in range(vorher + 1, i)))
-        if not zusammen:
-            ende = vorher + 1
-            treffer.append(Fundstelle(
-                seite=seite.nummer, start=start, ende=ende, text=seite.text[start:ende],
-                art=Art.MANUELL, regel=quelle, pseudonym=pseudonym,
-                rects=[tuple(r) for r in seite.rects(start, ende)],
-                schriftgroesse=seite.schriftgroesse(start, ende), quelle=quelle,
-            ))
-            if i is None:
-                break
-            start = i
-        vorher = i
+        return [_kasten_ohne_text(seite, kasten, pseudonym, quelle)]
+    treffer = [_manueller_treffer(seite, start, ende, pseudonym, quelle)
+               for start, ende in _zeilenlaeufe(seite, innen)]
     # the drawn box itself is covered too, for ink that is not text (image, stamp)
-    treffer[0].rects = treffer[0].rects + [tuple(rect)]
+    treffer[0].rects = treffer[0].rects + [kasten]
     return treffer

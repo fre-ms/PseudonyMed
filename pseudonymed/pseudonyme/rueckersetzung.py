@@ -30,6 +30,8 @@ _REST_MUSTER = [
 
 @dataclass
 class Rueckersetzung:
+    """The re-identified text, how many pseudonyms were replaced, and what was left."""
+
     text: str
     ersetzt: int = 0
     verbleibend: list[str] = field(default_factory=list)
@@ -37,6 +39,7 @@ class Rueckersetzung:
 
 
 def _person_aus(info: dict[str, Any] | None) -> Person | None:
+    """The patient as a :class:`Person` from a store row or capsule info; ``None`` without."""
     if not info:
         return None
     return Person(
@@ -55,6 +58,7 @@ def _ersetzer(pseudonym: str, klartext: str, person: Person | None, form: str):
         muster = re.compile(rf"\b(?:Patient(in|en)?|Pat\.)\s+{re.escape(b)}(?![\w])")
 
         def ersetze(t: re.Match[str]) -> str:
+            """The full name, or "Herr/Herrn/Frau Nachname" by case when asked and known."""
             if form == "anrede" and person is not None and (person.weiblich or person.maennlich):
                 kasus = "obliquus" if t.group(1) == "en" else "nominativ"
                 return person.anredeform(kasus)
@@ -107,28 +111,47 @@ def rueckersetzen(
     for hash codes the check character tells whether the model mangled the
     code, and a stored code one edit away is suggested.
     """
-    person = _person_aus(info)
+    text, ersetzt = _ersetze_alle(text, zuordnung, _person_aus(info), form)
+    verbleibend = _verbleibende(text)
+    hinweise = _hinweise_zu(verbleibend, bekannte_kennungen or [])
+    return Rueckersetzung(text=text, ersetzt=ersetzt, verbleibend=verbleibend, hinweise=hinweise)
+
+
+def _ersetze_alle(
+    text: str, zuordnung: dict[str, str], person: Person | None, form: str
+) -> tuple[str, int]:
+    """The replacement pass: every pseudonym in its inflected forms, longest pseudonyms
+    first so that a shorter one never eats part of a longer one; returns the text and
+    the number of replacements."""
     ersetzt = 0
     for pseudonym in sorted(zuordnung, key=len, reverse=True):
         muster, ersetze = _ersetzer(pseudonym, zuordnung[pseudonym], person, form)
         text, n = muster.subn(ersetze, text)
         ersetzt += n
-    verbleibend: list[str] = []
-    hinweise: dict[str, str] = {}
-    for muster in _REST_MUSTER:
-        for m in muster.finditer(text):
-            rest = m.group(0)
-            if rest in verbleibend:
-                continue
-            verbleibend.append(rest)
-            code = rest.strip("[]").split()[-1].split("-")[0]
-            if ist_hashkennung(code):
-                aehnlich = [k for k in (bekannte_kennungen or []) if _abstand_eins(code, k)]
-                if not kennung_gueltig(code):
-                    hinweis = "Prüfzeichen falsch, vermutlich verschrieben"
-                    if len(aehnlich) == 1:
-                        hinweis += f"; gemeint wohl {aehnlich[0]}"
-                    hinweise[rest] = hinweis
-                elif len(aehnlich) == 1:
-                    hinweise[rest] = f"unbekannt; ähnlich: {aehnlich[0]}"
-    return Rueckersetzung(text=text, ersetzt=ersetzt, verbleibend=verbleibend, hinweise=hinweise)
+    return text, ersetzt
+
+
+def _verbleibende(text: str) -> list[str]:
+    """Leftovers that look like our pseudonyms, each once, in order of first discovery."""
+    return list(dict.fromkeys(m.group(0) for muster in _REST_MUSTER
+                              for m in muster.finditer(text)))
+
+
+def _hinweise_zu(verbleibend: list[str], bekannte: list[str]) -> dict[str, str]:
+    """What is wrong with each leftover whose code is a hash code (silent otherwise)."""
+    return {rest: hinweis for rest in verbleibend if (hinweis := _hinweis(rest, bekannte))}
+
+
+def _hinweis(rest: str, bekannte: list[str]) -> str:
+    """The hint for one leftover: a wrong check character means the model mangled the
+    code, and a stored code one edit away is suggested; an empty string when the code
+    is not a hash code or nothing can be said."""
+    code = rest.strip("[]").split()[-1].split("-")[0]
+    if not ist_hashkennung(code):
+        return ""
+    aehnlich = [k for k in bekannte if _abstand_eins(code, k)]
+    vorschlag = aehnlich[0] if len(aehnlich) == 1 else ""
+    if not kennung_gueltig(code):
+        zusatz = f"; gemeint wohl {vorschlag}" if vorschlag else ""
+        return "Prüfzeichen falsch, vermutlich verschrieben" + zusatz
+    return f"unbekannt; ähnlich: {vorschlag}" if vorschlag else ""

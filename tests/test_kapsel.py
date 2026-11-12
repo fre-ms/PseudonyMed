@@ -242,3 +242,23 @@ def test_gnupg_schluesselbund(tmp_path: Path) -> None:
                                                                "GNUPGHOME": str(home)},
                        capture_output=True, check=False)
         shutil.rmtree(home, ignore_errors=True)
+
+
+def test_kapsel_json_felder() -> None:
+    """Pre-rename capsules open, null fields fall back to the defaults, and a newer
+    version is refused."""
+    import json
+
+    k = kapselmodul.Kapsel(kennung="K7Q4MX", patient={"nachname": "Test"},
+                           zuordnungen={"Patient K7Q4MX": "Test"}, quelle="a.pdf")
+    roh = json.loads(k.als_json())
+    alt = {"anonymed_kapsel": roh.pop("pseudonymed_kapsel"), **roh}
+    assert kapselmodul.Kapsel.aus_json(json.dumps(alt).encode()) == k
+    mit_null = dict(roh, pseudonymed_kapsel=1, arten=None, werkzeug=None, einmalschluessel=None)
+    k2 = kapselmodul.Kapsel.aus_json(json.dumps(mit_null).encode())
+    assert k2.arten == {} and k2.werkzeug == k.werkzeug and k2.einmalschluessel == ""
+    with pytest.raises(kapselmodul.KapselFehler, match="neuer"):
+        kapselmodul.Kapsel.aus_json(json.dumps(dict(roh, pseudonymed_kapsel=99)).encode())
+    with pytest.raises(kapselmodul.KapselFehler, match="Zuordnungen"):
+        kapselmodul.Kapsel.aus_json(json.dumps(dict(roh, pseudonymed_kapsel=1,
+                                                    zuordnungen=[])).encode())

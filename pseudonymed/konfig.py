@@ -22,6 +22,9 @@ UMGEBUNG_PASSWORT = "PSEUDONYMED_CARDDAV_PASSWORT"
 
 @dataclass
 class CardDAVKonfig:
+    """The ``[carddav]`` section: server, user and address book; the password lives in
+    the keyring unless the user put it into the file."""
+
     url: str = ""  # https://cloud.example.org
     benutzer: str = ""
     adressbuch: str = ""  # URI segment or display name, empty = the only/first one
@@ -29,6 +32,7 @@ class CardDAVKonfig:
 
     @property
     def vollstaendig(self) -> bool:
+        """True when server and user are set, the minimum for a connection."""
         return bool(self.url and self.benutzer)
 
     @property
@@ -63,6 +67,7 @@ class Einstellungen:
 
 
 def _lese_toml(pfad: Path) -> dict:
+    """The parsed file, or an empty mapping when there is no file yet."""
     if not pfad.exists():
         return {}
     with pfad.open("rb") as f:
@@ -100,6 +105,8 @@ def lade_einstellungen(pfad: str | Path | None = None) -> Einstellungen:
 
 
 def _schreibe(pfad: Path, carddav: dict, e: Einstellungen) -> Path:
+    """Write the whole file, every section in a fixed order, and keep it private (0600)
+    because it may hold the app password; chmod failures (Windows) are tolerated."""
     pfad.parent.mkdir(parents=True, exist_ok=True)
     zeilen = ["[carddav]"]
     for k in ("url", "benutzer", "adressbuch"):
@@ -134,17 +141,13 @@ def speichere_einstellungen(e: Einstellungen, pfad: str | Path | None = None) ->
 
 def lade_konfig(pfad: str | Path | None = None) -> CardDAVKonfig:
     """File values, overridden by PSEUDONYMED_CARDDAV_URL/BENUTZER/ADRESSBUCH."""
-    pfad = Path(pfad) if pfad else konfigpfad()
-    k = CardDAVKonfig()
-    if pfad.exists():
-        with pfad.open("rb") as f:
-            daten = tomllib.load(f).get("carddav", {})
-        k = CardDAVKonfig(
-            url=str(daten.get("url", "")),
-            benutzer=str(daten.get("benutzer", "")),
-            adressbuch=str(daten.get("adressbuch", "")),
-            passwort_datei=str(daten.get("passwort", "")),
-        )
+    daten = _lese_toml(Path(pfad) if pfad else konfigpfad()).get("carddav", {})
+    k = CardDAVKonfig(
+        url=str(daten.get("url", "")),
+        benutzer=str(daten.get("benutzer", "")),
+        adressbuch=str(daten.get("adressbuch", "")),
+        passwort_datei=str(daten.get("passwort", "")),
+    )
     k.url = (umgebung.variable("CARDDAV_URL", k.url) or "").strip()
     k.benutzer = (umgebung.variable("CARDDAV_BENUTZER", k.benutzer) or "").strip()
     k.adressbuch = (umgebung.variable("CARDDAV_ADRESSBUCH", k.adressbuch) or "").strip()
@@ -152,6 +155,7 @@ def lade_konfig(pfad: str | Path | None = None) -> CardDAVKonfig:
 
 
 def _toml_wert(text: str) -> str:
+    """``text`` as a quoted TOML basic string (backslash and quote escaped)."""
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
@@ -164,6 +168,8 @@ def speichere_konfig(k: CardDAVKonfig, pfad: str | Path | None = None) -> Path:
 
 
 def passwort_laden(k: CardDAVKonfig) -> str | None:
+    """The app password: environment variable, else the keyring (under the current and
+    then the former service name), else the one kept in the file, else None."""
     aus_umgebung = umgebung.variable("CARDDAV_PASSWORT")
     if aus_umgebung:
         return aus_umgebung

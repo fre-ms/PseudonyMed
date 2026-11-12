@@ -521,3 +521,109 @@ def test_gegliederter_ocr_text(tmp_path: Path, befund: Path, patient: Patient,
                 if r.trenner == "wort" and len(zeilen[i].split()) >= 2]
     anfang = next(a for a in anfaenge if "\n" + a in roh_erg.text)
     assert "\n" + anfang not in erg.text and " " + anfang in erg.text
+
+
+# -- steps of the OCR layer on synthetic engine output ---------------------------------------------
+def test_tesseract_tsv_zu_woertern() -> None:
+    """Word rows only; pixel boxes shifted by the crop offset and scaled to points;
+    a negative confidence is clamped; rows with unreadable numbers are skipped."""
+    kopf = "\t".join(["level", "page_num", "block_num", "par_num", "line_num", "word_num",
+                      "left", "top", "width", "height", "conf", "text"])
+    tsv = "\n".join([
+        kopf,
+        "4\t1\t1\t1\t1\t0\t10\t20\t300\t40\t-1\t",
+        "5\t1\t1\t1\t1\t1\t100\t200\t50\t20\t91.5\tHallo",
+        "5\t1\t1\t1\t1\t2\t160\t200\t60\t20\t-1\t   ",
+        "5\t1\t1\t1\t1\t3\t230\t200\t40\t20\t-1\tx",
+        "5\t1\t1\t1\t1\t4\tabc\t200\t40\t20\t50\tkaputt",
+    ])
+    woerter = ocrmodul._woerter_aus_tsv(tsv, 2.0, (10.0, -20.0))
+    assert [w.text for w in woerter] == ["Hallo", "x"]
+    hallo = woerter[0]
+    assert (hallo.x0, hallo.y0, hallo.x1, hallo.y1) == (55.0, 90.0, 80.0, 100.0)
+    assert abs(hallo.konfidenz - 0.915) < 1e-9 and woerter[1].konfidenz == 0.0
+
+
+def test_rapidocr_ergebnis_zu_woertern() -> None:
+    """A line with the engine's word boxes keeps them (blank words dropped); a line
+    without is split by character share; a result without boxes gives no words."""
+    from types import SimpleNamespace
+
+    box = [[0, 0], [200, 0], [200, 20], [0, 20]]
+    wbox = [[10, 2], [50, 2], [50, 18], [10, 18]]
+    ergebnis = SimpleNamespace(
+        boxes=[box, box], txts=["Herr Max", "ab cd"], scores=[0.9, 0.8],
+        word_results=[[("Herr", 0.95, wbox), (" ", 0.1, wbox)], []],
+    )
+    woerter = ocrmodul._woerter_aus_ergebnis(ergebnis, 2.0)
+    assert [(w.text, w.konfidenz) for w in woerter] == [("Herr", 0.95), ("ab", 0.8), ("cd", 0.8)]
+    assert (woerter[0].x0, woerter[0].y0, woerter[0].x1, woerter[0].y1) == (5.0, 1.0, 25.0, 9.0)
+    assert (woerter[1].x0, woerter[1].x1) == (0.0, 40.0)
+    assert (woerter[2].x0, woerter[2].x1) == (60.0, 100.0)
+    assert ocrmodul._woerter_aus_ergebnis(SimpleNamespace(boxes=None), 1.0) == []
+
+
+def test_bessere_lesung_ersetzt_nur_bei_mehr_konfidenz() -> None:
+    """The second pass replaces the words inside the grid's box only when its reading
+    carries more confidence mass; words reaching outside the box are never touched."""
+    kasten = (0.0, 0.0, 100.0, 50.0)
+    innen = [OCRWort("Müll", 10, 10, 30, 20, 0.3), OCRWort("##", 40, 10, 60, 20, 0.9)]
+    rand = [OCRWort("Rand", 90, 10, 120, 20, 0.1)]  # reaches out of the box
+    aussen = [OCRWort("Text", 200, 10, 240, 20, 0.9)]
+    neu = [OCRWort("Dosis", 10, 10, 60, 20, 0.8)]
+    assert ocrmodul._bessere_lesung(aussen + innen + rand, neu, kasten) == aussen + rand + neu
+    schwach = [OCRWort("Do", 10, 10, 60, 20, 0.5)]
+    assert ocrmodul._bessere_lesung(aussen + innen, schwach, kasten) == aussen + innen
+
+
+def test_breite_luecken_werden_tabs() -> None:
+    """A gap far wider than the usual one becomes a tab, but only once the page has at
+    least four gaps to tell what usual means."""
+    def zeile(y: float, texte: list[str], xs: list[float]) -> list[OCRWort]:
+        return [OCRWort(t, x, y, x + 6 * len(t), y + 10, 0.9)
+                for t, x in zip(texte, xs, strict=True)]
+
+    woerter = (zeile(100, ["Medikament", "Dosis"], [50, 300])
+               + zeile(120, ["a", "b", "c"], [50, 60, 70])
+               + zeile(140, ["d", "e", "f"], [50, 60, 70]))
+    s = seitentext_aus_woerter(woerter, 0, 595, 842)
+    assert s.text.splitlines()[0] == "Medikament\tDosis"
+    assert s.wortspannen[:2] == [(0, 10), (11, 16)] and len(s.konfidenzen) == 8
+    wenige = zeile(100, ["Medikament", "Dosis"], [50, 300]) + zeile(120, ["a", "b"], [50, 60])
+    assert "\t" not in seitentext_aus_woerter(wenige, 0, 595, 842).text
+
+
+def test_zeile_unlesbar_regeln() -> None:
+    """Three uncertain words, or the required share of them, make a line unreadable;
+    a single uncertain word only when it is the whole line."""
+    def lage(*unsicher: bool) -> list[ocrmodul._Wortlage]:
+        return [ocrmodul._Wortlage(i * 3, i * 3 + 2, u) for i, u in enumerate(unsicher)]
+
+    pruefe = ocrmodul._zeile_unlesbar
+    assert not pruefe(lage(False, False, False), 0.4)
+    assert pruefe(lage(True), 0.4)  # a single word is the whole line
+    assert not pruefe(lage(True, False), 0.4)  # one fragment next to a read word
+    assert pruefe(lage(True, True), 0.4)
+    assert not pruefe(lage(True, False, False, False), 0.4)  # 25 % is below the share
+    assert pruefe(lage(True, True, False, False, False), 0.4)
+    assert pruefe(lage(True, True, True, False, False, False, False, False, False, False), 0.4)
+    assert not pruefe(lage(True, True, False, False, False), 0.5)
+
+
+def test_backend_auswahl_folgt_der_konfiguration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"auto" takes the configured preference when it names an engine or "aus"; an
+    unknown preference leaves "auto" in place; an unknown name is an error."""
+    from types import SimpleNamespace
+
+    import pseudonymed.konfig as konfig
+
+    monkeypatch.setattr(konfig, "lade_einstellungen",
+                        lambda *a, **k: SimpleNamespace(ocr_backend="aus"))
+    assert ocrmodul._bevorzugtes_backend("auto") == "aus"
+    assert ocrmodul.backend("AUTO") is None and ocrmodul.backend("") is None
+    monkeypatch.setattr(konfig, "lade_einstellungen",
+                        lambda *a, **k: SimpleNamespace(ocr_backend="zauber"))
+    assert ocrmodul._bevorzugtes_backend("auto") == "auto"
+    assert ocrmodul._bevorzugtes_backend("tesseract") == "tesseract"
+    with pytest.raises(ocrmodul.OCRFehler, match="Unbekanntes OCR-Backend: 'zauber'"):
+        ocrmodul.backend("Zauber")

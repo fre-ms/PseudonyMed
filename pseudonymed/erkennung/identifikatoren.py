@@ -724,24 +724,37 @@ class Identifikatoren:
 
 
 # -- the matcher used by the analysis ------------------------------------------------------------
-_cache: tuple[Path, int, Erkenner] | None = None
+class _Standarderkenner:
+    """The matcher over the identifier rows, kept until the table's version changes;
+    ``cache_clear`` makes the next call rebuild it.  A callable object rather than a
+    function with a bolted-on attribute, so that ``cache_clear`` is typed."""
+
+    def __init__(self) -> None:
+        """Starts without a cached matcher."""
+        self._cache: tuple[Path, int, Erkenner] | None = None
+
+    def __call__(self) -> Erkenner:
+        """The matcher over the identifier rows, rebuilt only when the lexicon changed;
+        without a usable database it knows the registry-number patterns only."""
+        try:
+            with Identifikatoren() as ident:
+                version = ident.version()
+                if self._cache is not None and self._cache[0] == ident.pfad \
+                        and self._cache[1] == version:
+                    return self._cache[2]
+                erkenner = _erkenner_aus(ident.verbindung)
+                pfad = ident.pfad
+        except (sqlite3.Error, OSError):
+            return Erkenner()
+        self._cache = (pfad, version, erkenner)
+        return erkenner
+
+    def cache_clear(self) -> None:
+        """Forget the cached matcher (tests and the step after edits)."""
+        self._cache = None
 
 
-def standard() -> Erkenner:
-    """The matcher over the identifier rows, rebuilt only when the lexicon changed; without
-    a usable database it knows the registry-number patterns only."""
-    global _cache
-    try:
-        with Identifikatoren() as ident:
-            version = ident.version()
-            if _cache is not None and _cache[0] == ident.pfad and _cache[1] == version:
-                return _cache[2]
-            erkenner = _erkenner_aus(ident.verbindung)
-            pfad = ident.pfad
-    except (sqlite3.Error, OSError):
-        return Erkenner()
-    _cache = (pfad, version, erkenner)
-    return erkenner
+standard = _Standarderkenner()
 
 
 def _erkenner_aus(verbindung: sqlite3.Connection) -> Erkenner:
@@ -768,11 +781,3 @@ def _ort_aus(zusatz: str) -> str:
     except ValueError:
         return ""
 
-
-def _cache_clear() -> None:
-    """Forget the cached matcher (tests and the step after edits)."""
-    global _cache
-    _cache = None
-
-
-standard.cache_clear = _cache_clear  # type: ignore[attr-defined]

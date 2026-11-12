@@ -33,12 +33,19 @@ _MARKE = "pseudonymed_kapsel"
 _FRUEHERE_MARKE = "anonymed_kapsel"  # capsules written before the project was renamed
 
 
+_FELDER = ("kennung", "patient", "zuordnungen", "arten", "empfaenger", "quelle", "erstellt",
+           "werkzeug", "einmalschluessel")
+
+
 class KapselFehler(Exception):
-    pass
+    """Content that is not a capsule, a newer capsule than this program, or one without
+    mapping."""
 
 
 @dataclass
 class Kapsel:
+    """The pseudonym mapping of one document together with the patient it belongs to."""
+
     kennung: str
     patient: dict[str, str]
     zuordnungen: dict[str, str]
@@ -51,29 +58,24 @@ class Kapsel:
     version: int = VERSION
 
     def als_json(self) -> bytes:
+        """The clear JSON form; the version travels as the value of the capsule mark."""
         daten = {_MARKE: self.version, **asdict(self)}
         del daten["version"]
         return json.dumps(daten, ensure_ascii=False, indent=1).encode("utf-8")
 
     @classmethod
     def aus_json(cls, daten: bytes) -> Kapsel:
-        try:
-            roh = json.loads(daten.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise KapselFehler("Der Inhalt ist keine PseudonyMed-Kapsel.") from e
-        marke = next((m for m in (_MARKE, _FRUEHERE_MARKE)
-                      if isinstance(roh, dict) and m in roh), None)
-        if marke is None:
-            raise KapselFehler("Der Inhalt ist keine PseudonyMed-Kapsel.")
-        version = int(roh.pop(marke))
-        if version > VERSION:
-            raise KapselFehler(f"Kapsel-Version {version} ist neuer als dieses PseudonyMed.")
-        felder = {k: roh.get(k) for k in ("kennung", "patient", "zuordnungen", "arten",
-                                          "empfaenger", "quelle", "erstellt", "werkzeug",
-                                          "einmalschluessel")}
-        if not isinstance(felder["zuordnungen"], dict) or not felder["kennung"]:
+        """The capsule from its clear JSON form, pre-rename capsules included.
+
+        Raises :class:`KapselFehler` for content that is not a capsule, for a newer
+        version and for a capsule without identifier or mapping.
+        """
+        roh = _json_laden(daten)
+        version = _version_von(roh)
+        felder = _felder_von(roh)
+        if not isinstance(felder.get("zuordnungen"), dict) or not felder.get("kennung"):
             raise KapselFehler("Die Kapsel enthält keine Zuordnungen.")
-        return cls(version=version, **{k: v for k, v in felder.items() if v is not None})
+        return cls(version=version, **felder)
 
     def info(self) -> dict[str, Any]:
         """What the re-identification needs about the person (like a store row)."""
@@ -81,6 +83,8 @@ class Kapsel:
                 "schluessel": self.patient.get("schluessel", "")}
 
     def als_patient(self) -> Patient:
+        """The named patient for the EpiLink match against the recipient's own records;
+        an unreadable birth date is left empty."""
         p = self.patient
         geb = None
         if p.get("geburtsdatum"):
@@ -93,6 +97,7 @@ class Kapsel:
                        geburtsname=p.get("geburtsname", ""), geburtsdatum=geb)
 
     def beschreibung(self) -> str:
+        """One line for the user: name, birth date, identifier, source file, mapping size."""
         p = self.patient
         geb = p.get("geburtsdatum", "")
         teile = [f"{p.get('nachname', '')}, {p.get('vorname', '')}".strip(", "),
@@ -102,8 +107,38 @@ class Kapsel:
         return " · ".join(t for t in teile if t)
 
 
+def _json_laden(daten: bytes) -> Any:
+    """The decoded JSON value; bytes that are not UTF-8 JSON are not a capsule."""
+    try:
+        return json.loads(daten.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise KapselFehler("Der Inhalt ist keine PseudonyMed-Kapsel.") from e
+
+
+def _version_von(roh: Any) -> int:
+    """Take the capsule mark (current or pre-rename) out of the JSON object and return
+    the version it carries; content without a mark or newer than this program is
+    refused."""
+    marke = next((m for m in (_MARKE, _FRUEHERE_MARKE) if isinstance(roh, dict) and m in roh),
+                 None)
+    if marke is None:
+        raise KapselFehler("Der Inhalt ist keine PseudonyMed-Kapsel.")
+    version = int(roh.pop(marke))
+    if version > VERSION:
+        raise KapselFehler(f"Kapsel-Version {version} ist neuer als dieses PseudonyMed.")
+    return version
+
+
+def _felder_von(roh: dict[str, Any]) -> dict[str, Any]:
+    """The capsule's own fields as given; absent and null ones are left out so that the
+    dataclass defaults apply (an empty kind map, an empty recipient, this tool's name)."""
+    return {k: roh[k] for k in _FELDER if roh.get(k) is not None}
+
+
 def erstelle(patient: Patient, kennung: str, vergabe: Pseudonymvergabe, quelle: str,
              empfaenger: str, geheimnis: bytes | None) -> Kapsel:
+    """A capsule for ``patient`` from the mapping the pseudonym assignment collected,
+    stamped with the time and the one-time key (base64) the codes were derived with."""
     return Kapsel(
         kennung=kennung,
         patient={"nachname": patient.nachname, "vorname": patient.vorname,

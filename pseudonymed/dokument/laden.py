@@ -85,9 +85,9 @@ def _heic(pfad: Path, papier: str | None = "a4") -> pymupdf.Document:
         ) from e
     pillow_heif.register_heif_opener()
     with Image.open(pfad) as bild:
-        bild = ImageOps.exif_transpose(bild).convert("RGB")
+        rgb = ImageOps.exif_transpose(bild).convert("RGB")
         puffer = io.BytesIO()
-        bild.save(puffer, format="PNG")
+        rgb.save(puffer, format="PNG")
     zwischen = pymupdf.open("png", puffer.getvalue())
     try:
         return _auf_papier(zwischen, papier)
