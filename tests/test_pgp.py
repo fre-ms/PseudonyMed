@@ -250,7 +250,7 @@ def test_gnupg_liest_dasselbe_zertifikat(sequoia_paar: tuple[Path, Path, str], t
                                          monkeypatch: pytest.MonkeyPatch) -> None:
     pub, _sec, armor = sequoia_paar
     mit_sequoia = pgp.lade_zertifikat(pub)
-    monkeypatch.setenv("GNUPGHOME", str(tmp_path))  # show-only needs no agent, only a home
+    monkeypatch.setenv("GNUPGHOME", tmp_path.as_posix())  # show-only needs no agent, only a home
     monkeypatch.setattr(pgp, "pysequoia_verfuegbar", lambda: False)
     mit_gnupg = pgp.lade_zertifikat(pub)
     assert mit_gnupg.fingerabdruck == mit_sequoia.fingerabdruck
@@ -388,7 +388,7 @@ def test_gnupg_verschluesselt_sequoia_liest(sequoia_paar: tuple[Path, Path, str]
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """Interoperability the other way round: gpg encrypts, a key file decrypts."""
     pub, sec, _armor = sequoia_paar
-    monkeypatch.setenv("GNUPGHOME", str(tmp_path))  # encrypting needs no agent
+    monkeypatch.setenv("GNUPGHOME", tmp_path.as_posix())  # encrypting needs no agent
     monkeypatch.setattr(pgp, "pysequoia_verfuegbar", lambda: False)
     nachricht = pgp.verschluessele(b"quer", pgp.lade_zertifikat(pub))
     monkeypatch.undo()

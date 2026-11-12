@@ -119,7 +119,8 @@ def _gpg(argumente: list[str], eingabe: bytes | None = None, home: Path | None =
         raise PGPFehler("GnuPG (gpg) ist nicht installiert.")
     umgebung = dict(os.environ)
     if home is not None:
-        umgebung["GNUPGHOME"] = str(home)
+        # forward slashes: the MSYS gpg of Git for Windows reads a C:\ path as relative
+        umgebung["GNUPGHOME"] = home.as_posix()
     try:
         lauf = subprocess.run([programm, "--batch", "--yes", *argumente], input=eingabe,
                               capture_output=True, check=False, timeout=timeout, env=umgebung)
