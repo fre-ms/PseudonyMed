@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pseudonymed.dokument.textebene import Seitentext
@@ -23,6 +24,8 @@ from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 if TYPE_CHECKING:
+    from spacy.tokens import Span, Token
+
     from pseudonymed.erkennung.fachbegriffe import Fachbegriffe
 
 MODELLE = ("de_core_news_lg", "de_core_news_md", "de_core_news_sm")
@@ -51,6 +54,7 @@ EPONYME = {
 
 
 def verfuegbares_modell() -> str | None:
+    """Name of the first installed German model, largest first, or None without one."""
     for m in MODELLE:
         if importlib.util.find_spec(m) is not None:
             return m
@@ -58,6 +62,7 @@ def verfuegbares_modell() -> str | None:
 
 
 def verfuegbar() -> bool:
+    """Are spaCy and a German model installed, so that :class:`NER` can be built?"""
     return importlib.util.find_spec("spacy") is not None and verfuegbares_modell() is not None
 
 
@@ -65,6 +70,7 @@ class NER:
     """A loaded spaCy pipeline reduced to tokenisation and entity recognition."""
 
     def __init__(self, modell: str | None = None) -> None:
+        """Load ``modell`` or the best installed one; RuntimeError without spaCy or a model."""
         try:
             import spacy
         except ImportError as e:
@@ -90,29 +96,33 @@ class NER:
         A lone unknown surname without such context is left to the rules, which
         know the patient's names anyway.
         """
+        return [(e.start_char, e.end_char, e.label_, e.text)
+                for e in self.nlp(text).ents if not self._rauschen(e, text)]
+
+    def _rauschen(self, e: Span, text: str) -> bool:
+        """Is the entity one of the artefacts :meth:`entitaeten` lists?"""
+        kopf = e.root
+        if kopf.pos_ in _KEIN_NAME or self._nur_am_satzanfang_gross(kopf):
+            return True
+        if len(e) != 1 or e.label_ not in _NAMENSLABELS:
+            return False
+        return kopf.pos_ == "NOUN" or (self._unbekannt(kopf) and not _kontext_davor(e, text))
+
+    def _nur_am_satzanfang_gross(self, token: Token) -> bool:
+        """A capitalised word the vectors know only in lower case: an ordinary word that
+        happens to open the sentence, not a name."""
         vokabular = self.nlp.vocab
-        ergebnis = []
-        for e in self.nlp(text).ents:
-            kopf = e.root
-            if kopf.pos_ in _KEIN_NAME:
-                continue
-            bekannt_gross = vokabular.has_vector(kopf.text)
-            bekannt_klein = vokabular.has_vector(kopf.text.lower())
-            if kopf.text[:1].isupper() and not bekannt_gross and bekannt_klein:
-                continue
-            if len(e) == 1 and e.label_ in ("PER", "LOC", "GPE"):
-                if kopf.pos_ == "NOUN":
-                    continue
-                if not bekannt_gross and not bekannt_klein:
-                    davor = text[max(0, e.start_char - 30):e.start_char]
-                    muster = _PERSONENKONTEXT if e.label_ == "PER" else _ORTSKONTEXT
-                    if not muster.search(davor):
-                        continue
-            ergebnis.append((e.start_char, e.end_char, e.label_, e.text))
-        return ergebnis
+        return (token.text[:1].isupper() and not vokabular.has_vector(token.text)
+                and vokabular.has_vector(token.text.lower()))
+
+    def _unbekannt(self, token: Token) -> bool:
+        """Has the model no vector for the word in either spelling (a compound noun, say)?"""
+        vokabular = self.nlp.vocab
+        return not vokabular.has_vector(token.text) and not vokabular.has_vector(token.text.lower())
 
 
 _KEIN_NAME = {"VERB", "AUX", "ADJ", "ADV", "ADP", "DET", "PRON", "SCONJ", "CCONJ", "PART"}
+_NAMENSLABELS = ("PER", "LOC", "GPE")
 # what must stand right before a lone unknown word for it to count as a person or a place
 _PERSONENKONTEXT = re.compile(
     r"(?:\b(?:Herrn?|Frau|Hr\.|Fr\.|Dr\.|Prof\.|PD|med\.|Dipl\.|Patient(?:in)?|Pat\.|Kolleg(?:e|in)"
@@ -122,11 +132,36 @@ _ORTSKONTEXT = re.compile(r"\b(?:in|aus|nach|bei|von|wohnhaft in|Ort|Wohnort|Sta
                           r"|\d{5})\s*$", re.IGNORECASE)
 
 
+def _kontext_davor(e: Span, text: str) -> bool:
+    """Does a salutation, title or kinship word (person) or a preposition or postcode
+    (place) stand right before the entity?  Only that makes a lone unknown word count."""
+    davor = text[max(0, e.start_char - 30):e.start_char]
+    muster = _PERSONENKONTEXT if e.label_ == "PER" else _ORTSKONTEXT
+    return muster.search(davor) is not None
+
+
+_RANDZEICHEN = " .,;:-–()"
+
+
 def _personenkern(text: str) -> str:
-    tokens = [t for t in re.split(r"\s+", text.strip(" .,;:-–()")) if t]
+    """The name without the salutations, titles and kinship words in front of it."""
+    tokens = [t for t in re.split(r"\s+", text.strip(_RANDZEICHEN)) if t]
     while tokens and tokens[0].rstrip(".").lower() in _TITEL:
         tokens.pop(0)
     return " ".join(tokens)
+
+
+def _nur_eponyme(tokens: list[str]) -> bool:
+    """Do all words (parts joined by hyphen or slash counted on their own) name an eponym
+    or a generic term such as "Morbus" or "Syndrom"?"""
+    woerter = [w.lower() for t in tokens for w in re.split(r"[-/]", t.strip(".,")) if w]
+    return bool(woerter) and all(w in EPONYME for w in woerter)
+
+
+def _grossgeschrieben(tokens: list[str]) -> bool:
+    """Does every token that starts with a letter start with a capital, and is there one?"""
+    buchstaben = [t for t in tokens if t[:1].isalpha()]
+    return bool(buchstaben) and all(t[:1].isupper() for t in buchstaben)
 
 
 def _plausibler_name(kern: str) -> bool:
@@ -135,14 +170,98 @@ def _plausibler_name(kern: str) -> bool:
     tokens = kern.split()
     if not tokens or len(kern) < 3:
         return False
-    woerter = [w.lower() for t in tokens for w in re.split(r"[-/]", t.strip(".,")) if w]
-    if woerter and all(w in EPONYME for w in woerter):
-        return False
-    buchstaben = [t for t in tokens if t[:1].isalpha()]
-    return bool(buchstaben) and all(t[:1].isupper() for t in buchstaben)
+    return not _nur_eponyme(tokens) and _grossgeschrieben(tokens)
+
+
+def _plausibler_ort(kern: str) -> bool:
+    """At least three characters, capitalised and not an eponym."""
+    return len(kern) >= 3 and kern.lower() not in EPONYME and kern[:1].isupper()
 
 
 _TEILNAMEN = (Art.NACHNAME, Art.VORNAME, Art.GEBURTSNAME)
+
+
+@dataclass(frozen=True)
+class _Kandidat:
+    """A person or place the model proposed, reduced to its core and already coded."""
+
+    kern: str
+    art: Art
+    regel: str
+    pseudonym: str
+
+    def fundstelle(self, seite: Seitentext, a: int, b: int, quelle: str) -> Fundstelle:
+        """The hit over ``seite.text[a:b]`` with its boxes and font size."""
+        return Fundstelle(
+            seite=seite.nummer, start=a, ende=b, text=self.kern, art=self.art, regel=self.regel,
+            pseudonym=self.pseudonym, rects=[tuple(r) for r in seite.rects(a, b)],
+            schriftgroesse=seite.schriftgroesse(a, b), quelle=quelle,
+        )
+
+
+def _kandidat_aus(label: str, text: str, vergabe: Pseudonymvergabe) -> _Kandidat | None:
+    """The hit an entity would become, or None for anything but a plausible person or place.
+
+    The pseudonym is coded here, before the later steps decide whether the hit survives:
+    ``vergabe`` records every name it codes, in order, and that record must not change.
+    """
+    if label == "PER":
+        kern = _personenkern(text)
+        if _plausibler_name(kern):
+            return _Kandidat(kern, Art.NAME, "ner.person", vergabe.person_unbekannt(kern))
+    elif label in ("LOC", "GPE"):
+        kern = text.strip(_RANDZEICHEN)
+        if _plausibler_ort(kern):
+            return _Kandidat(kern, Art.ORT, "ner.ort", vergabe.ort_unbekannt(kern))
+    return None
+
+
+@dataclass(frozen=True)
+class _Vokabularschutz:
+    """The medical terms of one page, as far as NER has to leave them alone.
+
+    Without a vocabulary nothing is protected.  Every core that was spared goes to
+    ``verschont`` when the caller passed a list, so the report can count them.
+    """
+
+    text: str
+    fachbegriffe: Fachbegriffe | None
+    spannen: list[tuple[int, int]]
+    verschont: list[str] | None
+
+    @classmethod
+    def fuer(cls, text: str, fachbegriffe: Fachbegriffe | None,
+             verschont: list[str] | None) -> _Vokabularschutz:
+        """Mark the terms of ``text`` once; the spans serve every entity of the page."""
+        spannen = fachbegriffe.spannen(text) if fachbegriffe is not None else []
+        return cls(text, fachbegriffe, spannen, verschont)
+
+    def schuetzt(self, a: int, b: int, kern: str) -> bool:
+        """Does ``text[a:b]`` consist of medical terms?  Records ``kern`` when it does."""
+        if self.fachbegriffe is None or not self.fachbegriffe.geschuetzt(
+                self.text, a, b, self.spannen, ganz=True):
+            return False
+        if self.verschont is not None:
+            self.verschont.append(kern)
+        return True
+
+
+def _ueberdeckter_teilname(f: Fundstelle, a: int, b: int, vorhandene: list[Fundstelle]) -> bool:
+    """Is ``f`` a lone first, last or birth name of the rules that lies inside ``[a, b)``
+    and is shorter than that span?  Only such hits give way to the full name."""
+    return (f in vorhandene and f.art in _TEILNAMEN and a <= f.start and f.ende <= b
+            and (f.ende - f.start) < (b - a))
+
+
+def _verdraengte_teiltreffer(a: int, b: int, vorhandene: list[Fundstelle],
+                             treffer: list[Fundstelle]) -> list[Fundstelle] | None:
+    """The partial names a full name over ``[a, b)`` supersedes, or None when the span
+    also touches a hit that has to stay (then the entity is dropped).  A hit with an
+    empty span is never touched."""
+    ueberlappend = [f for f in vorhandene + treffer
+                    if f.ende > f.start and a < f.ende and b > f.start]
+    ersetzbar = [f for f in ueberlappend if _ueberdeckter_teilname(f, a, b, vorhandene)]
+    return ersetzbar if len(ersetzbar) == len(ueberlappend) else None
 
 
 def finde_ner(
@@ -162,40 +281,21 @@ def finde_ner(
     place, because it is a different person than the one the rules assumed.
     """
     treffer: list[Fundstelle] = []
-    schutz = fachbegriffe.spannen(seite.text) if fachbegriffe is not None else []
+    schutz = _Vokabularschutz.fuer(seite.text, fachbegriffe, verschont)
     for start, ende, label, text in ner.entitaeten(seite.text):
-        if label == "PER":
-            kern = _personenkern(text)
-            if not _plausibler_name(kern):
-                continue
-            pseudonym, art, regel = vergabe.person_unbekannt(kern), Art.NAME, "ner.person"
-        elif label in ("LOC", "GPE"):
-            kern = text.strip(" .,;:-–()")
-            if len(kern) < 3 or kern.lower() in EPONYME or not kern[:1].isupper():
-                continue
-            pseudonym, art, regel = vergabe.ort_unbekannt(kern), Art.ORT, "ner.ort"
-        else:
+        kandidat = _kandidat_aus(label, text, vergabe)
+        if kandidat is None:
             continue
-        a = seite.text.find(kern, start, ende + 1)
+        a = seite.text.find(kandidat.kern, start, ende + 1)
         if a < 0:
             continue
-        b = a + len(kern)
-        if fachbegriffe is not None and fachbegriffe.geschuetzt(seite.text, a, b, schutz,
-                                                                ganz=True):
-            if verschont is not None:
-                verschont.append(kern)
+        b = a + len(kandidat.kern)
+        if schutz.schuetzt(a, b, kandidat.kern):
             continue
-        ueberlappend = [f for f in vorhandene + treffer
-                        if f.ende > f.start and a < f.ende and b > f.start]
-        ersetzbar = [f for f in ueberlappend if f in vorhandene and f.art in _TEILNAMEN
-                     and a <= f.start and f.ende <= b and (f.ende - f.start) < (b - a)]
-        if len(ersetzbar) != len(ueberlappend):
+        verdraengte = _verdraengte_teiltreffer(a, b, vorhandene, treffer)
+        if verdraengte is None:
             continue
-        for f in ersetzbar:
+        for f in verdraengte:
             vorhandene.remove(f)
-        treffer.append(Fundstelle(
-            seite=seite.nummer, start=a, ende=b, text=kern, art=art, regel=regel,
-            pseudonym=pseudonym, rects=[tuple(r) for r in seite.rects(a, b)],
-            schriftgroesse=seite.schriftgroesse(a, b), quelle=quelle,
-        ))
+        treffer.append(kandidat.fundstelle(seite, a, b, quelle))
     return treffer

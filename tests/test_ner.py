@@ -10,8 +10,9 @@ import pytest
 
 from pseudonymed.ablauf import Ablaufoptionen, pseudonymisiere
 from pseudonymed.dokument.textebene import lese_seite
+from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import ner as nermodul
-from pseudonymed.kern.modell import Patient
+from pseudonymed.kern.modell import Art, Fundstelle, Patient
 from pseudonymed.pruefung.bericht import als_text
 from pseudonymed.pseudonyme.rueckersetzung import rueckersetzen
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
@@ -102,3 +103,57 @@ def test_alltagssubstantive_sind_keine_namen() -> None:
     assert {"Erika Hoffmann", "Dresden"} <= texte
     assert "Flantz" in texte or "Herr Flantz" in texte  # unknown surname, salutation before
     assert any("Riesa" in t for t in texte)
+
+
+def _fund(start: int, ende: int, art: Art) -> Fundstelle:
+    return Fundstelle(seite=0, start=start, ende=ende, text="x", art=art, regel="r",
+                      pseudonym="p")
+
+
+def test_teilnamen_weichen_dem_vollen_namen() -> None:
+    """The overlap step without the model: lone partial names inside the span give way,
+    any other overlap drops the entity, an empty span never overlaps."""
+    vorname, nachname = _fund(0, 9, Art.VORNAME), _fund(10, 16, Art.NACHNAME)
+    ort = _fund(30, 35, Art.ORT)
+    vorhandene = [vorname, nachname, ort]
+    assert nermodul._verdraengte_teiltreffer(0, 16, vorhandene, []) == [vorname, nachname]
+    assert vorhandene == [vorname, nachname, ort]  # removing them is the caller's job
+    # a hit of another kind, or a partial name reaching beyond the span, keeps the entity out
+    assert nermodul._verdraengte_teiltreffer(28, 40, vorhandene, []) is None
+    assert nermodul._verdraengte_teiltreffer(12, 20, vorhandene, []) is None
+    # a span equal to the partial hit is no longer name
+    assert nermodul._verdraengte_teiltreffer(10, 16, vorhandene, []) is None
+    # hits NER found itself on this page are never replaced
+    assert nermodul._verdraengte_teiltreffer(0, 16, [], [nachname]) is None
+    assert nermodul._verdraengte_teiltreffer(0, 16, [_fund(5, 5, Art.NACHNAME)], []) == []
+
+
+def test_kandidaten_ohne_modell(patient: Patient) -> None:
+    """Which entities become hits, and that the code is registered as soon as it is drawn."""
+    allein = dataclasses.replace(patient, angehoerige=[], zuweiser=[])
+    v = Pseudonymvergabe(allein, "K7Q4MX", geheimnis=bytes(32))
+    person = nermodul._kandidat_aus("PER", "Frau Dr. Erika Beispiel,", v)
+    assert person is not None
+    assert (person.kern, person.art, person.regel) == ("Erika Beispiel", Art.NAME, "ner.person")
+    assert v.zuordnung[person.pseudonym] == "Erika Beispiel"
+    ort = nermodul._kandidat_aus("GPE", "(Dresden)", v)
+    assert ort is not None and (ort.kern, ort.regel) == ("Dresden", "ner.ort")
+    assert ort.pseudonym.startswith("[Ort ")
+    assert nermodul._kandidat_aus("PER", "Morbus Parkinson", v) is None
+    assert nermodul._kandidat_aus("LOC", "Glasgow", v) is None
+    assert nermodul._kandidat_aus("LOC", "dresden", v) is None
+    assert nermodul._kandidat_aus("MISC", "Erika Beispiel", v) is None
+
+
+def test_vokabularschutz_zaehlt_verschonte() -> None:
+    """The protection step without the model: only a span made up of medical terms is
+    spared, every spared core is recorded, and without a vocabulary nothing is."""
+    text = "Morbus Fabry und Erika Beispiel in Dresden"
+    verschont: list[str] = []
+    schutz = nermodul._Vokabularschutz.fuer(text, fachmodul.standard(), verschont)
+    assert schutz.schuetzt(0, len("Morbus Fabry"), "Morbus Fabry")
+    a = text.index("Erika")
+    assert not schutz.schuetzt(a, a + len("Erika Beispiel"), "Erika Beispiel")
+    assert verschont == ["Morbus Fabry"]
+    ohne = nermodul._Vokabularschutz.fuer(text, None, None)
+    assert not ohne.schuetzt(0, len("Morbus Fabry"), "Morbus Fabry")
