@@ -8,6 +8,7 @@ import datetime as dt
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -23,6 +24,10 @@ from pseudonymed.pseudonyme import pgp
 braucht_sequoia = pytest.mark.skipif(not pgp.pysequoia_verfuegbar(),
                                      reason="Extra 'pgp' (pysequoia) fehlt")
 braucht_gnupg = pytest.mark.skipif(pgp.gnupg_programm() is None, reason="GnuPG fehlt")
+# the MSYS gpg of Git for Windows reads a Windows path in GNUPGHOME as relative to the
+# working directory, so a home handed over by the environment only works elsewhere
+home_aus_umgebung = pytest.mark.skipif(sys.platform == "win32",
+                                       reason="GNUPGHOME mit Windows-Pfad (MSYS-gpg)")
 PASSPHRASE = "pw"
 ARMOR_LEER = "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n-----END PGP PUBLIC KEY BLOCK-----\n"
 
@@ -244,13 +249,14 @@ def test_gnupg_zertifikat_ohne_schluessel(monkeypatch: pytest.MonkeyPatch) -> No
         pgp._zertifikat_gnupg(ARMOR_LEER.encode())
 
 
+@home_aus_umgebung
 @braucht_sequoia
 @braucht_gnupg
 def test_gnupg_liest_dasselbe_zertifikat(sequoia_paar: tuple[Path, Path, str], tmp_path: Path,
                                          monkeypatch: pytest.MonkeyPatch) -> None:
     pub, _sec, armor = sequoia_paar
     mit_sequoia = pgp.lade_zertifikat(pub)
-    monkeypatch.setenv("GNUPGHOME", tmp_path.as_posix())  # show-only needs no agent, only a home
+    monkeypatch.setenv("GNUPGHOME", str(tmp_path))  # show-only needs no agent, only a home
     monkeypatch.setattr(pgp, "pysequoia_verfuegbar", lambda: False)
     mit_gnupg = pgp.lade_zertifikat(pub)
     assert mit_gnupg.fingerabdruck == mit_sequoia.fingerabdruck
@@ -383,12 +389,13 @@ def test_gnupg_als_einzige_engine(gnupg_home: GnupgHome, monkeypatch: pytest.Mon
 
 
 @braucht_sequoia
+@home_aus_umgebung
 @braucht_gnupg
 def test_gnupg_verschluesselt_sequoia_liest(sequoia_paar: tuple[Path, Path, str], tmp_path: Path,
                                             monkeypatch: pytest.MonkeyPatch) -> None:
     """Interoperability the other way round: gpg encrypts, a key file decrypts."""
     pub, sec, _armor = sequoia_paar
-    monkeypatch.setenv("GNUPGHOME", tmp_path.as_posix())  # encrypting needs no agent
+    monkeypatch.setenv("GNUPGHOME", str(tmp_path))  # encrypting needs no agent
     monkeypatch.setattr(pgp, "pysequoia_verfuegbar", lambda: False)
     nachricht = pgp.verschluessele(b"quer", pgp.lade_zertifikat(pub))
     monkeypatch.undo()
