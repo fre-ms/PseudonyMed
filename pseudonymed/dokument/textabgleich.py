@@ -57,7 +57,7 @@ def textebene_aus_korrektur(text: str, ocr: Seitentext) -> Seitentext:
         a, b = _kern(tok)
         if a < b:
             tokens.append((m.start() + a, m.start() + b))
-    ocr_spannen = list(ocr.wortspannen) or _woerter(ocr)
+    ocr_spannen = ocr.woerter()
     ocr_boxen = [_box(ocr, a, b) for a, b in ocr_spannen]
     gueltig = [i for i, r in enumerate(ocr_boxen) if r is not None and not r.is_empty]
     ocr_spannen = [ocr_spannen[i] for i in gueltig]
@@ -183,14 +183,3 @@ def _seitentext(text, tokens, boxen, ocr: Seitentext) -> Seitentext:
     return seite
 
 
-def _woerter(seite: Seitentext) -> list[tuple[int, int]]:
-    spannen: list[tuple[int, int]] = []
-    start: int | None = None
-    for i, c in enumerate(seite.text + " "):
-        gedruckt = i < len(seite.text) and not c.isspace() and seite.boxen[i] is not None
-        if gedruckt and start is None:
-            start = i
-        elif not gedruckt and start is not None:
-            spannen.append((start, i))
-            start = None
-    return spannen

@@ -356,22 +356,6 @@ def _ohne_ueberlappung(
     return ergebnis
 
 
-def _woerter(seite: Seitentext) -> list[tuple[int, int]]:
-    """Word spans of a page: the OCR words, or runs of printed characters of one line."""
-    if seite.wortspannen:
-        return list(seite.wortspannen)
-    spannen: list[tuple[int, int]] = []
-    start: int | None = None
-    for i, c in enumerate(seite.text + " "):
-        gedruckt = i < len(seite.text) and not c.isspace() and seite.boxen[i] is not None
-        if gedruckt and start is None:
-            start = i
-        elif not gedruckt and start is not None:
-            spannen.append((start, i))
-            start = None
-    return spannen
-
-
 def unsichtbare_textebene(
     page: pymupdf.Page, seite: Seitentext, fundstellen: list[Fundstelle],
     mit_pseudonymen: bool = False, opt: Schwaerzoptionen | None = None,
@@ -406,7 +390,7 @@ def unsichtbare_textebene(
                              fontname=opt.schrift, render_mode=3, overlay=True)
         anzahl += 1
 
-    for a, b in _woerter(seite):
+    for a, b in seite.woerter():
         if any(a < f.ende and b > f.start for f in treffer):
             continue
         kasten = seite.rects(a, b)

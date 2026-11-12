@@ -11,7 +11,6 @@ masks are available.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -702,7 +701,3 @@ def schaetze_ausrichtung(bild: Any, backend: Any = None) -> int:
     return grund
 
 
-def winkel_grad(ecken: list[Ecke]) -> float:
-    """Tilt of the top edge of a quadrilateral, for display."""
-    (x0, y0), (x1, y1) = ecken[0], ecken[1]
-    return math.degrees(math.atan2(y1 - y0, x1 - x0))

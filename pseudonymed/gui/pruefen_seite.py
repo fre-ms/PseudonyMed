@@ -50,7 +50,6 @@ GELB = QColor(230, 165, 0)
 GRUEN = QColor(40, 160, 60)
 BLAU = QColor(30, 90, 200)  # a word the user selected to take into the list
 SCHWARZ = QColor(0, 0, 0)
-FARBEN = {"rot": ROT, "gelb": GELB, "gruen": GRUEN, "fachbegriff": GRUEN}
 VORSCHAU_DPI = 100
 
 

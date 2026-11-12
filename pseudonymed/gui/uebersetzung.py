@@ -14,9 +14,6 @@ from PySide6.QtCore import QCoreApplication, QLocale, QTranslator
 from pseudonymed.konfig import lade_einstellungen
 
 ORDNER = Path(__file__).parent / "uebersetzungen"
-SPRACHEN = {"de": "Deutsch", "en": "English"}
-
-
 def sprache_bestimmen(argumente: list[str]) -> str:
     for i, a in enumerate(argumente):
         if a in ("--sprache", "--language") and i + 1 < len(argumente):

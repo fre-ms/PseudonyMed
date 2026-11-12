@@ -104,7 +104,6 @@ class Statistik:
     seiten: int = 0
     freie_seiten: int = 0
     vokabular_dateien: int = 0
-    vokabular_bytes: int = 0
     vokabular_begriffe: int = 0
     vokabular_kategorien: list[tuple[str, int]] = field(default_factory=list)
     lexikon_klassen: list[tuple[str, str, int]] = field(default_factory=list)
@@ -249,7 +248,6 @@ def statistik(speicherpfad: Path | None = None) -> Statistik:
     if ordner.is_dir():
         dateien = [p for p in ordner.iterdir() if p.is_file() and p.suffix in (".txt", ".gz")]
         st.vokabular_dateien = len(dateien)
-        st.vokabular_bytes = sum(p.stat().st_size for p in dateien)
     if not db.exists():
         return st
     st.groesse = db.stat().st_size

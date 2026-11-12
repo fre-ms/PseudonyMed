@@ -64,6 +64,21 @@ class Seitentext:
                 je_zeile[z] = r
         return [r for _, r in sorted(je_zeile.items())]
 
+    def woerter(self) -> list[tuple[int, int]]:
+        """Word spans: the OCR words, or runs of printed characters between whitespace."""
+        if self.wortspannen:
+            return list(self.wortspannen)
+        spannen: list[tuple[int, int]] = []
+        start: int | None = None
+        for i, c in enumerate(self.text + " "):
+            gedruckt = i < len(self.text) and not c.isspace() and self.boxen[i] is not None
+            if gedruckt and start is None:
+                start = i
+            elif not gedruckt and start is not None:
+                spannen.append((start, i))
+                start = None
+        return spannen
+
     def zeile_von(self, index: int) -> int:
         return self.zeilen[index] if 0 <= index < len(self.zeilen) else -1
 

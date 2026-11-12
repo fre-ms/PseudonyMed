@@ -190,19 +190,6 @@ def finde(seite: Seitentext, regeln: list[Regel]) -> list[Fundstelle]:
     return fundstellen
 
 
-def pseudonymisierter_text(seiten: list[Seitentext], fundstellen: list[Fundstelle]) -> str:
-    """Reading-order text of the document with every hit replaced by its pseudonym."""
-    teile: list[str] = []
-    for seite in seiten:
-        text = seite.text
-        eigene = (f for f in fundstellen if f.seite == seite.nummer)
-        for f in sorted(eigene, key=lambda f: -f.start):
-            text = text[: f.start] + f.pseudonym + text[f.ende :]
-        text = re.sub(r"\n{3,}", "\n\n", text).strip()
-        teile.append(f"=== Seite {seite.nummer + 1} ===\n\n{text}")
-    return "\n\n".join(teile) + "\n"
-
-
 def kasten_zu_fundstellen(
     seite: Seitentext, rect: tuple[float, float, float, float], pseudonym: str = "[geschwärzt]",
     quelle: str = "manuell",

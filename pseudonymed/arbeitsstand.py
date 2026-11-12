@@ -43,9 +43,7 @@ from pseudonymed.ablauf import (
 )
 from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import gliederung as gliedmodul
-from pseudonymed.dokument import textdatei as textmodul
 from pseudonymed.dokument.textebene import Seitentext
-from pseudonymed.erkennung import zahlwoerter
 from pseudonymed.kern.modell import Fundstelle, Patient
 from pseudonymed.pruefung.gegenprobe import toleranzschluessel
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
@@ -349,13 +347,6 @@ def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
             speicher.close()
         raise
     return v
-
-
-def textseite_aus(text: str, endung: str) -> Seitentext:
-    """The analysis page of a text file, as :func:`pseudonymed.ablauf.vorbereiten`
-    builds it (number words as digits, time stamps blanked)."""
-    norm = zahlwoerter.normalisiere(textmodul.analysetext(text, endung))
-    return textmodul.textseite(norm.text)
 
 
 # -- a new analysis that keeps the decisions -------------------------------------------------------

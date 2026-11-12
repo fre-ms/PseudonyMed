@@ -148,7 +148,6 @@ class TesseractBackend:
         else:
             vorhanden = [s for s in ("deu", "eng") if s in installiert]
             self.sprache = "+".join(vorhanden) if vorhanden else "eng"
-        self.fehlende = [s for s in self.sprache.split("+") if installiert and s not in installiert]
 
     @staticmethod
     def verfuegbar() -> bool:

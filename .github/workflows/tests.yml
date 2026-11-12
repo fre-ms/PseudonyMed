@@ -29,3 +29,29 @@ jobs:
       - run: uv run pytest -v --timeout=600 --durations=15
         env:
           QT_QPA_PLATFORM: offscreen
+
+  quality:
+    name: quality snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: uv sync --dev --group quality --extra ocr --extra codes --extra gui --extra pgp --extra carddav
+      - run: >
+          sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-deu
+          libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4
+          libxcb-keysyms1 libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libfontconfig1
+      # Fails only when a ratchet key moves the wrong way against the committed baseline
+      # (complexity, structure, duplication, lint, type errors, undocumented public
+      # definitions, coverage); see script/quality_metrics.py.
+      - run: uv run --no-sync python script/quality_metrics.py --json quality-snapshot.json
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-snapshot
+          path: quality-snapshot.json

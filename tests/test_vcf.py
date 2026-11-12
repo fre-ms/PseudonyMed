@@ -20,7 +20,7 @@ EMAIL;TYPE=INTERNET;PREF:Erika.Muster@Example.ORG
 ADR;TYPE=WORK:;;Arbeitsweg 1;Berlin;;10115;Deutschland
 ADR;TYPE=HOME:;Hinterhaus;Musterstraße 12\\nAufgang B;Potsdam;;14467;Deutschland
 BDAY:1970-05-02
-NOTE:Versichertennr. A123456789\\, Angehörige: Max Muster\; Tel. privat
+NOTE:Versichertennr. A123456789\\, Angehörige: Max Muster\\; Tel. privat
 X-KVNR:B987654321
 ORG:Beispiel GmbH;Abteilung\\, Entwicklung
 END:VCARD

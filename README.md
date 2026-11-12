@@ -188,6 +188,16 @@ The data files in `pseudonymed/daten/` are not covered by the AGPL; each carries
 
 Not bundled: the Austrian ministry of health's list of hospitals, whose reprint is permitted only for non-commercial purposes. On request (`pseudonymed datenbank zusatzdaten kliniken-at`, or *Fetch from the ministry* in step 11) PseudonyMed downloads the current workbook from the ministry into the user's own lexicon, under a source of its own that the reloading of the bundled data leaves alone; nothing is passed on.
 
+## Code quality
+
+`script/quality_metrics.py` is the family's quality battery (the same instrument as in qdaPy, officeQDA and TimeAttest): cyclomatic and cognitive complexity, function length and nesting, module size, duplicated blocks, ruff, mypy, undocumented public definitions, dead-code candidates and test coverage, written as a JSON snapshot. The numbers are calibrated against the project's own history, not against universal thresholds (Nagappan, Ball and Zeller 2006): `quality-baseline.json` is the ratchet, the gated keys must never rise above it, and CI runs the comparison. Improve the code to move a number, or commit a new baseline consciously with `--update`.
+
+```
+uv sync --group quality
+uv run python script/quality_metrics.py               # measure and compare with the baseline
+uv run python script/quality_metrics.py --no-coverage # without the test run
+```
+
 ## Icon
 
 The app icon is a page in which one line is replaced by a pseudonym, on a petrol tile: `packaging/icon/pseudonymed.svg`, with the mark without the tile in `pseudonymed_marke.svg` (drawn in `currentColor` for web pages and documents). Both are plain SVG without text, gradients or filters; `packaging/icon/entwuerfe/` keeps the two other proposals. `python packaging/icon.py` renders the PNG sizes for the window, the `.ico` for Windows and the `.icns` for macOS; the rendered files are committed.

@@ -1,0 +1,1807 @@
+{
+ "radon": {
+  "blocks": 1090,
+  "mean_cc": 4.83,
+  "grade_histogram": {
+   "A": 790,
+   "B": 195,
+   "C": 84,
+   "D": 15,
+   "E": 3,
+   "F": 3
+  },
+  "functions_over_cc10": 105,
+  "functions_over_cc20": 21,
+  "over_cc10": [
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "gliedere",
+    "line": 256,
+    "cc": 65
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_erkenne_seiten",
+    "line": 340,
+    "cc": 48
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "schwaerze_seite",
+    "line": 247,
+    "cc": 44
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pseudonymisieren",
+    "line": 213,
+    "cc": 37
+   },
+   {
+    "file": "pseudonymed/pruefung/restrisiko.py",
+    "name": "schaetze",
+    "line": 330,
+    "cc": 37
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "kliniken_at_zeilen",
+    "line": 194,
+    "cc": 33
+   },
+   {
+    "file": "pseudonymed/pruefung/gegenprobe.py",
+    "name": "pruefe",
+    "line": 91,
+    "cc": 29
+   },
+   {
+    "file": "pseudonymed/pseudonyme/phonetik.py",
+    "name": "koelner_phonetik",
+    "line": 25,
+    "cc": 29
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "importiere",
+    "line": 489,
+    "cc": 28
+   },
+   {
+    "file": "pseudonymed/quellen/vcf.py",
+    "name": "patient_aus_vcard",
+    "line": 225,
+    "cc": 28
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "abschliessen",
+    "line": 1382,
+    "cc": 27
+   },
+   {
+    "file": "pseudonymed/erkennung/ner.py",
+    "name": "finde_ner",
+    "line": 148,
+    "cc": 26
+   },
+   {
+    "file": "pseudonymed/erkennung/unscharf.py",
+    "name": "finde_unscharf",
+    "line": 163,
+    "cc": 26
+   },
+   {
+    "file": "pseudonymed/dokument/aufbereitung.py",
+    "name": "wende_an",
+    "line": 549,
+    "cc": 25
+   },
+   {
+    "file": "pseudonymed/erkennung/zahlwoerter.py",
+    "name": "_datum",
+    "line": 150,
+    "cc": 24
+   },
+   {
+    "file": "pseudonymed/pseudonyme/abgleich.py",
+    "name": "vergleiche",
+    "line": 127,
+    "cc": 24
+   },
+   {
+    "file": "pseudonymed/pseudonyme/speicher.py",
+    "name": "kennung_fuer",
+    "line": 275,
+    "cc": 23
+   },
+   {
+    "file": "pseudonymed/arbeitsstand.py",
+    "name": "vorbereitung_aus",
+    "line": 294,
+    "cc": 22
+   },
+   {
+    "file": "pseudonymed/dokument/textabgleich.py",
+    "name": "_platziere_rest",
+    "line": 104,
+    "cc": 22
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "rendere",
+    "line": 85,
+    "cc": 21
+   },
+   {
+    "file": "pseudonymed/pruefung/bericht.py",
+    "name": "als_text",
+    "line": 44,
+    "cc": 21
+   },
+   {
+    "file": "pseudonymed/arbeitsstand.py",
+    "name": "uebernehme_entscheidungen",
+    "line": 353,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/dokument/aufbereitung.py",
+    "name": "beschreibung",
+    "line": 305,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "seitentext_aus_woerter",
+    "line": 368,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "importiere_csv",
+    "line": 606,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/erkennung/vokabular.py",
+    "name": "importiere_csv",
+    "line": 219,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "_gemeinde_at",
+    "line": 160,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "_entpacke",
+    "line": 404,
+    "cc": 20
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "konfig",
+    "line": 606,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/dokument/textdatei.py",
+    "name": "rendere_whisper",
+    "line": 94,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "finde_titel",
+    "line": 388,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "xlsx_blaetter",
+    "line": 76,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "Statistik",
+    "line": 87,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "unsichtbare_textebene",
+    "line": 359,
+    "cc": 19
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "backend",
+    "line": 327,
+    "cc": 18
+   },
+   {
+    "file": "pseudonymed/erkennung/zahlwoerter.py",
+    "name": "normalisiere",
+    "line": 186,
+    "cc": 18
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "_at_tabellen",
+    "line": 127,
+    "cc": 18
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "verlege",
+    "line": 182,
+    "cc": 18
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "zeilen",
+    "line": 113,
+    "cc": 18
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "spannen",
+    "line": 127,
+    "cc": 17
+   },
+   {
+    "file": "pseudonymed/gui/sitzung.py",
+    "name": "ampel",
+    "line": 330,
+    "cc": 17
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "exportiere",
+    "line": 356,
+    "cc": 17
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "statistik",
+    "line": 236,
+    "cc": 17
+   },
+   {
+    "file": "pseudonymed/dokument/textabgleich.py",
+    "name": "textebene_aus_korrektur",
+    "line": 50,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "regeln_fuer",
+    "line": 29,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "fuege_hinzu",
+    "line": 209,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/gui/kontrolle_seite.py",
+    "name": "_darstellen",
+    "line": 207,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/gui/sitzung.py",
+    "name": "analysiere",
+    "line": 213,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "lage_intakt",
+    "line": 98,
+    "cc": 16
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_gegenprobe_bilder",
+    "line": 567,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "analysiere",
+    "line": 1000,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "wort_bei",
+    "line": 418,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "rueckersetzen",
+    "line": 493,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "schliesse",
+    "line": 146,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "erkenne",
+    "line": 268,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "kasten_zu_fundstellen",
+    "line": 193,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "ist_fachbegriff",
+    "line": 105,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "laden",
+    "line": 182,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "_an",
+    "line": 266,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/erkennung/lexikon.py",
+    "name": "sicherstellen",
+    "line": 204,
+    "cc": 15
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "_patient_bestimmen",
+    "line": 184,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/dokument/aufbereitung.py",
+    "name": "aktiv",
+    "line": 60,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "zeilen_aus",
+    "line": 207,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/dokument/textdatei.py",
+    "name": "rendere_mail",
+    "line": 195,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "finde_im_text",
+    "line": 125,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "fuege_hinzu",
+    "line": 80,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "kandidaten",
+    "line": 292,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/gui/analysieren_seite.py",
+    "name": "analysieren",
+    "line": 247,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/gui/datenbank_seite.py",
+    "name": "importieren",
+    "line": 387,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/gui/texterkennung_seite.py",
+    "name": "aktualisiere",
+    "line": 238,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/pseudonyme/speicher.py",
+    "name": "__init__",
+    "line": 167,
+    "cc": 14
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_aufbereitungsplan",
+    "line": 271,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_vorbereiten_text",
+    "line": 1196,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "unlesbare_regionen",
+    "line": 422,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "angaben",
+    "line": 448,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/erkennung/ner.py",
+    "name": "_plausibler_name",
+    "line": 132,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/erkennung/ner.py",
+    "name": "entitaeten",
+    "line": 81,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/gui/export_seite.py",
+    "name": "exportieren",
+    "line": 220,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/gui/kontrolle_seite.py",
+    "name": "_zeige_details",
+    "line": 245,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/gui/pruefen_seite.py",
+    "name": "zeige",
+    "line": 160,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/gui/pruefen_seite.py",
+    "name": "zeige",
+    "line": 289,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/gui/rueckersetzen_seite.py",
+    "name": "kapsel_oeffnen",
+    "line": 156,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/pruefung/restrisiko.py",
+    "name": "vereinige",
+    "line": 426,
+    "cc": 13
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_ruestzeug",
+    "line": 819,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "lese",
+    "line": 956,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "fette_zeilen",
+    "line": 232,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/dokument/textebene.py",
+    "name": "aus_dict",
+    "line": 136,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/dokument/textebene.py",
+    "name": "lese_seite",
+    "line": 173,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/erkennung/medizininhalte.py",
+    "name": "dosis_nach",
+    "line": 154,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/erkennung/medizininhalte.py",
+    "name": "spannen",
+    "line": 255,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/gui/sitzung.py",
+    "name": "exportiere",
+    "line": 278,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/pseudonyme/kapsel.py",
+    "name": "aus_json",
+    "line": 59,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/pseudonyme/rueckersetzung.py",
+    "name": "rueckersetzen",
+    "line": 95,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/quellen/vcf.py",
+    "name": "_eigenschaft",
+    "line": 145,
+    "cc": 12
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_textebene_einbetten",
+    "line": 1357,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/arbeitsstand.py",
+    "name": "lesung_aus",
+    "line": 264,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "_tabellen_nachlesen",
+    "line": 197,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "Fachbegriffe",
+    "line": 69,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "geschuetzt",
+    "line": 156,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "standard",
+    "line": 642,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/erkennung/vokabular.py",
+    "name": "grundbestand",
+    "line": 254,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/gui/export_seite.py",
+    "name": "_nach_pruefung",
+    "line": 194,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/gui/pruefen_seite.py",
+    "name": "_zeige_ansicht",
+    "line": 500,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/gui/sitzung.py",
+    "name": "zustand",
+    "line": 72,
+    "cc": 11
+   },
+   {
+    "file": "pseudonymed/kern/modell.py",
+    "name": "_personenfelder",
+    "line": 156,
+    "cc": 11
+   }
+  ],
+  "mi_by_module": {
+   "pseudonymed/ablauf.py": 0.0,
+   "pseudonymed/cli.py": 0.0,
+   "pseudonymed/gui/pruefen_seite.py": 7.24,
+   "pseudonymed/erkennung/identifikatoren.py": 9.67,
+   "pseudonymed/pseudonyme/sicherung.py": 11.04,
+   "pseudonymed/dokument/aufbereitung.py": 18.5,
+   "pseudonymed/dokument/gliederung.py": 19.45,
+   "pseudonymed/dokument/ocr.py": 20.3,
+   "pseudonymed/gui/sitzung.py": 20.56,
+   "pseudonymed/quellen/vcf.py": 23.73,
+   "pseudonymed/erkennung/zusatzdaten.py": 24.26,
+   "pseudonymed/schwaerzen/pdf.py": 24.48,
+   "pseudonymed/gui/aufbereiten_seite.py": 27.27,
+   "pseudonymed/gui/datenbank_seite.py": 27.31,
+   "pseudonymed/gui/texterkennung_seite.py": 27.62,
+   "pseudonymed/gui/export_seite.py": 27.92,
+   "pseudonymed/gui/patient_seite.py": 28.9,
+   "pseudonymed/pruefung/restrisiko.py": 29.72,
+   "pseudonymed/arbeitsstand.py": 30.7,
+   "pseudonymed/gui/vokabular_seite.py": 31.18,
+   "pseudonymed/gui/analysieren_seite.py": 31.82,
+   "pseudonymed/gui/identifikatoren_seite.py": 31.84,
+   "pseudonymed/erkennung/vokabular.py": 32.92,
+   "pseudonymed/pseudonyme/speicher.py": 33.75,
+   "pseudonymed/erkennung/zahlwoerter.py": 35.33,
+   "pseudonymed/erkennung/fachbegriffe.py": 35.82,
+   "pseudonymed/gui/dokumente_seite.py": 36.4,
+   "pseudonymed/gui/kontrolle_seite.py": 36.57,
+   "pseudonymed/quellen/carddav.py": 36.74,
+   "pseudonymed/gui/rueckersetzen_seite.py": 36.89,
+   "pseudonymed/erkennung/deterministisch.py": 39.41,
+   "pseudonymed/dokument/textebene.py": 39.75,
+   "pseudonymed/erkennung/medizininhalte.py": 39.79,
+   "pseudonymed/dokument/textabgleich.py": 39.87,
+   "pseudonymed/pseudonyme/pgp.py": 39.95,
+   "pseudonymed/erkennung/unscharf.py": 41.01,
+   "pseudonymed/erkennung/varianten.py": 41.58,
+   "pseudonymed/gui/adressbuch_dialog.py": 42.16,
+   "pseudonymed/dokument/textdatei.py": 42.72,
+   "pseudonymed/pruefung/bericht.py": 43.55,
+   "pseudonymed/kern/modell.py": 45.17,
+   "pseudonymed/erkennung/lexikon.py": 45.57,
+   "pseudonymed/gui/hauptfenster.py": 46.34,
+   "pseudonymed/pruefung/gegenprobe.py": 48.89,
+   "pseudonymed/pseudonyme/abgleich.py": 48.96,
+   "pseudonymed/pseudonyme/vergabe.py": 50.99,
+   "pseudonymed/pseudonyme/rueckersetzung.py": 51.43,
+   "pseudonymed/erkennung/ner.py": 51.48,
+   "pseudonymed/konfig.py": 51.89,
+   "pseudonymed/pseudonyme/phonetik.py": 54.79,
+   "pseudonymed/pseudonyme/kennung.py": 59.0,
+   "pseudonymed/pseudonyme/kapsel.py": 59.42,
+   "pseudonymed/quellen/adressbuch.py": 61.0,
+   "pseudonymed/quellen/manuell.py": 61.09,
+   "pseudonymed/erkennung/codes.py": 61.43,
+   "pseudonymed/dokument/laden.py": 65.55,
+   "pseudonymed/pruefung/vorschau.py": 69.99,
+   "pseudonymed/gui/uebersetzung.py": 70.1,
+   "pseudonymed/gui/app.py": 73.0,
+   "pseudonymed/umgebung.py": 79.13,
+   "pseudonymed/erkennung/muster.py": 86.72,
+   "pseudonymed/gui/icon.py": 94.76,
+   "pseudonymed/__init__.py": 100.0,
+   "pseudonymed/kern/__init__.py": 100.0,
+   "pseudonymed/pruefung/__init__.py": 100.0,
+   "pseudonymed/pseudonyme/__init__.py": 100.0,
+   "pseudonymed/quellen/__init__.py": 100.0,
+   "pseudonymed/erkennung/__init__.py": 100.0,
+   "pseudonymed/gui/arbeiter.py": 100.0,
+   "pseudonymed/gui/__init__.py": 100.0,
+   "pseudonymed/schwaerzen/__init__.py": 100.0,
+   "pseudonymed/dokument/__init__.py": 100.0
+  },
+  "mi_min": 0.0
+ },
+ "complexipy": {
+  "functions": 987,
+  "max_cognitive": 73,
+  "functions_over_15": 57,
+  "over_15": [
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "gliedere",
+    "cognitive": 73
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "schwaerze_seite",
+    "cognitive": 59
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pseudonymisieren",
+    "cognitive": 59
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_erkenne_seiten",
+    "cognitive": 58
+   },
+   {
+    "file": "pseudonymed/erkennung/unscharf.py",
+    "name": "finde_unscharf",
+    "cognitive": 50
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "importiere",
+    "cognitive": 48
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "abschliessen",
+    "cognitive": 48
+   },
+   {
+    "file": "pseudonymed/pruefung/gegenprobe.py",
+    "name": "pruefe",
+    "cognitive": 40
+   },
+   {
+    "file": "pseudonymed/pruefung/restrisiko.py",
+    "name": "schaetze",
+    "cognitive": 35
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "regeln_fuer",
+    "cognitive": 35
+   },
+   {
+    "file": "pseudonymed/erkennung/unscharf.py",
+    "name": "ziele_fuer",
+    "cognitive": 34
+   },
+   {
+    "file": "pseudonymed/erkennung/medizininhalte.py",
+    "name": "Medizinsuche::spannen",
+    "cognitive": 34
+   },
+   {
+    "file": "pseudonymed/dokument/textabgleich.py",
+    "name": "_platziere_rest",
+    "cognitive": 34
+   },
+   {
+    "file": "pseudonymed/quellen/vcf.py",
+    "name": "patient_aus_vcard",
+    "cognitive": 33
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "kliniken_at_zeilen",
+    "cognitive": 33
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_gegenprobe_bilder",
+    "cognitive": 33
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "Gliederung::rendere",
+    "cognitive": 31
+   },
+   {
+    "file": "pseudonymed/pseudonyme/phonetik.py",
+    "name": "koelner_phonetik",
+    "cognitive": 28
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "Erkenner::_an",
+    "cognitive": 27
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "verlege",
+    "cognitive": 26
+   },
+   {
+    "file": "pseudonymed/dokument/textebene.py",
+    "name": "lese_seite",
+    "cognitive": 26
+   },
+   {
+    "file": "pseudonymed/dokument/aufbereitung.py",
+    "name": "wende_an",
+    "cognitive": 26
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "xlsx_blaetter",
+    "cognitive": 25
+   },
+   {
+    "file": "pseudonymed/erkennung/zahlwoerter.py",
+    "name": "normalisiere",
+    "cognitive": 25
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "_at_tabellen",
+    "cognitive": 24
+   },
+   {
+    "file": "pseudonymed/erkennung/ner.py",
+    "name": "NER::entitaeten",
+    "cognitive": 24
+   },
+   {
+    "file": "pseudonymed/arbeitsstand.py",
+    "name": "vorbereitung_aus",
+    "cognitive": 24
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "unsichtbare_textebene",
+    "cognitive": 23
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "_entpacke",
+    "cognitive": 23
+   },
+   {
+    "file": "pseudonymed/gui/pruefen_seite.py",
+    "name": "Seitenansicht::zeige",
+    "cognitive": 23
+   },
+   {
+    "file": "pseudonymed/erkennung/ner.py",
+    "name": "finde_ner",
+    "cognitive": 23
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "Erkenner::kandidaten",
+    "cognitive": 23
+   },
+   {
+    "file": "pseudonymed/pseudonyme/abgleich.py",
+    "name": "vergleiche",
+    "cognitive": 22
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "exportiere",
+    "cognitive": 21
+   },
+   {
+    "file": "pseudonymed/erkennung/vokabular.py",
+    "name": "Vokabular::importiere_csv",
+    "cognitive": 21
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "Fachbegriffe::spannen",
+    "cognitive": 21
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "finde_im_text",
+    "cognitive": 21
+   },
+   {
+    "file": "pseudonymed/pseudonyme/rueckersetzung.py",
+    "name": "rueckersetzen",
+    "cognitive": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/zahlwoerter.py",
+    "name": "_datum",
+    "cognitive": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "finde_titel",
+    "cognitive": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "Identifikatoren::importiere_csv",
+    "cognitive": 19
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "seitentext_aus_woerter",
+    "cognitive": 19
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "Fachbegriffe::fuege_hinzu",
+    "cognitive": 18
+   },
+   {
+    "file": "pseudonymed/gui/kontrolle_seite.py",
+    "name": "KontrolleSeite::_darstellen",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "standard",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/erkennung/fachbegriffe.py",
+    "name": "Fachbegriffe::ist_fachbegriff",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/dokument/textdatei.py",
+    "name": "rendere_whisper",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/dokument/ocr.py",
+    "name": "RapidOCRBackend::erkenne",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "rueckersetzen",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/arbeitsstand.py",
+    "name": "uebernehme_entscheidungen",
+    "cognitive": 17
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "rastere_seite",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/pruefung/restrisiko.py",
+    "name": "vereinige",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/gui/rueckersetzen_seite.py",
+    "name": "RueckersetzenSeite::kapsel_oeffnen",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "_Absatz::schliesse",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/dokument/aufbereitung.py",
+    "name": "beschreibung",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "wort_bei",
+    "cognitive": 16
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_abschliessen_text",
+    "cognitive": 16
+   }
+  ]
+ },
+ "structure": {
+  "functions": 1012,
+  "long_functions": 17,
+  "long": [
+   {
+    "file": "pseudonymed/gui/aufbereiten_seite.py",
+    "name": "__init__",
+    "line": 39,
+    "statements": 153
+   },
+   {
+    "file": "pseudonymed/gui/datenbank_seite.py",
+    "name": "__init__",
+    "line": 42,
+    "statements": 150
+   },
+   {
+    "file": "pseudonymed/gui/analysieren_seite.py",
+    "name": "__init__",
+    "line": 35,
+    "statements": 100
+   },
+   {
+    "file": "pseudonymed/gui/texterkennung_seite.py",
+    "name": "__init__",
+    "line": 38,
+    "statements": 88
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "importiere",
+    "line": 489,
+    "statements": 84
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "gliedere",
+    "line": 256,
+    "statements": 82
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pseudonymisieren",
+    "line": 213,
+    "statements": 80
+   },
+   {
+    "file": "pseudonymed/gui/pruefen_seite.py",
+    "name": "__init__",
+    "line": 349,
+    "statements": 79
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "abschliessen",
+    "line": 1382,
+    "statements": 77
+   },
+   {
+    "file": "pseudonymed/gui/kontrolle_seite.py",
+    "name": "__init__",
+    "line": 35,
+    "statements": 76
+   },
+   {
+    "file": "pseudonymed/gui/export_seite.py",
+    "name": "__init__",
+    "line": 38,
+    "statements": 73
+   },
+   {
+    "file": "pseudonymed/gui/identifikatoren_seite.py",
+    "name": "__init__",
+    "line": 86,
+    "statements": 71
+   },
+   {
+    "file": "pseudonymed/gui/patient_seite.py",
+    "name": "__init__",
+    "line": 97,
+    "statements": 71
+   },
+   {
+    "file": "pseudonymed/gui/rueckersetzen_seite.py",
+    "name": "__init__",
+    "line": 32,
+    "statements": 70
+   },
+   {
+    "file": "pseudonymed/gui/vokabular_seite.py",
+    "name": "__init__",
+    "line": 80,
+    "statements": 67
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "schwaerze_seite",
+    "line": 247,
+    "statements": 67
+   },
+   {
+    "file": "pseudonymed/erkennung/deterministisch.py",
+    "name": "regeln_fuer",
+    "line": 29,
+    "statements": 61
+   }
+  ],
+  "deeply_nested": 18,
+  "nested": [
+   {
+    "file": "pseudonymed/pseudonyme/phonetik.py",
+    "name": "koelner_phonetik",
+    "line": 25,
+    "depth": 14
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "gliedere",
+    "line": 256,
+    "depth": 8
+   },
+   {
+    "file": "pseudonymed/gui/hauptfenster.py",
+    "name": "_tab_gewechselt",
+    "line": 120,
+    "depth": 8
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pseudonymisieren",
+    "line": 213,
+    "depth": 6
+   },
+   {
+    "file": "pseudonymed/dokument/textebene.py",
+    "name": "lese_seite",
+    "line": 173,
+    "depth": 6
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_erkenne_seiten",
+    "line": 340,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_gegenprobe_bilder",
+    "line": 567,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/dokument/gliederung.py",
+    "name": "rendere",
+    "line": 85,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/identifikatoren.py",
+    "name": "standard",
+    "line": 642,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/medizininhalte.py",
+    "name": "spannen",
+    "line": 255,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/unscharf.py",
+    "name": "finde_unscharf",
+    "line": 163,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/zahlwoerter.py",
+    "name": "_datum",
+    "line": 150,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "xlsx_blaetter",
+    "line": 76,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/erkennung/zusatzdaten.py",
+    "name": "_at_tabellen",
+    "line": 127,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/pseudonyme/pgp.py",
+    "name": "_zertifikat_gnupg",
+    "line": 175,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/pseudonyme/rueckersetzung.py",
+    "name": "rueckersetzen",
+    "line": 95,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/pseudonyme/sicherung.py",
+    "name": "importiere",
+    "line": 489,
+    "depth": 5
+   },
+   {
+    "file": "pseudonymed/schwaerzen/pdf.py",
+    "name": "schwaerze_seite",
+    "line": 247,
+    "depth": 5
+   }
+  ],
+  "wide_signatures": 8,
+  "wide": [
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pseudonymisieren",
+    "line": 213,
+    "parameters": 41
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_erkenne_seiten",
+    "line": 340,
+    "parameters": 11
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "pruefen",
+    "line": 444,
+    "parameters": 10
+   },
+   {
+    "file": "pseudonymed/pruefung/bericht.py",
+    "name": "erstelle_bericht",
+    "line": 14,
+    "parameters": 10
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_gegenprobe_bilder",
+    "line": 567,
+    "parameters": 9
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "name": "rueckersetzen",
+    "line": 493,
+    "parameters": 9
+   },
+   {
+    "file": "pseudonymed/ablauf.py",
+    "name": "_korrektur_treffer",
+    "line": 460,
+    "parameters": 8
+   },
+   {
+    "file": "pseudonymed/dokument/textabgleich.py",
+    "name": "_verteile",
+    "line": 80,
+    "parameters": 8
+   }
+  ],
+  "long_modules": 2,
+  "modules": [
+   {
+    "file": "pseudonymed/ablauf.py",
+    "lines": 1494
+   },
+   {
+    "file": "pseudonymed/cli.py",
+    "lines": 1265
+   }
+  ]
+ },
+ "duplication": {
+  "blocks": 2,
+  "duplicated_lines": 19,
+  "percent": 0.1,
+  "detail": [
+   {
+    "lines": 10,
+    "files": 2,
+    "where": [
+     "pseudonymed/gui/identifikatoren_seite.py:58",
+     "pseudonymed/gui/vokabular_seite.py:55"
+    ]
+   },
+   {
+    "lines": 9,
+    "files": 2,
+    "where": [
+     "pseudonymed/gui/identifikatoren_seite.py:147",
+     "pseudonymed/gui/vokabular_seite.py:134"
+    ]
+   }
+  ]
+ },
+ "ruff": {
+  "findings_by_rule": {},
+  "total_findings": 0
+ },
+ "mypy": {
+  "errors": 183,
+  "clean": false,
+  "detail": [
+   "pseudonymed/erkennung/zahlwoerter.py:92: error: Incompatible types in assignment (expression has type \"int | None\", variable has type \"int\")  [assignment]",
+   "pseudonymed/erkennung/zahlwoerter.py:97: error: Incompatible types in assignment (expression has type \"int | None\", variable has type \"int\")  [assignment]",
+   "pseudonymed/erkennung/zahlwoerter.py:214: error: Unsupported operand types for <= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/erkennung/zahlwoerter.py:214: error: Unsupported operand types for >= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/erkennung/zahlwoerter.py:224: error: Unsupported operand types for <= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/erkennung/zahlwoerter.py:224: error: Unsupported operand types for >= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/erkennung/zahlwoerter.py:225: error: Unsupported operand types for <= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/erkennung/zahlwoerter.py:225: error: Unsupported operand types for >= (\"int\" and \"None\")  [operator]",
+   "pseudonymed/dokument/textebene.py:196: error: Argument 2 to \"_fuege_an\" of \"Seitentext\" has incompatible type \"tuple[float, ...]\"; expected \"tuple[float, float, float, float] | None\"  [arg-type]",
+   "pseudonymed/dokument/textebene.py:197: error: Incompatible types in assignment (expression has type \"tuple[float, ...]\", variable has type \"tuple[float, float, float, float] | None\")  [assignment]",
+   "pseudonymed/erkennung/varianten.py:207: error: Item \"None\" of \"Match[str] | None\" has no attribute \"group\"  [union-attr]",
+   "pseudonymed/pruefung/restrisiko.py:415: error: Incompatible types in assignment (expression has type \"Match[str] | None\", variable has type \"Match[str]\")  [assignment]",
+   "pseudonymed/pruefung/restrisiko.py:419: error: Incompatible types in assignment (expression has type \"Match[str] | None\", variable has type \"Match[str]\")  [assignment]",
+   "pseudonymed/dokument/textabgleich.py:139: error: Item \"None\" of \"Any | None\" has no attribute \"x0\"  [union-attr]",
+   "pseudonymed/dokument/textabgleich.py:139: error: Item \"None\" of \"Any | None\" has no attribute \"y0\"  [union-attr]",
+   "pseudonymed/schwaerzen/pdf.py:115: error: Argument 1 to \"unter_kasten\" has incompatible type \"tuple[float, float, float, float] | None\"; expected \"tuple[float, float, float, float]\"  [arg-type]",
+   "pseudonymed/schwaerzen/pdf.py:116: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/schwaerzen/pdf.py:121: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/schwaerzen/pdf.py:126: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/schwaerzen/pdf.py:301: error: Item \"None\" of \"Seitentext | None\" has no attribute \"basislinie\"  [union-attr]",
+   "pseudonymed/schwaerzen/pdf.py:304: error: Item \"None\" of \"Seitentext | None\" has no attribute \"freier_raum_rechts\"  [union-attr]",
+   "pseudonymed/dokument/textdatei.py:178: error: \"Message[str, str]\" has no attribute \"get_content\"; maybe \"get_content_type\"?  [attr-defined]",
+   "pseudonymed/dokument/textdatei.py:181: error: Item \"Message[str, str]\" of \"Message[str, str] | bytes | Any\" has no attribute \"decode\"  [union-attr]",
+   "pseudonymed/pseudonyme/pgp.py:240: error: Argument 1 to \"bytes\" has incompatible type \"bytes | None\"; expected \"Iterable[SupportsIndex] | SupportsIndex | SupportsBytes | Buffer\"  [arg-type]",
+   "pseudonymed/pseudonyme/pgp.py:275: error: Argument 1 to \"bytes\" has incompatible type \"bytes | None\"; expected \"Iterable[SupportsIndex] | SupportsIndex | SupportsBytes | Buffer\"  [arg-type]",
+   "pseudonymed/erkennung/deterministisch.py:218: error: List item 0 has incompatible type \"tuple[float, ...]\"; expected \"tuple[float, float, float, float]\"  [list-item]",
+   "pseudonymed/erkennung/deterministisch.py:239: error: Incompatible types in assignment (expression has type \"int | None\", variable has type \"int\")  [assignment]",
+   "pseudonymed/erkennung/deterministisch.py:241: error: List item 0 has incompatible type \"tuple[float, ...]\"; expected \"tuple[float, float, float, float]\"  [list-item]",
+   "pseudonymed/pseudonyme/speicher.py:205: error: Argument 1 to \"schluesselpfad_zu\" has incompatible type \"Path | None\"; expected \"Path\"  [arg-type]",
+   "pseudonymed/pseudonyme/speicher.py:301: error: Incompatible types in assignment (expression has type \"Vergleich | None\", variable has type \"Vergleich\")  [assignment]",
+   "pseudonymed/dokument/gliederung.py:220: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/gliederung.py:221: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/gliederung.py:222: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/gliederung.py:223: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/gliederung.py:224: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/gliederung.py:225: error: Value of type \"tuple[float, float, float, float] | None\" is not indexable  [index]",
+   "pseudonymed/dokument/laden.py:88: error: Incompatible types in assignment (expression has type \"Image\", variable has type \"ImageFile\")  [assignment]",
+   "pseudonymed/erkennung/fachbegriffe.py:270: error: \"Callable[[], Fachbegriffe]\" has no attribute \"cache_clear\"  [attr-defined]",
+   "pseudonymed/erkennung/fachbegriffe.py:291: error: \"Callable[[], Fachbegriffe]\" has no attribute \"cache_clear\"  [attr-defined]",
+   "pseudonymed/erkennung/zusatzdaten.py:242: error: Incompatible types in assignment (expression has type \"str\", variable has type \"int | None\")  [assignment]"
+  ]
+ },
+ "docstrings": {
+  "coverage_pct": 44.6,
+  "public_missing": 348,
+  "public_missing_names": [
+   "pseudonymed/ablauf.py:64 Ablaufoptionen",
+   "pseudonymed/ablauf.py:100 Ablaufoptionen.als_dict",
+   "pseudonymed/ablauf.py:130 Ergebnis",
+   "pseudonymed/ablauf.py:147 Ergebnis.freigegeben",
+   "pseudonymed/ablauf.py:156 zielpfad",
+   "pseudonymed/ablauf.py:234 Vorlage.seitenzahl",
+   "pseudonymed/ablauf.py:237 Vorlage.seitenbild",
+   "pseudonymed/ablauf.py:245 Vorlage.seitenbreite",
+   "pseudonymed/ablauf.py:249 Vorlage.schliessen",
+   "pseudonymed/ablauf.py:634 Vorbereitung.fundstellen",
+   "pseudonymed/ablauf.py:638 Vorbereitung.ocr_seiten",
+   "pseudonymed/ablauf.py:653 Vorbereitung.fachbegriffe_anzahl",
+   "pseudonymed/ablauf.py:681 Vorbereitung.toleriert",
+   "pseudonymed/ablauf.py:714 Vorbereitung.korrektur_treffer",
+   "pseudonymed/ablauf.py:794 Vorbereitung.schliessen",
+   "pseudonymed/ablauf.py:908 Lesung.seitenzahl",
+   "pseudonymed/ablauf.py:912 Lesung.ocr_seiten",
+   "pseudonymed/ablauf.py:915 Lesung.hat_ocr",
+   "pseudonymed/ablauf.py:928 Lesung.ocr_text",
+   "pseudonymed/ablauf.py:939 Lesung.schliessen",
+   "pseudonymed/ablauf.py:1121 Textvorbereitung.fundstellen",
+   "pseudonymed/ablauf.py:1125 Textvorbereitung.ocr_seiten",
+   "pseudonymed/ablauf.py:1128 Textvorbereitung.fachbegriffe_rects",
+   "pseudonymed/ablauf.py:1138 Textvorbereitung.fachbegriffe_anzahl",
+   "pseudonymed/ablauf.py:1141 Textvorbereitung.verwerfe",
+   "pseudonymed/ablauf.py:1151 Textvorbereitung.wiederherstelle",
+   "pseudonymed/ablauf.py:1159 Textvorbereitung.toleriert",
+   "pseudonymed/ablauf.py:1162 Textvorbereitung.unsichere_rects",
+   "pseudonymed/ablauf.py:1191 Textvorbereitung.schliessen",
+   "pseudonymed/arbeitsstand.py:59 ArbeitsstandFehler",
+   "pseudonymed/arbeitsstand.py:73 Arbeitsstand.ist_text",
+   "pseudonymed/arbeitsstand.py:77 Arbeitsstand.patient",
+   "pseudonymed/arbeitsstand.py:81 Arbeitsstand.kennung",
+   "pseudonymed/arbeitsstand.py:85 Arbeitsstand.optionen",
+   "pseudonymed/arbeitsstand.py:96 Arbeitsstand.dokumentpfad",
+   "pseudonymed/dokument/aufbereitung.py:23 verfuegbar",
+   "pseudonymed/dokument/aufbereitung.py:60 Aufbereitung.aktiv",
+   "pseudonymed/dokument/aufbereitung.py:66 Aufbereitung.als_dict",
+   "pseudonymed/dokument/aufbereitung.py:86 Aufbereitung.aus_dict",
+   "pseudonymed/dokument/aufbereitung.py:601 als_png",
+   "pseudonymed/dokument/aufbereitung.py:642 seite_ersetzen",
+   "pseudonymed/dokument/aufbereitung.py:669 np_contig",
+   "pseudonymed/dokument/gliederung.py:51 Zeile.leer",
+   "pseudonymed/dokument/gliederung.py:55 Zeile.breite",
+   "pseudonymed/dokument/gliederung.py:78 Gliederung.tabellen",
+   "pseudonymed/dokument/gliederung.py:82 Gliederung.ueberschriften",
+   "pseudonymed/dokument/ocr.py:35 OCRWort",
+   "pseudonymed/dokument/ocr.py:44 OCRBackend",
+   "pseudonymed/dokument/ocr.py:51 OCRFehler",
+   "pseudonymed/dokument/ocr.py:113 tesseract_sprachen",
+   "pseudonymed/dokument/ocr.py:153 TesseractBackend.verfuegbar",
+   "pseudonymed/dokument/ocr.py:158 TesseractBackend.erkenne",
+   "pseudonymed/dokument/ocr.py:239 RapidOCRBackend",
+   "pseudonymed/dokument/ocr.py:261 RapidOCRBackend.verfuegbar",
+   "pseudonymed/dokument/ocr.py:268 RapidOCRBackend.erkenne",
+   "pseudonymed/dokument/ocr.py:358 verfuegbare_backends",
+   "pseudonymed/dokument/textdatei.py:37 ist_textdatei",
+   "pseudonymed/dokument/textdatei.py:169 html_zu_text",
+   "pseudonymed/dokument/textebene.py:82 Seitentext.zeile_von",
+   "pseudonymed/dokument/textebene.py:85 Seitentext.schriftgroesse",
+   "pseudonymed/dokument/textebene.py:136 Seitentext.aus_dict",
+   "pseudonymed/dokument/textebene.py:203 lese_dokument",
+   "pseudonymed/erkennung/codes.py:12 verfuegbar",
+   "pseudonymed/erkennung/deterministisch.py:20 Regel",
+   "pseudonymed/erkennung/fachbegriffe.py:55 datenordner",
+   "pseudonymed/erkennung/fachbegriffe.py:77 Fachbegriffe.anzahl",
+   "pseudonymed/erkennung/fachbegriffe.py:80 Fachbegriffe.fuege_hinzu",
+   "pseudonymed/erkennung/fachbegriffe.py:182 laden",
+   "pseudonymed/erkennung/identifikatoren.py:154 praefix",
+   "pseudonymed/erkennung/identifikatoren.py:190 Kandidat",
+   "pseudonymed/erkennung/identifikatoren.py:206 Erkenner.anzahl",
+   "pseudonymed/erkennung/identifikatoren.py:432 Eintrag",
+   "pseudonymed/erkennung/identifikatoren.py:440 Eintrag.schluessel",
+   "pseudonymed/erkennung/identifikatoren.py:444 Eintrag.eigen",
+   "pseudonymed/erkennung/identifikatoren.py:478 Identifikatoren.close",
+   "pseudonymed/erkennung/identifikatoren.py:488 Identifikatoren.version",
+   "pseudonymed/erkennung/identifikatoren.py:491 Identifikatoren.anzahl",
+   "pseudonymed/erkennung/identifikatoren.py:495 Identifikatoren.klassen",
+   "pseudonymed/erkennung/identifikatoren.py:500 Identifikatoren.alle",
+   "pseudonymed/erkennung/identifikatoren.py:509 Identifikatoren.geloescht",
+   "pseudonymed/erkennung/identifikatoren.py:556 Identifikatoren.entferne",
+   "pseudonymed/erkennung/lexikon.py:174 Quelle",
+   "pseudonymed/erkennung/lexikon.py:200 aktiv",
+   "pseudonymed/erkennung/lexikon.py:254 erhoehe_version",
+   "pseudonymed/erkennung/medizininhalte.py:122 Auswahl.aktiv",
+   "pseudonymed/erkennung/medizininhalte.py:131 Auswahl.labornamen",
+   "pseudonymed/erkennung/ner.py:53 verfuegbares_modell",
+   "pseudonymed/erkennung/ner.py:60 verfuegbar",
+   "pseudonymed/erkennung/unscharf.py:34 Ziel",
+   "pseudonymed/erkennung/varianten.py:49 ohne_akzente",
+   "pseudonymed/erkennung/varianten.py:73 alternative",
+   "pseudonymed/erkennung/varianten.py:168 email_muster",
+   "pseudonymed/erkennung/vokabular.py:51 standardpfad",
+   "pseudonymed/erkennung/vokabular.py:105 Vokabular.close",
+   "pseudonymed/erkennung/vokabular.py:115 Vokabular.version",
+   "pseudonymed/erkennung/vokabular.py:120 Vokabular.anzahl",
+   "pseudonymed/erkennung/vokabular.py:123 Vokabular.kategorien",
+   "pseudonymed/erkennung/vokabular.py:128 Vokabular.alle",
+   "pseudonymed/erkennung/vokabular.py:153 Vokabular.enthaelt",
+   "pseudonymed/erkennung/vokabular.py:179 Vokabular.entferne",
+   "pseudonymed/erkennung/vokabular.py:189 Vokabular.benenne_um",
+   "pseudonymed/erkennung/vokabular.py:198 Vokabular.setze_kategorie",
+   "pseudonymed/erkennung/zahlwoerter.py:104 Normalisiert",
+   "pseudonymed/erkennung/zusatzdaten.py:49 ZusatzFehler",
+   "pseudonymed/erkennung/zusatzdaten.py:54 Ladebericht",
+   "pseudonymed/erkennung/zusatzdaten.py:61 Ladebericht.beschreibung",
+   "pseudonymed/gui/adressbuch_dialog.py:36 AdressbuchDialog",
+   "pseudonymed/gui/adressbuch_dialog.py:106 AdressbuchDialog.lokal_datei",
+   "pseudonymed/gui/adressbuch_dialog.py:112 AdressbuchDialog.lokal_ordner",
+   "pseudonymed/gui/adressbuch_dialog.py:123 AdressbuchDialog.lade_adressbuecher",
+   "pseudonymed/gui/adressbuch_dialog.py:146 AdressbuchDialog.speichern",
+   "pseudonymed/gui/analysieren_seite.py:32 AnalysierenSeite",
+   "pseudonymed/gui/analysieren_seite.py:170 AnalysierenSeite.aktualisiere",
+   "pseudonymed/gui/analysieren_seite.py:204 AnalysierenSeite.empfaenger_waehlen",
+   "pseudonymed/gui/analysieren_seite.py:247 AnalysierenSeite.analysieren",
+   "pseudonymed/gui/app.py:11 main",
+   "pseudonymed/gui/arbeiter.py:11 Arbeiter",
+   "pseudonymed/gui/aufbereiten_seite.py:217 AufbereitenSeite.aktualisiere",
+   "pseudonymed/gui/aufbereiten_seite.py:254 AufbereitenSeite.einstellung",
+   "pseudonymed/gui/aufbereiten_seite.py:311 AufbereitenSeite.drehe",
+   "pseudonymed/gui/aufbereiten_seite.py:319 AufbereitenSeite.maske",
+   "pseudonymed/gui/aufbereiten_seite.py:326 AufbereitenSeite.loesche_masken",
+   "pseudonymed/gui/aufbereiten_seite.py:359 AufbereitenSeite.vorschlag_wiederherstellen",
+   "pseudonymed/gui/aufbereiten_seite.py:367 AufbereitenSeite.nichts_aufbereiten",
+   "pseudonymed/gui/aufbereiten_seite.py:394 AufbereitenSeite.zeichne",
+   "pseudonymed/gui/datenbank_seite.py:41 DatenbankSeite",
+   "pseudonymed/gui/datenbank_seite.py:216 DatenbankSeite.kliniken_at_aus_datei",
+   "pseudonymed/gui/datenbank_seite.py:223 DatenbankSeite.kliniken_at_laden",
+   "pseudonymed/gui/datenbank_seite.py:258 DatenbankSeite.aktualisiere",
+   "pseudonymed/gui/datenbank_seite.py:277 DatenbankSeite.ort_datenbank_waehlen",
+   "pseudonymed/gui/datenbank_seite.py:283 DatenbankSeite.ort_schluessel_waehlen",
+   "pseudonymed/gui/datenbank_seite.py:289 DatenbankSeite.speicherort_setzen",
+   "pseudonymed/gui/datenbank_seite.py:312 DatenbankSeite.export_ziel_waehlen",
+   "pseudonymed/gui/datenbank_seite.py:317 DatenbankSeite.exportieren",
+   "pseudonymed/gui/datenbank_seite.py:352 DatenbankSeite.archiv_waehlen",
+   "pseudonymed/gui/datenbank_seite.py:360 DatenbankSeite.archiv_pruefen",
+   "pseudonymed/gui/datenbank_seite.py:387 DatenbankSeite.importieren",
+   "pseudonymed/gui/dokumente_seite.py:29 Ablage",
+   "pseudonymed/gui/dokumente_seite.py:52 DokumenteSeite",
+   "pseudonymed/gui/dokumente_seite.py:110 DokumenteSeite.laedt",
+   "pseudonymed/gui/dokumente_seite.py:113 DokumenteSeite.dateien_waehlen",
+   "pseudonymed/gui/dokumente_seite.py:151 DokumenteSeite.entfernen",
+   "pseudonymed/gui/dokumente_seite.py:195 DokumenteSeite.aktualisiere",
+   "pseudonymed/gui/export_seite.py:37 ExportSeite",
+   "pseudonymed/gui/export_seite.py:124 ExportSeite.ziel_waehlen",
+   "pseudonymed/gui/export_seite.py:220 ExportSeite.exportieren",
+   "pseudonymed/gui/export_seite.py:313 ExportSeite.ordner_oeffnen",
+   "pseudonymed/gui/hauptfenster.py:25 Hauptfenster",
+   "pseudonymed/gui/hauptfenster.py:86 Hauptfenster.sprache_waehlen",
+   "pseudonymed/gui/hauptfenster.py:114 Hauptfenster.aktuelle_seite",
+   "pseudonymed/gui/hauptfenster.py:117 Hauptfenster.zeige_seite",
+   "pseudonymed/gui/icon.py:18 dateien",
+   "pseudonymed/gui/identifikatoren_seite.py:33 IdentifikatorenModell",
+   "pseudonymed/gui/identifikatoren_seite.py:41 IdentifikatorenModell.lade",
+   "pseudonymed/gui/identifikatoren_seite.py:85 IdentifikatorenSeite",
+   "pseudonymed/gui/identifikatoren_seite.py:223 IdentifikatorenSeite.ausgewaehlte",
+   "pseudonymed/gui/identifikatoren_seite.py:249 IdentifikatorenSeite.hinzufuegen",
+   "pseudonymed/gui/identifikatoren_seite.py:264 IdentifikatorenSeite.loeschen",
+   "pseudonymed/gui/identifikatoren_seite.py:282 IdentifikatorenSeite.wiederherstellen",
+   "pseudonymed/gui/identifikatoren_seite.py:291 IdentifikatorenSeite.exportiere_waehlen",
+   "pseudonymed/gui/identifikatoren_seite.py:297 IdentifikatorenSeite.exportiere_csv",
+   "pseudonymed/gui/identifikatoren_seite.py:305 IdentifikatorenSeite.importiere_waehlen",
+   "pseudonymed/gui/identifikatoren_seite.py:312 IdentifikatorenSeite.importiere_datei",
+   "pseudonymed/gui/kontrolle_seite.py:34 KontrolleSeite",
+   "pseudonymed/gui/kontrolle_seite.py:139 KontrolleSeite.farbe",
+   "pseudonymed/gui/kontrolle_seite.py:143 KontrolleSeite.risiko_farbe",
+   "pseudonymed/gui/kontrolle_seite.py:174 KontrolleSeite.pruefen",
+   "pseudonymed/gui/patient_seite.py:53 Listenfeld.haenge_an",
+   "pseudonymed/gui/patient_seite.py:61 zeilen_aus_datei",
+   "pseudonymed/gui/patient_seite.py:94 PatientSeite",
+   "pseudonymed/gui/patient_seite.py:199 PatientSeite.adressbuecher_einrichten",
+   "pseudonymed/gui/patient_seite.py:204 PatientSeite.suchen",
+   "pseudonymed/gui/patient_seite.py:223 PatientSeite.datei_laden",
+   "pseudonymed/gui/patient_seite.py:233 PatientSeite.vorlage_speichern",
+   "pseudonymed/gui/patient_seite.py:240 PatientSeite.vcf_laden",
+   "pseudonymed/gui/patient_seite.py:245 PatientSeite.zeige_treffer",
+   "pseudonymed/gui/patient_seite.py:265 PatientSeite.fuelle",
+   "pseudonymed/gui/patient_seite.py:288 PatientSeite.patient",
+   "pseudonymed/gui/patient_seite.py:315 PatientSeite.uebernehmen",
+   "pseudonymed/gui/pruefen_seite.py:56 farbe",
+   "pseudonymed/gui/pruefen_seite.py:124 Seitenansicht.zoomfaktor",
+   "pseudonymed/gui/pruefen_seite.py:160 Seitenansicht.zeige",
+   "pseudonymed/gui/pruefen_seite.py:195 Seitenansicht.zeige_leer",
+   "pseudonymed/gui/pruefen_seite.py:208 Seitenansicht.zoom",
+   "pseudonymed/gui/pruefen_seite.py:212 Seitenansicht.zoom_zuruecksetzen",
+   "pseudonymed/gui/pruefen_seite.py:289 Textansicht.zeige",
+   "pseudonymed/gui/pruefen_seite.py:338 Textansicht.zoom",
+   "pseudonymed/gui/pruefen_seite.py:344 Textansicht.zoom_zuruecksetzen",
+   "pseudonymed/gui/pruefen_seite.py:348 PruefenSeite",
+   "pseudonymed/gui/pruefen_seite.py:458 PruefenSeite.aktualisiere",
+   "pseudonymed/gui/pruefen_seite.py:492 PruefenSeite.fundstellen",
+   "pseudonymed/gui/pruefen_seite.py:521 PruefenSeite.zeichne",
+   "pseudonymed/gui/pruefen_seite.py:542 PruefenSeite.waehle",
+   "pseudonymed/gui/pruefen_seite.py:657 PruefenSeite.arbeitsstand_waehlen",
+   "pseudonymed/gui/rueckersetzen_seite.py:31 RueckersetzenSeite",
+   "pseudonymed/gui/rueckersetzen_seite.py:110 RueckersetzenSeite.aktualisiere",
+   "pseudonymed/gui/rueckersetzen_seite.py:124 RueckersetzenSeite.laden",
+   "pseudonymed/gui/rueckersetzen_seite.py:132 RueckersetzenSeite.schluessel_waehlen",
+   "pseudonymed/gui/rueckersetzen_seite.py:149 RueckersetzenSeite.kapsel_waehlen",
+   "pseudonymed/gui/rueckersetzen_seite.py:196 RueckersetzenSeite.kapsel_schliessen",
+   "pseudonymed/gui/rueckersetzen_seite.py:202 RueckersetzenSeite.rueckersetzen",
+   "pseudonymed/gui/rueckersetzen_seite.py:226 RueckersetzenSeite.kopieren",
+   "pseudonymed/gui/rueckersetzen_seite.py:229 RueckersetzenSeite.speichern",
+   "pseudonymed/gui/sitzung.py:33 Dokument",
+   "pseudonymed/gui/sitzung.py:54 Dokument.aufzubereiten",
+   "pseudonymed/gui/sitzung.py:63 Dokument.pruefbereit",
+   "pseudonymed/gui/sitzung.py:67 Dokument.vorpruefung_aktuell",
+   "pseudonymed/gui/sitzung.py:72 Dokument.zustand",
+   "pseudonymed/gui/sitzung.py:95 Sitzung",
+   "pseudonymed/gui/sitzung.py:128 Sitzung.fuege_hinzu",
+   "pseudonymed/gui/sitzung.py:146 Sitzung.entferne",
+   "pseudonymed/gui/sitzung.py:387 Sitzung.schliessen",
+   "pseudonymed/gui/texterkennung_seite.py:34 TexterkennungSeite",
+   "pseudonymed/gui/texterkennung_seite.py:238 TexterkennungSeite.aktualisiere",
+   "pseudonymed/gui/texterkennung_seite.py:281 TexterkennungSeite.zeichne",
+   "pseudonymed/gui/texterkennung_seite.py:310 TexterkennungSeite.text_uebernehmen",
+   "pseudonymed/gui/texterkennung_seite.py:319 TexterkennungSeite.text_zuruecksetzen",
+   "pseudonymed/gui/uebersetzung.py:17 sprache_bestimmen",
+   "pseudonymed/gui/uebersetzung.py:29 ohne_sprachargumente",
+   "pseudonymed/gui/vokabular_seite.py:32 VokabularModell",
+   "pseudonymed/gui/vokabular_seite.py:39 VokabularModell.lade",
+   "pseudonymed/gui/vokabular_seite.py:79 VokabularSeite",
+   "pseudonymed/gui/vokabular_seite.py:212 VokabularSeite.ausgewaehlte",
+   "pseudonymed/gui/vokabular_seite.py:218 VokabularSeite.aendere",
+   "pseudonymed/gui/vokabular_seite.py:232 VokabularSeite.hinzufuegen",
+   "pseudonymed/gui/vokabular_seite.py:248 VokabularSeite.loeschen",
+   "pseudonymed/gui/vokabular_seite.py:266 VokabularSeite.exportiere_waehlen",
+   "pseudonymed/gui/vokabular_seite.py:272 VokabularSeite.exportiere_csv",
+   "pseudonymed/gui/vokabular_seite.py:280 VokabularSeite.importiere_waehlen",
+   "pseudonymed/gui/vokabular_seite.py:287 VokabularSeite.importiere_datei",
+   "pseudonymed/gui/vokabular_seite.py:302 VokabularSeite.grundbestand_einspielen",
+   "pseudonymed/kern/modell.py:75 Person.vollname",
+   "pseudonymed/kern/modell.py:84 Person.weiblich",
+   "pseudonymed/kern/modell.py:88 Person.maennlich",
+   "pseudonymed/kern/modell.py:225 Fundstelle.aus_dict",
+   "pseudonymed/kern/modell.py:259 Gegenprobe.bestanden",
+   "pseudonymed/kern/modell.py:282 Pruefbericht.bestanden",
+   "pseudonymed/kern/modell.py:285 Pruefbericht.als_dict",
+   "pseudonymed/kern/modell.py:291 Pruefbericht.jetzt",
+   "pseudonymed/konfig.py:24 CardDAVKonfig",
+   "pseudonymed/konfig.py:31 CardDAVKonfig.vollstaendig",
+   "pseudonymed/konfig.py:166 passwort_laden",
+   "pseudonymed/pruefung/bericht.py:14 erstelle_bericht",
+   "pseudonymed/pruefung/bericht.py:44 als_text",
+   "pseudonymed/pruefung/bericht.py:92 speichere_bericht",
+   "pseudonymed/pruefung/gegenprobe.py:69 in_pseudonym",
+   "pseudonymed/pruefung/restrisiko.py:122 Begriffsindex.fuege_hinzu",
+   "pseudonymed/pruefung/restrisiko.py:147 Gemeinde",
+   "pseudonymed/pruefung/restrisiko.py:156 Erkrankung",
+   "pseudonymed/pruefung/restrisiko.py:195 erkrankungsindex",
+   "pseudonymed/pruefung/restrisiko.py:211 Merkmal",
+   "pseudonymed/pruefung/restrisiko.py:222 Markierung",
+   "pseudonymed/pruefung/restrisiko.py:229 Restrisiko",
+   "pseudonymed/pruefung/restrisiko.py:237 Restrisiko.bits",
+   "pseudonymed/pruefung/restrisiko.py:241 Restrisiko.referenz_bits",
+   "pseudonymed/pruefung/restrisiko.py:245 Restrisiko.lam",
+   "pseudonymed/pruefung/restrisiko.py:249 Restrisiko.kappa",
+   "pseudonymed/pruefung/restrisiko.py:258 Restrisiko.ampel",
+   "pseudonymed/pruefung/restrisiko.py:267 Restrisiko.dominant",
+   "pseudonymed/pruefung/restrisiko.py:271 Restrisiko.als_dict",
+   "pseudonymed/pruefung/restrisiko.py:279 Restrisiko.aus_dict",
+   "pseudonymed/pruefung/restrisiko.py:286 Restrisiko.kurz",
+   "pseudonymed/pruefung/restrisiko.py:323 ampel_text",
+   "pseudonymed/pruefung/vorschau.py:10 schreibe_vorschau",
+   "pseudonymed/pseudonyme/abgleich.py:43 Vergleich",
+   "pseudonymed/pseudonyme/abgleich.py:53 Vergleich.gleich",
+   "pseudonymed/pseudonyme/abgleich.py:57 Vergleich.unsicher",
+   "pseudonymed/pseudonyme/kapsel.py:36 KapselFehler",
+   "pseudonymed/pseudonyme/kapsel.py:41 Kapsel",
+   "pseudonymed/pseudonyme/kapsel.py:53 Kapsel.als_json",
+   "pseudonymed/pseudonyme/kapsel.py:59 Kapsel.aus_json",
+   "pseudonymed/pseudonyme/kapsel.py:83 Kapsel.als_patient",
+   "pseudonymed/pseudonyme/kapsel.py:95 Kapsel.beschreibung",
+   "pseudonymed/pseudonyme/kapsel.py:105 erstelle",
+   "pseudonymed/pseudonyme/kennung.py:62 ist_hashkennung",
+   "pseudonymed/pseudonyme/pgp.py:34 PGPFehler",
+   "pseudonymed/pseudonyme/pgp.py:53 Zertifikat.kurz",
+   "pseudonymed/pseudonyme/pgp.py:56 Zertifikat.beschreibung",
+   "pseudonymed/pseudonyme/pgp.py:62 pysequoia_verfuegbar",
+   "pseudonymed/pseudonyme/pgp.py:70 gnupg_programm",
+   "pseudonymed/pseudonyme/pgp.py:81 verfuegbar",
+   "pseudonymed/pseudonyme/pgp.py:85 engines",
+   "pseudonymed/pseudonyme/pgp.py:270 entschluessele_mit_passphrase",
+   "pseudonymed/pseudonyme/pgp.py:300 ist_nachricht",
+   "pseudonymed/pseudonyme/rueckersetzung.py:32 Rueckersetzung",
+   "pseudonymed/pseudonyme/sicherung.py:68 SicherungFehler",
+   "pseudonymed/pseudonyme/sicherung.py:87 Statistik",
+   "pseudonymed/pseudonyme/sicherung.py:166 Verlegung",
+   "pseudonymed/pseudonyme/sicherung.py:172 Verlegung.beschreibung",
+   "pseudonymed/pseudonyme/sicherung.py:236 statistik",
+   "pseudonymed/pseudonyme/sicherung.py:310 Manifest",
+   "pseudonymed/pseudonyme/sicherung.py:323 Manifest.konfig",
+   "pseudonymed/pseudonyme/sicherung.py:327 Manifest.vokabular",
+   "pseudonymed/pseudonyme/sicherung.py:330 Manifest.beschreibung",
+   "pseudonymed/pseudonyme/sicherung.py:446 Importbericht",
+   "pseudonymed/pseudonyme/sicherung.py:459 Importbericht.beschreibung",
+   "pseudonymed/pseudonyme/speicher.py:109 Kennungsergebnis",
+   "pseudonymed/pseudonyme/speicher.py:213 Pseudonymspeicher.close",
+   "pseudonymed/pseudonyme/speicher.py:340 Pseudonymspeicher.merke_verworfen",
+   "pseudonymed/pseudonyme/speicher.py:351 Pseudonymspeicher.vergiss_verworfen",
+   "pseudonymed/pseudonyme/speicher.py:359 Pseudonymspeicher.merke",
+   "pseudonymed/pseudonyme/speicher.py:404 Pseudonymspeicher.zuordnung",
+   "pseudonymed/pseudonyme/speicher.py:413 Pseudonymspeicher.patient_info",
+   "pseudonymed/pseudonyme/speicher.py:420 Pseudonymspeicher.kennungen",
+   "pseudonymed/pseudonyme/speicher.py:423 Pseudonymspeicher.aliasse",
+   "pseudonymed/pseudonyme/vergabe.py:70 Pseudonymvergabe.hauptperson",
+   "pseudonymed/pseudonyme/vergabe.py:74 Pseudonymvergabe.geburtsdatum",
+   "pseudonymed/pseudonyme/vergabe.py:91 Pseudonymvergabe.strasse",
+   "pseudonymed/pseudonyme/vergabe.py:100 Pseudonymvergabe.ort",
+   "pseudonymed/pseudonyme/vergabe.py:107 Pseudonymvergabe.plz_ort",
+   "pseudonymed/pseudonyme/vergabe.py:119 Pseudonymvergabe.telefon",
+   "pseudonymed/pseudonyme/vergabe.py:122 Pseudonymvergabe.email",
+   "pseudonymed/pseudonyme/vergabe.py:125 Pseudonymvergabe.versichertennummer",
+   "pseudonymed/pseudonyme/vergabe.py:129 Pseudonymvergabe.patienten_id",
+   "pseudonymed/pseudonyme/vergabe.py:133 Pseudonymvergabe.aktenzeichen",
+   "pseudonymed/pseudonyme/vergabe.py:142 Pseudonymvergabe.angehoerige",
+   "pseudonymed/pseudonyme/vergabe.py:145 Pseudonymvergabe.zuweiser",
+   "pseudonymed/pseudonyme/vergabe.py:149 Pseudonymvergabe.begriff",
+   "pseudonymed/quellen/adressbuch.py:17 Suchergebnis",
+   "pseudonymed/quellen/adressbuch.py:23 lokale_dateien",
+   "pseudonymed/quellen/adressbuch.py:43 eingerichtet",
+   "pseudonymed/quellen/carddav.py:41 Adressbuch",
+   "pseudonymed/quellen/carddav.py:46 Adressbuch.uri",
+   "pseudonymed/quellen/carddav.py:51 Kontakt",
+   "pseudonymed/quellen/carddav.py:108 CardDAVClient",
+   "pseudonymed/quellen/carddav.py:122 CardDAVClient.adressbuch_home",
+   "pseudonymed/quellen/carddav.py:159 CardDAVClient.adressbuecher",
+   "pseudonymed/quellen/carddav.py:172 CardDAVClient.adressbuch",
+   "pseudonymed/quellen/carddav.py:200 CardDAVClient.alle",
+   "pseudonymed/quellen/carddav.py:203 CardDAVClient.suche",
+   "pseudonymed/quellen/manuell.py:37 lade_patient",
+   "pseudonymed/quellen/vcf.py:26 Eigenschaft",
+   "pseudonymed/quellen/vcf.py:33 Eigenschaft.typen",
+   "pseudonymed/quellen/vcf.py:37 Eigenschaft.text",
+   "pseudonymed/quellen/vcf.py:40 Eigenschaft.teile",
+   "pseudonymed/quellen/vcf.py:45 VCard",
+   "pseudonymed/quellen/vcf.py:48 VCard.alle",
+   "pseudonymed/quellen/vcf.py:52 VCard.erste",
+   "pseudonymed/quellen/vcf.py:56 VCard.wert",
+   "pseudonymed/quellen/vcf.py:61 VCard.uid",
+   "pseudonymed/quellen/vcf.py:65 VCard.fn",
+   "pseudonymed/quellen/vcf.py:69 VCard.version",
+   "pseudonymed/quellen/vcf.py:73 entschluessele",
+   "pseudonymed/quellen/vcf.py:171 parse_vcards",
+   "pseudonymed/quellen/vcf.py:189 lade_vcf",
+   "pseudonymed/quellen/vcf.py:198 parse_bday",
+   "pseudonymed/quellen/vcf.py:297 patienten_aus_vcf",
+   "pseudonymed/schwaerzen/pdf.py:46 Schwaerzoptionen"
+  ],
+  "note": null
+ },
+ "vulture": {
+  "candidates": 0,
+  "detail": []
+ },
+ "coverage": {
+  "total_pct": 89.1,
+  "tests_passed": 387,
+  "suite_green": true,
+  "by_module_pct": {
+   "pseudonymed/gui/arbeiter.py": 60.0,
+   "pseudonymed/pseudonyme/pgp.py": 66.2,
+   "pseudonymed/gui/dokumente_seite.py": 73.3,
+   "pseudonymed/gui/analysieren_seite.py": 73.6,
+   "pseudonymed/gui/datenbank_seite.py": 77.8,
+   "pseudonymed/cli.py": 78.9,
+   "pseudonymed/gui/rueckersetzen_seite.py": 80.8,
+   "pseudonymed/gui/texterkennung_seite.py": 81.3,
+   "pseudonymed/gui/sitzung.py": 82.6,
+   "pseudonymed/gui/app.py": 82.9,
+   "pseudonymed/dokument/ocr.py": 83.3,
+   "pseudonymed/gui/export_seite.py": 83.8,
+   "pseudonymed/gui/patient_seite.py": 83.9,
+   "pseudonymed/erkennung/fachbegriffe.py": 84.2,
+   "pseudonymed/gui/adressbuch_dialog.py": 84.6,
+   "pseudonymed/gui/identifikatoren_seite.py": 85.1,
+   "pseudonymed/gui/pruefen_seite.py": 86.2,
+   "pseudonymed/arbeitsstand.py": 86.5,
+   "pseudonymed/erkennung/zusatzdaten.py": 86.7,
+   "pseudonymed/konfig.py": 86.9,
+   "pseudonymed/quellen/manuell.py": 88.2,
+   "pseudonymed/erkennung/codes.py": 89.3,
+   "pseudonymed/erkennung/ner.py": 90.1,
+   "pseudonymed/pseudonyme/sicherung.py": 90.2,
+   "pseudonymed/gui/aufbereiten_seite.py": 90.3,
+   "pseudonymed/gui/vokabular_seite.py": 90.4,
+   "pseudonymed/dokument/gliederung.py": 91.7,
+   "pseudonymed/pseudonyme/rueckersetzung.py": 91.8,
+   "pseudonymed/erkennung/varianten.py": 92.7,
+   "pseudonymed/pruefung/gegenprobe.py": 92.7,
+   "pseudonymed/pseudonyme/kapsel.py": 92.7,
+   "pseudonymed/gui/kontrolle_seite.py": 92.8,
+   "pseudonymed/pseudonyme/abgleich.py": 93.3,
+   "pseudonymed/schwaerzen/pdf.py": 93.3,
+   "pseudonymed/pseudonyme/kennung.py": 93.6,
+   "pseudonymed/dokument/aufbereitung.py": 93.7,
+   "pseudonymed/quellen/vcf.py": 93.7,
+   "pseudonymed/quellen/carddav.py": 93.8,
+   "pseudonymed/umgebung.py": 93.9,
+   "pseudonymed/pseudonyme/vergabe.py": 94.1,
+   "pseudonymed/erkennung/identifikatoren.py": 94.2,
+   "pseudonymed/quellen/adressbuch.py": 94.2,
+   "pseudonymed/gui/uebersetzung.py": 94.6,
+   "pseudonymed/ablauf.py": 94.7,
+   "pseudonymed/dokument/laden.py": 94.7,
+   "pseudonymed/dokument/textabgleich.py": 94.9,
+   "pseudonymed/pseudonyme/phonetik.py": 94.9,
+   "pseudonymed/dokument/textdatei.py": 95.1,
+   "pseudonymed/erkennung/deterministisch.py": 95.1,
+   "pseudonymed/erkennung/lexikon.py": 95.5,
+   "pseudonymed/erkennung/vokabular.py": 95.7,
+   "pseudonymed/pseudonyme/speicher.py": 96.2,
+   "pseudonymed/gui/hauptfenster.py": 96.3,
+   "pseudonymed/erkennung/medizininhalte.py": 96.7,
+   "pseudonymed/dokument/textebene.py": 97.0,
+   "pseudonymed/erkennung/zahlwoerter.py": 97.6,
+   "pseudonymed/pruefung/bericht.py": 97.8,
+   "pseudonymed/erkennung/unscharf.py": 98.1,
+   "pseudonymed/pruefung/restrisiko.py": 98.5,
+   "pseudonymed/kern/modell.py": 98.8,
+   "pseudonymed/__init__.py": 100.0,
+   "pseudonymed/dokument/__init__.py": 100.0,
+   "pseudonymed/erkennung/__init__.py": 100.0,
+   "pseudonymed/erkennung/muster.py": 100.0,
+   "pseudonymed/gui/__init__.py": 100.0,
+   "pseudonymed/gui/icon.py": 100.0,
+   "pseudonymed/kern/__init__.py": 100.0,
+   "pseudonymed/pruefung/__init__.py": 100.0,
+   "pseudonymed/pruefung/vorschau.py": 100.0,
+   "pseudonymed/pseudonyme/__init__.py": 100.0,
+   "pseudonymed/quellen/__init__.py": 100.0,
+   "pseudonymed/schwaerzen/__init__.py": 100.0
+  }
+ }
+}

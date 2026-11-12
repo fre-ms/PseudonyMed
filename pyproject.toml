@@ -49,6 +49,17 @@ dev = [
 build = [
   "pyinstaller>=6.11",
 ]
+# What script/quality_metrics.py needs.  Pinned, not floored: a snapshot is only comparable
+# with the next one if the measuring instrument did not move underneath it.
+quality = [
+  "radon==6.0.1",
+  "complexipy==3.3.0",
+  "interrogate==1.7.0",
+  "vulture==2.14",
+  "coverage==7.6.10",
+  "mypy>=1.14",
+  "pylint>=3.3",  # symilar, the duplication instrument
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -72,3 +83,20 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+# Own annotations only; the libraries below publish no stubs.  `mypy` is expected to be clean.
+files = ["pseudonymed"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["pymupdf.*", "rapidocr.*", "onnxruntime.*", "cv2.*", "numpy.*", "PIL.*",
+          "pillow_heif.*", "zxingcpp.*", "spacy.*", "pysequoia.*", "keyring.*", "faker.*",
+          "PySide6.*", "typer.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# PyMuPDF ships annotations that are incomplete (constants, Document iteration): read as Any.
+module = ["pymupdf"]
+follow_imports = "skip"
