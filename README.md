@@ -167,7 +167,7 @@ uv run --group build python packaging/build.py   # folder distribution plus smok
 
 `.github/workflows/release.yml` builds the three platforms on a tag `v*` and uploads the archives as artefacts.
 
-Layout: `pseudonymed/kern` (data model), `dokument` (loading incl. HEIC, text layer, OCR backends), `erkennung` (rules, generic and label patterns, fuzzy OCR search, barcodes), `schwaerzen` (redaction of text and pixels, clean-up, rasterising), `pruefung` (re-check incl. OCR, report, previews), `gui` (PySide6 pages over a Qt-free session model), `pseudonyme` (assignment, SQLite store, re-identification), `quellen` (patient file, vCard reader, CardDAV client), `konfig.py` (configuration and keyring), `ablauf.py` (pipeline), `cli.py`.
+Layout: `pseudonymed/kern` (data model), `dokument` (loading incl. HEIC, text layer, OCR backends), `erkennung` (rules, generic and label patterns, fuzzy OCR search, barcodes), `schwaerzen` (redaction of text and pixels, clean-up, rasterising), `pruefung` (re-check incl. OCR, report, previews), `gui` (PySide6 pages over a Qt-free session model), `pseudonyme` (assignment, SQLite store, re-identification), `quellen` (patient file, vCard reader, CardDAV client), `konfig.py` (configuration and keyring), `ablauf/` (the pipeline, one module per phase), `cli/` (one module per command group).
 
 ## Bundled data
 

@@ -10,8 +10,7 @@ from pathlib import Path
 import pymupdf
 import pytest
 
-from pseudonymed import ablauf
-from pseudonymed.ablauf import Ablaufoptionen, abschliessen, pseudonymisiere, vorbereiten
+from pseudonymed.ablauf import Ablaufoptionen, abschliessen, abschluss, pseudonymisiere, vorbereiten
 from pseudonymed.kern.modell import Patient
 from pseudonymed.pruefung.bericht import als_text
 from pseudonymed.pseudonyme.kennung import kennung_gueltig
@@ -134,7 +133,7 @@ def test_rastern(befund: Path, patient: Patient, speicher: Pseudonymspeicher) ->
 
 def test_gegenprobe_blockiert(befund: Path, patient: Patient, speicher: Pseudonymspeicher,
                               monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ablauf, "schwaerze_seite", lambda *a, **k: Seitenergebnis(0, True))
+    monkeypatch.setattr(abschluss, "schwaerze_seite", lambda *a, **k: Seitenergebnis(0, True))
     erg = pseudonymisiere(befund, patient, speicher=speicher)
     assert not erg.freigegeben
     assert erg.ziel_pdf is None and erg.ziel_txt is None

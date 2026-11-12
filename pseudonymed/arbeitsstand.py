@@ -35,11 +35,11 @@ from pseudonymed import WERKZEUG
 from pseudonymed.ablauf import (
     Ablaufoptionen,
     Lesung,
+    Seite,
     Textvorbereitung,
     Vorbereitung,
-    _merke_fachbegriffe,
-    _ruestzeug,
-    _Seite,
+    merke_fachbegriffe,
+    ruestzeug,
 )
 from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import gliederung as gliedmodul
@@ -140,7 +140,7 @@ def _optionen_aus(d: dict[str, Any]) -> Ablaufoptionen:
     return Ablaufoptionen(**felder)
 
 
-def _seite_als_dict(s: _Seite) -> dict[str, Any]:
+def _seite_als_dict(s: Seite) -> dict[str, Any]:
     return {
         "nummer": s.nummer, "text": s.text.als_dict(),
         "ocr": s.ocr.als_dict() if s.ocr is not None else None,
@@ -242,8 +242,8 @@ def lies(pfad: str | Path) -> Arbeitsstand:
 
 
 def _seite_aus(d: dict[str, Any], plan: aufmodul.Aufbereitung | None,
-               page: pymupdf.Page | None) -> _Seite:
-    s = _Seite(int(d["nummer"]), Seitentext.aus_dict(d["text"]))
+               page: pymupdf.Page | None) -> Seite:
+    s = Seite(int(d["nummer"]), Seitentext.aus_dict(d["text"]))
     s.ocr = Seitentext.aus_dict(d["ocr"]) if d.get("ocr") else None
     s.korrektur = d.get("korrektur")
     s.ocr_dpi = int(d.get("ocr_dpi", s.ocr_dpi))
@@ -301,7 +301,7 @@ def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
     eigener_speicher = speicher is None
     speicher = speicher or Pseudonymspeicher()
     try:
-        r = _ruestzeug(patient, opt, speicher)
+        r = ruestzeug(patient, opt, speicher)
         warnungen = [w for w in a.daten.get("warnungen", []) if "Arbeitsstand" not in w]
         hinweise = [h for h in a.daten.get("hinweise", []) if "Arbeitsstand" not in h]
         hinweise.append(_ladehinweis(a))
@@ -339,9 +339,9 @@ def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
             s.fachrects, s.fachspannen, s.fachanzahl = [], [], 0
             if r.fachbegriffe is not None:
                 if v.ist_text or s.text.hat_textebene:
-                    _merke_fachbegriffe(s, s.text, r.fachbegriffe)
+                    merke_fachbegriffe(s, s.text, r.fachbegriffe)
                 if s.ocr is not None:
-                    _merke_fachbegriffe(s, s.ocr, r.fachbegriffe)
+                    merke_fachbegriffe(s, s.ocr, r.fachbegriffe)
     except Exception:
         if eigener_speicher:
             speicher.close()

@@ -320,10 +320,10 @@ class Sitzung:
         """Close a preparation whose files were copied: store the mapping and the
         discard decisions as the final run would, without redacting again."""
         v = d.vorbereitung
-        from pseudonymed.ablauf import _entscheidungen_merken
+        from pseudonymed.ablauf import entscheidungen_merken
 
         v.speicher.merke(v.patient, v.vergabe)
-        _entscheidungen_merken(v)
+        entscheidungen_merken(v)
         v.abgeschlossen = True
         v.schliessen()
 

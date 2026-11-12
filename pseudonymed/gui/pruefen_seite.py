@@ -507,7 +507,7 @@ class PruefenSeite(QWidget):
             self.stapel.setCurrentWidget(self.textansicht)
         else:
             fach = v.fachbegriffe_rects(self.seite) if zeigen else []
-            auswahl = ([tuple(r) for r in v._textbasis(self.seite).rects(*self.auswahl)]
+            auswahl = ([tuple(r) for r in v.seiten[self.seite].textbasis.rects(*self.auswahl)]
                        if self.auswahl is not None else [])
             self.ansicht.zeige(v.seitenbild(self.seite, VORSCHAU_DPI), treffer, self.gewaehlt,
                                fach, verworfen, v.unsichere_rects(self.seite), auswahl)

@@ -29,7 +29,7 @@ def _vorbereitet(befund: Path, patient: Patient, speicher: Pseudonymspeicher):
     v.verwerfe(ziel)
     v.kasten(0, (56, 300, 400, 320), "[Kasten]")
     v.maske(0, (56, 330, 400, 345))
-    text = v._textbasis(0).text
+    text = v.seiten[0].textbasis.text
     i = text.index("Gemeinschaftspraxis")  # the letterhead: no hit, taken up by hand
     v.aufnehmen(0, i, i + len("Gemeinschaftspraxis"))
     return v
@@ -152,7 +152,7 @@ def test_scan_ohne_erneute_ocr(tmp_path: Path, befund: Path, patient: Patient,
 def test_wort_bei_und_aufnehmen(befund: Path, patient: Patient,
                                 speicher: Pseudonymspeicher) -> None:
     v = vorbereiten(befund, patient, Ablaufoptionen(), speicher=speicher)
-    basis = v._textbasis(0)
+    basis = v.seiten[0].textbasis
     i = basis.text.index("Diagnosen")
     box = basis.boxen[i + 2]
     spanne = v.wort_bei(0, (box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
@@ -203,7 +203,7 @@ def test_oberflaeche(qapp: QApplication, tmp_path: Path, befund: Path,  # noqa: 
     assert fenster.dokumente.hinzufuegen([konfiguration]) is None  # already in
 
     # pick a word on the page, extend it, take it up with a code of its own
-    basis = d.vorbereitung._textbasis(0)
+    basis = d.vorbereitung.seiten[0].textbasis
     i = basis.text.index("Diagnosen")
     box = basis.boxen[i + 1]
     pr.punkt((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
