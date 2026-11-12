@@ -32,6 +32,9 @@ from pseudonymed.gui.sitzung import Dokument, Sitzung
 
 
 class TexterkennungSeite(QWidget):
+    """The text-recognition step: engine settings, reading with progress, and the
+    recognised text of every page next to the cleaned-up image, editable for OCR pages."""
+
     gelesen = Signal()
     weiter = Signal()
 
@@ -47,7 +50,15 @@ class TexterkennungSeite(QWidget):
         self.seite = 0
         self._geladen: tuple[int, int] | None = None
         aussen = QVBoxLayout(self)
+        aussen.addWidget(self._baue_einstellungen())
+        self._engine_gewechselt()
+        aussen.addWidget(self._baue_ansicht(), 1)
+        aussen.addLayout(self._baue_fusszeile())
 
+    # -- building the page -------------------------------------------------------------------------
+    def _baue_einstellungen(self) -> QGroupBox:
+        """The settings group: engine, language packs, table pass, structuring, and the
+        row with progress bar and start button."""
         einstellungen = QGroupBox(self.tr("Texterkennung (OCR) für Scans und Fotos"))
         form = QFormLayout(einstellungen)
         self.engine = QComboBox()
@@ -73,6 +84,11 @@ class TexterkennungSeite(QWidget):
         self.gliedern.setChecked(self.sitzung.optionen.gliedern)
         self.gliedern.toggled.connect(self._gliedern_gewechselt)
         form.addRow(self.gliedern)
+        form.addRow(self._baue_startzeile())
+        return einstellungen
+
+    def _baue_startzeile(self) -> QHBoxLayout:
+        """Progress bar, status text and the button that starts reading."""
         zeile = QHBoxLayout()
         self.fortschritt = QProgressBar()
         self.fortschritt.setRange(0, 1)
@@ -85,10 +101,10 @@ class TexterkennungSeite(QWidget):
         zeile.addWidget(self.fortschritt, 1)
         zeile.addWidget(self.status, 2)
         zeile.addWidget(self.knopf)
-        form.addRow(zeile)
-        aussen.addWidget(einstellungen)
-        self._engine_gewechselt()
+        return zeile
 
+    def _baue_ansicht(self) -> QSplitter:
+        """Tree of documents and pages, the page image, and the text column."""
         teiler = QSplitter(Qt.Orientation.Horizontal)
         self.baum = QTreeWidget()
         self.baum.setHeaderLabels([self.tr("Dokument / Seite")])
@@ -98,6 +114,13 @@ class TexterkennungSeite(QWidget):
         self.ansicht.masken_modus = True  # nothing is drawn here, drag with modifier pans
         self.ansicht.kasten_gezeichnet.connect(lambda _r: None)
         teiler.addWidget(self.ansicht)
+        teiler.addWidget(self._baue_textspalte())
+        teiler.setSizes([180, 560, 460])
+        return teiler
+
+    def _baue_textspalte(self) -> QWidget:
+        """The recognised text with its title, the apply and reset buttons and the note
+        whether the page was corrected."""
         rechts = QWidget()
         r = QVBoxLayout(rechts)
         r.setContentsMargins(0, 0, 0, 0)
@@ -117,10 +140,10 @@ class TexterkennungSeite(QWidget):
             knoepfe.addWidget(k)
         knoepfe.addWidget(self.text_hinweis, 1)
         r.addLayout(knoepfe)
-        teiler.addWidget(rechts)
-        teiler.setSizes([180, 560, 460])
-        aussen.addWidget(teiler, 1)
+        return rechts
 
+    def _baue_fusszeile(self) -> QHBoxLayout:
+        """The note about unread documents and the button to the analysis."""
         unten = QHBoxLayout()
         self.hinweis = QLabel("")
         self.hinweis.setWordWrap(True)
@@ -130,10 +153,11 @@ class TexterkennungSeite(QWidget):
         self.weiter_knopf.clicked.connect(self.weiter.emit)
         unten.addWidget(self.hinweis, 1)
         unten.addWidget(self.weiter_knopf)
-        aussen.addLayout(unten)
+        return unten
 
     # -- settings ----------------------------------------------------------------------------------
     def _engine_gewechselt(self, _i: int = 0) -> None:
+        """Adapt placeholder and note to the chosen engine; the table pass is Tesseract's."""
         name = self.engine.currentData()
         tesseract = name == "tesseract" or (name == "auto"
                                             and ocrmodul.verfuegbare_backends()[:1]
@@ -165,6 +189,7 @@ class TexterkennungSeite(QWidget):
         self.zeichne()
 
     def _optionen_uebernehmen(self) -> None:
+        """Copy engine, languages, table pass and structuring into the session options."""
         o = self.sitzung.optionen
         o.ocr = self.engine.currentData()
         o.ocr_sprachen = self.sprachen.text().strip()
@@ -172,6 +197,7 @@ class TexterkennungSeite(QWidget):
         o.gliedern = self.gliedern.isChecked()
 
     def _melde(self, titel: str, text: str) -> None:
+        """Tell the user something; in the synchronous test mode raise instead of a dialog."""
         if self.synchron:
             raise RuntimeError(text)
         QMessageBox.information(self, titel, text)
@@ -194,6 +220,8 @@ class TexterkennungSeite(QWidget):
         self._naechstes()
 
     def _naechstes(self) -> None:
+        """Read the next queued document (inline in the synchronous test mode, else in a
+        worker thread); with the queue empty, show the tree and announce the result."""
         if not self._warteschlange:
             self.knopf.setEnabled(True)
             self.fortschritt.setValue(self.fortschritt.maximum())
@@ -221,11 +249,13 @@ class TexterkennungSeite(QWidget):
         self._arbeiter.start()
 
     def _fertig(self, d: Dokument) -> None:
+        """Document ``d`` is read: take it off the queue and go on."""
         if self._warteschlange and self._warteschlange[0] is d:
             self._warteschlange.pop(0)
         self._naechstes()
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
+        """Reading ``d`` failed: remember the error, show it, go on with the queue."""
         d.fehler = str(e)
         if self.synchron:
             raise e
@@ -236,6 +266,15 @@ class TexterkennungSeite(QWidget):
 
     # -- navigation --------------------------------------------------------------------------------
     def aktualisiere(self) -> None:
+        """Rebuild the tree of read documents, summarise what is still unread and show
+        the first page; without any read document, view and text are emptied."""
+        self._fuelle_baum()
+        self.hinweis.setText(self._lesestand())
+        if not self._waehle_erste_seite():
+            self._zeige_leer()
+
+    def _fuelle_baum(self) -> None:
+        """One node per read document with one child per page, OCR pages marked."""
         self.baum.clear()
         for d in self.sitzung.dokumente:
             if d.lesung is None:
@@ -249,25 +288,39 @@ class TexterkennungSeite(QWidget):
                 knoten.addChild(kind)
             self.baum.addTopLevelItem(knoten)
             knoten.setExpanded(True)
+
+    def _lesestand(self) -> str:
+        """The note at the bottom: how many documents are still unread and how many
+        text files need no recognition at all."""
         offen = [d for d in self.sitzung.dokumente if d.lesbar and d.lesung is None]
         texte = sum(1 for d in self.sitzung.dokumente if not d.lesbar)
-        teile = []
+        teile: list[str] = []
         if offen:
             teile.append(self.tr("{n} Dokument(e) noch nicht gelesen").format(n=len(offen)))
         if texte:
             teile.append(self.tr("{n} Textdatei(en) brauchen keine Texterkennung").format(
                 n=texte))
-        self.hinweis.setText(" · ".join(teile))
-        if self.baum.topLevelItemCount():
-            erster = self.baum.topLevelItem(0)
-            self.baum.setCurrentItem(erster.child(0) if erster.childCount() else erster)
-        else:
-            self.dokument = None
-            self.ansicht.zeige_leer()
-            self.text.setPlainText("")
-            self.text.setReadOnly(True)
+        return " · ".join(teile)
 
-    def _seite_gewaehlt(self, aktuell: QTreeWidgetItem | None, _vorher=None) -> None:
+    def _waehle_erste_seite(self) -> bool:
+        """Make the first page of the first document current; False when the tree is empty."""
+        erster = self.baum.topLevelItem(0)
+        if erster is None:
+            return False
+        kind = erster.child(0)
+        self.baum.setCurrentItem(erster if kind is None else kind)
+        return True
+
+    def _zeige_leer(self) -> None:
+        """No document read: no current document, empty view, empty read-only text."""
+        self.dokument = None
+        self.ansicht.zeige_leer()
+        self.text.setPlainText("")
+        self.text.setReadOnly(True)
+
+    def _seite_gewaehlt(self, aktuell: QTreeWidgetItem | None,
+                        _vorher: QTreeWidgetItem | None = None) -> None:
+        """Show the page behind the current tree item."""
         if aktuell is None:
             return
         kennung, nummer = aktuell.data(0, Qt.ItemDataRole.UserRole)
@@ -279,6 +332,9 @@ class TexterkennungSeite(QWidget):
         self.zeichne()
 
     def zeichne(self) -> None:
+        """Show the current page as the OCR saw it and its text: editable with title
+        and correction note for OCR pages, read-only for pages with a text layer.  The
+        text is reloaded only when another page is shown, so an edit survives redraws."""
         if self.dokument is None or self.dokument.lesung is None:
             return
         lesung = self.dokument.lesung
@@ -308,6 +364,7 @@ class TexterkennungSeite(QWidget):
 
     # -- corrections -------------------------------------------------------------------------------
     def text_uebernehmen(self) -> None:
+        """Store the edited text as the correction of the current OCR page."""
         if self.dokument is None or self.dokument.lesung is None:
             return
         lesung = self.dokument.lesung
@@ -317,12 +374,13 @@ class TexterkennungSeite(QWidget):
         self.zeichne()
 
     def text_zuruecksetzen(self) -> None:
+        """Drop the correction of the current OCR page and show the raw OCR text again."""
         if self.dokument is None or self.dokument.lesung is None:
             return
         lesung = self.dokument.lesung
-        if not lesung.hat_ocr(self.seite):
+        ocr = lesung.seiten[self.seite].ocr
+        if ocr is None:
             return
-        s = lesung.seiten[self.seite]
-        lesung.setze_ocr_text(self.seite, s.ocr.text)
-        self.text.setPlainText(s.ocr.text)
+        lesung.setze_ocr_text(self.seite, ocr.text)
+        self.text.setPlainText(ocr.text)
         self.zeichne()

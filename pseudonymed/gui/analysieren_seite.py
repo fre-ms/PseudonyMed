@@ -24,12 +24,15 @@ from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import ner as nermodul
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
-from pseudonymed.konfig import lade_einstellungen, speichere_einstellungen
+from pseudonymed.konfig import Einstellungen, lade_einstellungen, speichere_einstellungen
 from pseudonymed.pseudonyme import pgp as pgpmodul
 from pseudonymed.pseudonyme.speicher import UnsichererAbgleich
 
 
 class AnalysierenSeite(QWidget):
+    """Step 6: the detection options (including the four medical levels), the recipient
+    for pass-on pseudonyms and the analysis run, document by document with progress."""
+
     analysiert = Signal()
 
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
@@ -40,8 +43,18 @@ class AnalysierenSeite(QWidget):
         self._arbeiter: Arbeiter | None = None
         self._warteschlange: list[Dokument] = []
         self._gesamt = 0
+        self.zertifikat: pgpmodul.Zertifikat | None = None
         aussen = QVBoxLayout(self)
+        self._baue_erkennung(aussen)
+        self._baue_vokabular(aussen)
+        self._baue_empfaenger(aussen)
+        self._baue_dokumente(aussen)
+        self._baue_knoepfe(aussen)
 
+    # -- layout ------------------------------------------------------------------------------------
+    def _baue_erkennung(self, aussen: QVBoxLayout) -> None:
+        """The detection options: date form, codes, unreadable lines, medical terms,
+        identifiers, the four medical levels, fuzzy search and NER."""
         optionen = QGroupBox(self.tr("Erkennung der Identifikatoren"))
         form = QFormLayout(optionen)
         self.datum = QComboBox()
@@ -63,7 +76,23 @@ class AnalysierenSeite(QWidget):
             " (siehe „2 Identifikatoren“)"))
         self.identifikatoren.setChecked(True)
         form.addRow(self.identifikatoren)
-        # medical content: four levels, each on its own, all off by default
+        self._baue_medizinstufen(form)
+        self.unscharf = QCheckBox(
+            self.tr("Textdateien: abweichend geschriebene Namen unscharf suchen (Transkripte)"))
+        self.unscharf.setChecked(True)
+        form.addRow(self.unscharf)
+        self.ner = QCheckBox(self.tr("Unbekannte Personen und Orte per NER suchen (rät)"))
+        self.ner.setEnabled(nermodul.verfuegbar())
+        self.ner.setChecked(nermodul.verfuegbar())
+        if not nermodul.verfuegbar():
+            self.ner.setToolTip(
+                self.tr("Extra 'ner' und ein deutsches spaCy-Modell installieren."))
+        form.addRow(self.ner)
+        aussen.addWidget(optionen)
+
+    def _baue_medizinstufen(self, form: QFormLayout) -> None:
+        """Medical content in four levels, each on its own, all off by default: substance
+        and dosage of medications, parameter and value of lab results."""
         self.medikamente = QCheckBox(self.tr(
             "Medikamente: Substanz schwärzen (Wirkstoff, Handelsname)"))
         self.medikamente.setToolTip(self.tr(
@@ -91,19 +120,9 @@ class AnalysierenSeite(QWidget):
             " „< 5 mg/l“ oder „von 6,2 %“); die Untersuchung selbst bleibt stehen, wenn sie"
             " nicht eigens gewählt ist. Standardmäßig aus."))
         form.addRow(self.messwerte)
-        self.unscharf = QCheckBox(
-            self.tr("Textdateien: abweichend geschriebene Namen unscharf suchen (Transkripte)"))
-        self.unscharf.setChecked(True)
-        form.addRow(self.unscharf)
-        self.ner = QCheckBox(self.tr("Unbekannte Personen und Orte per NER suchen (rät)"))
-        self.ner.setEnabled(nermodul.verfuegbar())
-        self.ner.setChecked(nermodul.verfuegbar())
-        if not nermodul.verfuegbar():
-            self.ner.setToolTip(
-                self.tr("Extra 'ner' und ein deutsches spaCy-Modell installieren."))
-        form.addRow(self.ner)
-        aussen.addWidget(optionen)
 
+    def _baue_vokabular(self, aussen: QVBoxLayout) -> None:
+        """The line that says how many terms the vocabulary protects."""
         vokabular = QGroupBox(self.tr("Fachvokabular (geschützt vor NER und unscharfer Suche)"))
         vz = QHBoxLayout(vokabular)
         self.vokabular_info = QLabel("")
@@ -111,6 +130,9 @@ class AnalysierenSeite(QWidget):
         vz.addWidget(self.vokabular_info, 1)
         aussen.addWidget(vokabular)
 
+    def _baue_empfaenger(self, aussen: QVBoxLayout) -> None:
+        """The recipient group: tick box, key source with check button, the fingerprint
+        line; disabled without an OpenPGP engine."""
         weitergabe = QGroupBox(self.tr("Empfänger (Pseudonyme zum Weitergeben)"))
         wf = QFormLayout(weitergabe)
         self.weitergabe = QCheckBox(self.tr(
@@ -133,7 +155,6 @@ class AnalysierenSeite(QWidget):
         self.empfaenger_info.setWordWrap(True)
         self.empfaenger_info.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         wf.addRow(self.empfaenger_info)
-        self.zertifikat: pgpmodul.Zertifikat | None = None
         einstellungen = lade_einstellungen()
         self.empfaenger_quelle.setText(einstellungen.empfaenger_schluessel)
         if not pgpmodul.verfuegbar():
@@ -141,6 +162,8 @@ class AnalysierenSeite(QWidget):
             weitergabe.setToolTip(self.tr("Extra 'pgp' (pysequoia) oder GnuPG installieren."))
         aussen.addWidget(weitergabe)
 
+    def _baue_dokumente(self, aussen: QVBoxLayout) -> None:
+        """The list of the session's documents with their state, and the progress bar."""
         aussen.addWidget(QLabel(self.tr("Dokumente dieser Sitzung:")))
         self.liste = QListWidget()
         aussen.addWidget(self.liste, 1)
@@ -149,6 +172,8 @@ class AnalysierenSeite(QWidget):
         self.fortschritt.setValue(0)
         aussen.addWidget(self.fortschritt)
 
+    def _baue_knoepfe(self, aussen: QVBoxLayout) -> None:
+        """The status line and the two buttons: analyse, analyse again."""
         unten = QHBoxLayout()
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -168,6 +193,7 @@ class AnalysierenSeite(QWidget):
 
     # -- state -----------------------------------------------------------------------------------
     def aktualisiere(self) -> None:
+        """Refresh the document list with each document's state and the vocabulary line."""
         self.liste.clear()
         for d in self.sitzung.dokumente:
             self.liste.addItem(f"{d.pfad.name}  –  {d.zustand}")
@@ -175,6 +201,7 @@ class AnalysierenSeite(QWidget):
 
     # -- vocabulary --------------------------------------------------------------------------------
     def _vokabular_anzeigen(self) -> None:
+        """Say how many terms are protected and from which sources."""
         fb = fachmodul.standard()
         quellen = ", ".join(f"{name} {n}" for name, n in fb.quellen)
         self.vokabular_info.setText(self.tr(
@@ -182,6 +209,7 @@ class AnalysierenSeite(QWidget):
             " „3 Fachvokabular“.").format(gesamt=fb.anzahl, quellen=quellen))
 
     def _optionen_uebernehmen(self) -> None:
+        """Copy the ticked options into the session's run options."""
         o = self.sitzung.optionen
         o.datumsform = self.datum.currentData()
         o.codes = self.codes.isChecked()
@@ -196,12 +224,14 @@ class AnalysierenSeite(QWidget):
         o.unscharf_text = self.unscharf.isChecked()
 
     def _melde(self, titel: str, text: str) -> None:
+        """Show an information box; synchronous mode (tests) raises instead of blocking."""
         if self.synchron:
             raise RuntimeError(text)
         QMessageBox.information(self, titel, text)
 
     # -- recipient ---------------------------------------------------------------------------------
     def empfaenger_waehlen(self) -> None:
+        """Pick the recipient's public key file and check it at once."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Öffentlicher Schlüssel des Empfängers"), "",
             self.tr("OpenPGP-Schlüssel (*.asc *.gpg *.pgp);;Alle Dateien (*)"))
@@ -224,16 +254,12 @@ class AnalysierenSeite(QWidget):
             self.empfaenger_info.setText(self.tr("Schlüssel nicht brauchbar: {fehler}").format(
                 fehler=e))
             return None
-        e = lade_einstellungen()
-        warnung = ""
-        if e.empfaenger_schluessel == quelle and e.empfaenger_fingerabdruck \
-                and e.empfaenger_fingerabdruck != z.fingerabdruck:
-            warnung = self.tr(" ACHTUNG: Der Fingerabdruck weicht vom früher geprüften ab"
-                              " ({alt}). Nur weiterverwenden, wenn der Empfänger den neuen"
-                              " Schlüssel bestätigt hat.").format(alt=e.empfaenger_fingerabdruck)
-        e.empfaenger_schluessel, e.empfaenger_fingerabdruck = quelle, z.fingerabdruck
+        einstellungen = lade_einstellungen()
+        warnung = self._fingerabdruck_warnung(einstellungen, quelle, z)
+        einstellungen.empfaenger_schluessel = quelle
+        einstellungen.empfaenger_fingerabdruck = z.fingerabdruck
         try:
-            speichere_einstellungen(e)
+            speichere_einstellungen(einstellungen)
         except OSError:
             pass
         self.zertifikat = z
@@ -243,38 +269,71 @@ class AnalysierenSeite(QWidget):
             + warnung)
         return z
 
+    def _fingerabdruck_warnung(self, gemerkt: Einstellungen, quelle: str,
+                               z: pgpmodul.Zertifikat) -> str:
+        """The warning when the key at the pinned address no longer has the pinned
+        fingerprint; an empty string otherwise."""
+        if gemerkt.empfaenger_schluessel == quelle and gemerkt.empfaenger_fingerabdruck \
+                and gemerkt.empfaenger_fingerabdruck != z.fingerabdruck:
+            return self.tr(" ACHTUNG: Der Fingerabdruck weicht vom früher geprüften ab"
+                           " ({alt}). Nur weiterverwenden, wenn der Empfänger den neuen"
+                           " Schlüssel bestätigt hat.").format(alt=gemerkt.empfaenger_fingerabdruck)
+        return ""
+
     # -- analysis ----------------------------------------------------------------------------------
     def analysieren(self, erneut: bool = False) -> None:
-        if self.weitergabe.isChecked():
-            if self.zertifikat is None and self.empfaenger_pruefen() is None:
-                self._melde(self.tr("Empfänger"), self.tr(
-                    "Für einen Empfänger braucht es dessen öffentlichen Schlüssel."))
-                return
-            if self.sitzung.empfaenger is None or \
-                    self.sitzung.empfaenger.fingerabdruck != self.zertifikat.fingerabdruck:
-                self.sitzung.setze_empfaenger(self.zertifikat)
-        elif self.sitzung.empfaenger is not None:
-            self.sitzung.setze_empfaenger(None)
-        if self.sitzung.patient is None:
-            self._melde(self.tr("Analysieren"), self.tr("Bitte zuerst einen Patienten übernehmen."))
-            return
-        if not self.sitzung.dokumente:
-            self._melde(self.tr("Analysieren"), self.tr("Bitte zuerst Dokumente hinzufügen."))
-            return
-        if self.laedt():
-            self._melde(self.tr("Analysieren"),
-                        self.tr("Die Dokumente werden noch geladen; bitte einen Moment warten."))
+        """Run the analysis over the documents not analysed yet (over all of them with
+        ``erneut``), after settling the recipient and checking patient and documents."""
+        if not self._empfaenger_uebernehmen() or not self._startbereit():
             return
         self._optionen_uebernehmen()
-        self._warteschlange = [d for d in self.sitzung.dokumente
-                               if erneut or d.vorbereitung is None
-                               or d.vorbereitung.abgeschlossen]
+        self._warteschlange = self._zu_analysieren(erneut)
         self._gesamt = len(self._warteschlange)
         self.fortschritt.setRange(0, max(1, self._gesamt))
         self.fortschritt.setValue(0)
         self._naechstes()
 
+    def _empfaenger_uebernehmen(self) -> bool:
+        """Switch the session's recipient mode to match the tick box; False when a
+        recipient is wanted but no usable key is at hand (the user has been told)."""
+        if not self.weitergabe.isChecked():
+            if self.sitzung.empfaenger is not None:
+                self.sitzung.setze_empfaenger(None)
+            return True
+        zertifikat = self.zertifikat if self.zertifikat is not None else self.empfaenger_pruefen()
+        if zertifikat is None:
+            self._melde(self.tr("Empfänger"), self.tr(
+                "Für einen Empfänger braucht es dessen öffentlichen Schlüssel."))
+            return False
+        if self.sitzung.empfaenger is None or \
+                self.sitzung.empfaenger.fingerabdruck != zertifikat.fingerabdruck:
+            self.sitzung.setze_empfaenger(zertifikat)
+        return True
+
+    def _startbereit(self) -> bool:
+        """False, with a message, while the patient or the documents are missing or the
+        documents are still being loaded."""
+        if self.sitzung.patient is None:
+            self._melde(self.tr("Analysieren"), self.tr("Bitte zuerst einen Patienten übernehmen."))
+            return False
+        if not self.sitzung.dokumente:
+            self._melde(self.tr("Analysieren"), self.tr("Bitte zuerst Dokumente hinzufügen."))
+            return False
+        if self.laedt():
+            self._melde(self.tr("Analysieren"),
+                        self.tr("Die Dokumente werden noch geladen; bitte einen Moment warten."))
+            return False
+        return True
+
+    def _zu_analysieren(self, erneut: bool) -> list[Dokument]:
+        """The documents to run: those not analysed yet or already exported, every one
+        when a re-analysis is wanted."""
+        return [d for d in self.sitzung.dokumente
+                if erneut or d.vorbereitung is None or d.vorbereitung.abgeschlossen]
+
     def _naechstes(self) -> None:
+        """Analyse the next queued document (in a worker thread unless synchronous) or,
+        with the queue empty, report completion and emit ``analysiert``."""
         self.aktualisiere()
         if not self._warteschlange:
             self.knopf.setEnabled(True)
@@ -303,11 +362,14 @@ class AnalysierenSeite(QWidget):
         self._arbeiter.start()
 
     def _fertig(self, d: Dokument) -> None:
+        """Take the analysed document off the queue and go on with the next."""
         if self._warteschlange and self._warteschlange[0] is d:
             self._warteschlange.pop(0)
         self._naechstes()
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
+        """Handle a failed analysis: an uncertain match asks the user and retries the same
+        document (or stops the run), any other error is shown and the run goes on."""
         if self.synchron:  # tests: never block on a modal dialog
             raise e
         if isinstance(e, UnsichererAbgleich):

@@ -44,12 +44,27 @@ class AufbereitenSeite(QWidget):
         self._stumm = False  # while the form is being filled from the data
         aussen = QVBoxLayout(self)
         teiler = QSplitter(Qt.Orientation.Horizontal)
+        self._baue_baum(teiler)
+        self._baue_bilder(teiler)
+        teiler.addWidget(self._baue_steuerung())
+        teiler.setSizes([180, 760, 300])
+        aussen.addWidget(teiler, 1)
+        if not aufmodul.verfuegbar():
+            self.hinweis.setText(self.tr(
+                "Bildaufbereitung braucht OpenCV und NumPy (Extra 'ocr'); hier sind nur"
+                " Masken möglich."))
 
+    # -- building the page -------------------------------------------------------------------------
+    def _baue_baum(self, teiler: QSplitter) -> None:
+        """The tree of documents and their pages without a text layer, left of the views."""
         self.baum = QTreeWidget()
         self.baum.setHeaderLabels([self.tr("Dokument / Seite")])
         self.baum.currentItemChanged.connect(self._seite_gewaehlt)
         teiler.addWidget(self.baum)
 
+    def _baue_bilder(self, teiler: QSplitter) -> None:
+        """The before and after views side by side, linked in scroll and zoom.  Masks are
+        drawn on the result only; Cmd/Ctrl+Z takes the last one back."""
         self.bilder = QSplitter(Qt.Orientation.Horizontal)  # the user moves the divider
         links_w = QWidget()
         links = QVBoxLayout(links_w)
@@ -83,11 +98,31 @@ class AufbereitenSeite(QWidget):
         rueckgaengig.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         rueckgaengig.activated.connect(self.rueckgaengig)
 
+    def _baue_steuerung(self) -> QWidget:
+        """The column of controls on the right: note, the two step groups, the page
+        buttons and the zoom buttons."""
         rechts = QWidget()
         r = QVBoxLayout(rechts)
         self.hinweis = QLabel("")
         self.hinweis.setWordWrap(True)
         r.addWidget(self.hinweis)
+        schritte, form = self._baue_schritte()
+        weitere = self._baue_weitere_schritte()
+        self._baue_drehknoepfe(form)
+        self._baue_maskenknoepfe(form)
+        r.addWidget(schritte)
+        r.addWidget(weitere)
+        self._verbinde_formular()
+        r.addLayout(self._baue_seitenknoepfe())
+        r.addStretch(1)
+        r.addLayout(self._baue_zoomknoepfe())
+        return rechts
+
+    def _baue_schritte(self) -> tuple[QGroupBox, QFormLayout]:
+        """The group "steps for this page": tilt, sheet corners, upscaling, letter mode,
+        background and black-and-white.  The form comes back as well, because the rotate
+        and mask rows join it only after the sliders of the second group (the order in
+        which widgets are created is the tab order)."""
         schritte = QGroupBox(self.tr("Schritte für diese Seite"))
         form = QFormLayout(schritte)
         self.begradigen = QCheckBox(self.tr("Schräglage begradigen"))
@@ -120,6 +155,11 @@ class AufbereitenSeite(QWidget):
         form.addRow(self.hintergrund)
         self.schwarzweiss = QCheckBox(self.tr("Schwarz-Weiß"))
         form.addRow(self.schwarzweiss)
+        return schritte, form
+
+    def _baue_weitere_schritte(self) -> QGroupBox:
+        """The group "further steps": edges, coloured ink, the three steps with a
+        strength slider, lines, and the button that detects the orientation."""
         weitere = QGroupBox(self.tr("Weitere Schritte"))
         wf = QFormLayout(weitere)
         self.raender = QCheckBox(self.tr("Dunkle Ränder säubern"))
@@ -133,18 +173,7 @@ class AufbereitenSeite(QWidget):
         self.regler: dict[str, QSlider] = {}
         for name, kasten in (("entrauschen", self.entrauschen), ("kontrast", self.kontrast),
                              ("schaerfen", self.schaerfen)):
-            regler = QSlider(Qt.Orientation.Horizontal)
-            regler.setRange(1, 5)
-            regler.setValue(2)
-            regler.setTickPosition(QSlider.TickPosition.TicksBelow)
-            regler.setTickInterval(1)
-            regler.setMaximumWidth(140)
-            regler.setToolTip(self.tr("Stärke 1 (sanft) bis 5 (kräftig)"))
-            regler.setEnabled(False)
-            kasten.toggled.connect(regler.setEnabled)
-            regler.valueChanged.connect(
-                lambda _w, r=regler: None if r.isSliderDown() else self._formular_uebernehmen())
-            regler.sliderReleased.connect(self._formular_uebernehmen)
+            regler = self._baue_regler(kasten)
             zeile_ = QHBoxLayout()
             zeile_.addWidget(kasten, 1)
             zeile_.addWidget(regler)
@@ -157,6 +186,27 @@ class AufbereitenSeite(QWidget):
             " entscheidet ein kurzer OCR-Vergleich (dauert einige Sekunden)."))
         self.ausrichtung.clicked.connect(self.ausrichtung_erkennen)
         wf.addRow(self.ausrichtung)
+        return weitere
+
+    def _baue_regler(self, kasten: QCheckBox) -> QSlider:
+        """A strength slider 1 to 5 for the step of ``kasten``: enabled with the box,
+        applied when the knob is released, not on every tick while it is dragged."""
+        regler = QSlider(Qt.Orientation.Horizontal)
+        regler.setRange(1, 5)
+        regler.setValue(2)
+        regler.setTickPosition(QSlider.TickPosition.TicksBelow)
+        regler.setTickInterval(1)
+        regler.setMaximumWidth(140)
+        regler.setToolTip(self.tr("Stärke 1 (sanft) bis 5 (kräftig)"))
+        regler.setEnabled(False)
+        kasten.toggled.connect(regler.setEnabled)
+        regler.valueChanged.connect(
+            lambda _w: None if regler.isSliderDown() else self._formular_uebernehmen())
+        regler.sliderReleased.connect(self._formular_uebernehmen)
+        return regler
+
+    def _baue_drehknoepfe(self, form: QFormLayout) -> None:
+        """The row of rotate buttons in the steps group."""
         drehen = QHBoxLayout()
         for text, grad in ((self.tr("↺ 90°"), 270), (self.tr("↻ 90°"), 90),
                            (self.tr("180°"), 180)):
@@ -165,6 +215,9 @@ class AufbereitenSeite(QWidget):
             k.clicked.connect(lambda _c=False, g=grad: self.drehe(g))
             drehen.addWidget(k)
         form.addRow(self.tr("Drehen"), drehen)
+
+    def _baue_maskenknoepfe(self, form: QFormLayout) -> None:
+        """The row in the steps group that takes erased areas back: the last one or all."""
         masken_zeile = QHBoxLayout()
         self.letzte_zurueck = QPushButton(self.tr("Letzten Bereich zurückholen (Cmd/Strg+Z)"))
         self.letzte_zurueck.setMinimumHeight(32)
@@ -175,8 +228,10 @@ class AufbereitenSeite(QWidget):
         masken_zeile.addWidget(self.letzte_zurueck, 1)
         masken_zeile.addWidget(self.masken_loeschen)
         form.addRow(masken_zeile)
-        r.addWidget(schritte)
-        r.addWidget(weitere)
+
+    def _verbinde_formular(self) -> None:
+        """Every switch, the upscaling factor and the angle write the form back into
+        the plan of the page."""
         for w in (self.begradigen, self.entzerren, self.textmodus, self.hintergrund,
                   self.schwarzweiss, self.raender, self.farbe_entfernen, self.entrauschen,
                   self.kontrast, self.schaerfen, self.linien_entfernen):
@@ -184,6 +239,9 @@ class AufbereitenSeite(QWidget):
         self.hochskalieren.currentIndexChanged.connect(lambda _i: self._formular_uebernehmen())
         self.winkel.valueChanged.connect(lambda _w: self._formular_uebernehmen())
 
+    def _baue_seitenknoepfe(self) -> QVBoxLayout:
+        """The buttons that act on the plan as a whole: restore the suggestion, switch
+        the page off, copy the steps to every page."""
         knoepfe = QVBoxLayout()
         self.vorschlag = QPushButton(self.tr("Vorschlag wiederherstellen"))
         self.vorschlag.clicked.connect(self.vorschlag_wiederherstellen)
@@ -193,8 +251,10 @@ class AufbereitenSeite(QWidget):
         self.alle.clicked.connect(self.auf_alle_uebertragen)
         for k in (self.vorschlag, self.nichts, self.alle):
             knoepfe.addWidget(k)
-        r.addLayout(knoepfe)
-        r.addStretch(1)
+        return knoepfe
+
+    def _baue_zoomknoepfe(self) -> QHBoxLayout:
+        """The zoom buttons that act on both views at once."""
         zoom = QHBoxLayout()
         for text, aktion in (("+", lambda: self._zoom(1.25)), ("−", lambda: self._zoom(0.8)),
                              ("1:1", self._zoom_zuruecksetzen)):
@@ -204,17 +264,12 @@ class AufbereitenSeite(QWidget):
             k.clicked.connect(aktion)
             zoom.addWidget(k)
         zoom.addStretch(1)
-        r.addLayout(zoom)
-        teiler.addWidget(rechts)
-        teiler.setSizes([180, 760, 300])
-        aussen.addWidget(teiler, 1)
-        if not aufmodul.verfuegbar():
-            self.hinweis.setText(self.tr(
-                "Bildaufbereitung braucht OpenCV und NumPy (Extra 'ocr'); hier sind nur"
-                " Masken möglich."))
+        return zoom
 
     # -- navigation ------------------------------------------------------------------------------
     def aktualisiere(self) -> None:
+        """Rebuild the tree of pages without a text layer and show the first of them.
+        Without any, both views are emptied and the note says so."""
         self.baum.clear()
         for d in self.sitzung.dokumente:
             if d.vorlage is None or not d.vorlage.kandidaten:
@@ -227,18 +282,27 @@ class AufbereitenSeite(QWidget):
                 knoten.addChild(kind)
             self.baum.addTopLevelItem(knoten)
             knoten.setExpanded(True)
-        if self.baum.topLevelItemCount():
-            erster = self.baum.topLevelItem(0)
-            self.baum.setCurrentItem(erster.child(0) if erster.childCount() else erster)
-        else:
-            self.dokument = None
-            self.vorher.zeige_leer()
-            self.nachher.zeige_leer()
-            self.hinweis.setText(self.tr(
-                "Keine Seiten ohne Textebene: nichts aufzubereiten. Scans und Fotos erscheinen"
-                " hier mit einem Vorschlag."))
+        if self._waehle_erste_seite():
+            return
+        self.dokument = None
+        self.vorher.zeige_leer()
+        self.nachher.zeige_leer()
+        self.hinweis.setText(self.tr(
+            "Keine Seiten ohne Textebene: nichts aufzubereiten. Scans und Fotos erscheinen"
+            " hier mit einem Vorschlag."))
 
-    def _seite_gewaehlt(self, aktuell: QTreeWidgetItem | None, _vorher=None) -> None:
+    def _waehle_erste_seite(self) -> bool:
+        """Make the first page of the first document current; False when the tree is empty."""
+        erster = self.baum.topLevelItem(0)
+        if erster is None:
+            return False
+        kind = erster.child(0)
+        self.baum.setCurrentItem(erster if kind is None else kind)
+        return True
+
+    def _seite_gewaehlt(self, aktuell: QTreeWidgetItem | None,
+                        _vorher: QTreeWidgetItem | None = None) -> None:
+        """Show the page behind the current tree item: fill the form, draw both views."""
         if aktuell is None:
             return
         kennung, nummer = aktuell.data(0, Qt.ItemDataRole.UserRole)
@@ -252,12 +316,16 @@ class AufbereitenSeite(QWidget):
 
     # -- data <-> form -----------------------------------------------------------------------------
     def einstellung(self) -> aufmodul.Aufbereitung | None:
+        """The plan of the current page, created from the suggestion on first access;
+        None while no document is shown."""
         if self.dokument is None or self.dokument.vorlage is None:
             return None
         return self.dokument.aufbereitung.setdefault(
             self.seite, _kopie(self.dokument.vorlage.vorschlaege.get(self.seite)))
 
     def _formular_fuellen(self) -> None:
+        """Copy the plan of the current page into the switches, muted so that nothing
+        is written back while the form is being filled."""
         a = self.einstellung()
         if a is None:
             return
@@ -284,6 +352,7 @@ class AufbereitenSeite(QWidget):
             self._stumm = False
 
     def _formular_uebernehmen(self) -> None:
+        """Write the switches back into the plan of the current page and redraw."""
         if self._stumm:
             return
         a = self.einstellung()
@@ -309,6 +378,8 @@ class AufbereitenSeite(QWidget):
 
     # -- actions -----------------------------------------------------------------------------------
     def drehe(self, grad: int) -> None:
+        """Rotate the current page by ``grad`` degrees; masks drawn on the old
+        orientation are dropped."""
         a = self.einstellung()
         if a is None:
             return
@@ -317,6 +388,7 @@ class AufbereitenSeite(QWidget):
         self.zeichne()
 
     def maske(self, rect: tuple[float, float, float, float]) -> None:
+        """Erase the area ``rect`` (points of the result page) on the current page."""
         a = self.einstellung()
         if a is None:
             return
@@ -324,6 +396,7 @@ class AufbereitenSeite(QWidget):
         self.zeichne()
 
     def loesche_masken(self) -> None:
+        """Take back every erased area of the current page."""
         a = self.einstellung()
         if a is not None:
             a.masken = []
@@ -357,6 +430,7 @@ class AufbereitenSeite(QWidget):
         self.zeichne()
 
     def vorschlag_wiederherstellen(self) -> None:
+        """Replace the plan of the current page by a fresh copy of the suggestion."""
         if self.dokument is None or self.dokument.vorlage is None:
             return
         self.dokument.aufbereitung[self.seite] = _kopie(
@@ -365,6 +439,7 @@ class AufbereitenSeite(QWidget):
         self.zeichne()
 
     def nichts_aufbereiten(self) -> None:
+        """Switch every step off for the current page: the OCR reads it as it is."""
         if self.dokument is None:
             return
         self.dokument.aufbereitung[self.seite] = aufmodul.Aufbereitung()
@@ -392,6 +467,8 @@ class AufbereitenSeite(QWidget):
 
     # -- drawing -----------------------------------------------------------------------------------
     def zeichne(self) -> None:
+        """Render the current page before and after the plan and describe the steps in
+        the note; a failing step is reported there instead of crashing."""
         a = self.einstellung()
         if a is None or self.dokument is None or self.dokument.vorlage is None:
             return
@@ -415,15 +492,18 @@ class AufbereitenSeite(QWidget):
         self.hinweis.setText(text)
 
     def _zoom(self, faktor: float) -> None:
+        """Zoom both views by ``faktor``."""
         self.vorher.zoom(faktor)
         self.nachher.zoom(faktor)
 
     def _zoom_zuruecksetzen(self) -> None:
+        """Show both views at 1:1 again."""
         self.vorher.zoom_zuruecksetzen()
         self.nachher.zoom_zuruecksetzen()
 
 
 def _kopie(a: aufmodul.Aufbereitung | None) -> aufmodul.Aufbereitung:
+    """An independent copy of a plan (own mask and corner lists); an empty plan for None."""
     if a is None:
         return aufmodul.Aufbereitung()
     return aufmodul.Aufbereitung(**{**a.__dict__, "masken": list(a.masken),

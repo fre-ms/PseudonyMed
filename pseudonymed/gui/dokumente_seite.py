@@ -27,6 +27,9 @@ from pseudonymed.gui.sitzung import Dokument, Sitzung
 
 
 class Ablage(QListWidget):
+    """The file list that takes drops from the file manager: local files and folders
+    arrive as paths through ``abgelegt``, anything else is ignored."""
+
     abgelegt = Signal(list)
 
     def __init__(self, eltern: QWidget | None = None) -> None:
@@ -50,6 +53,10 @@ class Ablage(QListWidget):
 
 
 class DokumenteSeite(QWidget):
+    """The documents step: the list of inputs with their working state, the paper
+    format for images, and the embedded clean-up panel for pages without a text layer.
+    Files are opened in the background as soon as they arrive."""
+
     geladen = Signal()  # every pending document is open and, where needed, has a suggestion
     weiter = Signal()  # the user wants to go on to the analysis
 
@@ -108,9 +115,11 @@ class DokumenteSeite(QWidget):
     # -- files -------------------------------------------------------------------------------------
     @property
     def laedt(self) -> bool:
+        """True while at least one document is still being opened."""
         return bool(self._warteschlange)
 
     def dateien_waehlen(self) -> None:
+        """Let the user pick files in a dialog and add them."""
         pfade, _ = QFileDialog.getOpenFileNames(self, self.tr("Dokumente"), "", self.tr(
             "Dokumente (*.pdf *.jpg *.jpeg *.png *.tif *.tiff *.heic *.heif *.bmp *.webp"
             " *.txt *.md *.srt *.vtt *.json *.eml)"))
@@ -149,6 +158,7 @@ class DokumenteSeite(QWidget):
                 self._naechstes()
 
     def entfernen(self) -> None:
+        """Take the selected entries out of the list, the queue and the session."""
         for eintrag in self.liste.selectedItems():
             d = self._dokument(eintrag)
             if d is not None:
@@ -160,13 +170,17 @@ class DokumenteSeite(QWidget):
         self.aufbereiten.aktualisiere()
 
     def _dokument(self, eintrag: QListWidgetItem) -> Dokument | None:
+        """The session document behind a list entry; None once it has been removed."""
         kennung = eintrag.data(Qt.ItemDataRole.UserRole)
         return next((d for d in self.sitzung.dokumente if id(d) == kennung), None)
 
     def _text(self, d: Dokument) -> str:
+        """The list entry: file name and working state."""
         return f"{d.pfad.name}  –  {self._zustand(d)}"
 
     def _zustand(self, d: Dokument) -> str:
+        """The working state of ``d`` in the user's words, from the most advanced
+        (error, exported) back to "still loading"."""
         if d.fehler:
             return self.tr("Fehler: {fehler}").format(fehler=d.fehler)
         if d.ergebnis is not None:
@@ -193,6 +207,8 @@ class DokumenteSeite(QWidget):
         return self.tr("Textdatei")
 
     def aktualisiere(self) -> None:
+        """Refresh every list entry and the status line (count, pages to clean up,
+        loading)."""
         for i in range(self.liste.count()):
             eintrag = self.liste.item(i)
             d = self._dokument(eintrag)
@@ -209,11 +225,14 @@ class DokumenteSeite(QWidget):
 
     # -- loading -----------------------------------------------------------------------------------
     def _melde(self, titel: str, text: str) -> None:
+        """Warn the user; in the synchronous test mode raise instead of a dialog."""
         if self.synchron:
             raise RuntimeError(text)
         QMessageBox.warning(self, titel, text)
 
     def _naechstes(self) -> None:
+        """Open the next queued document (inline in the synchronous test mode, else in a
+        worker thread); with the queue empty, refresh both panels and announce it."""
         if not self._warteschlange:
             self.aktualisiere()
             self.aufbereiten.aktualisiere()
@@ -235,11 +254,13 @@ class DokumenteSeite(QWidget):
         self._arbeiter.start()
 
     def _fertig(self, d: Dokument) -> None:
+        """Document ``d`` is open: take it off the queue and go on."""
         if d in self._warteschlange:
             self._warteschlange.remove(d)
         self._naechstes()
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
+        """Opening ``d`` failed: remember the error, show it, go on with the queue."""
         d.fehler = str(e)
         if d in self._warteschlange:
             self._warteschlange.remove(d)

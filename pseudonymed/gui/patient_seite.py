@@ -51,6 +51,7 @@ class Listenfeld(QPlainTextEdit):
         super().insertFromMimeData(quelle)
 
     def haenge_an(self, zeilen: list[str]) -> int:
+        """Append the lines that are not in the field yet and return how many were new."""
         vorhanden = [z.strip() for z in self.toPlainText().splitlines() if z.strip()]
         neue = [z for z in zeilen if z not in vorhanden]
         if neue:
@@ -59,6 +60,8 @@ class Listenfeld(QPlainTextEdit):
 
 
 def zeilen_aus_datei(pfad: Path) -> list[str]:
+    """The distinct non-empty lines of a text file, # comments skipped; an unreadable
+    file yields nothing."""
     try:
         text = lese_textdatei(pfad)
     except OSError:
@@ -72,6 +75,9 @@ def zeilen_aus_datei(pfad: Path) -> list[str]:
 
 
 def _personen(text: str) -> list[Person]:
+    """One person per non-empty line: leading titles (Dr., Prof., med., PD, Dipl.) are
+    split off, "Nachname, Vorname" is read as such, otherwise the last word is the
+    surname."""
     personen = []
     for zeile in text.splitlines():
         zeile = zeile.strip()
@@ -92,15 +98,29 @@ def _personen(text: str) -> list[Person]:
 
 
 class PatientSeite(QWidget):
+    """Step "1 Patientendaten": the patient from the address book, a vCard or a patient
+    file, with the derived identifiers in editable fields and three list fields for
+    relatives, referrers and further terms."""
+
     uebernommen = Signal(object)  # Patient
 
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
+        """Build the page region by region, top to bottom."""
         super().__init__(eltern)
         self.sitzung = sitzung
         self.synchron = False
         self._treffer: list[Patient] = []
         aussen = QVBoxLayout(self)
+        self._baue_quelle(aussen)
+        self._baue_treffer(aussen)
+        self._baue_felder(aussen)
+        self._baue_zusatz(aussen)
+        self._baue_fusszeile(aussen)
 
+    # -- build -------------------------------------------------------------------------------------
+    def _baue_quelle(self, aussen: QVBoxLayout) -> None:
+        """The "Quelle" group: the search field and the buttons for address book, patient
+        file, template and vCard."""
         quelle = QGroupBox(self.tr("Quelle"))
         q = QHBoxLayout(quelle)
         self.suche = QLineEdit()
@@ -131,6 +151,8 @@ class PatientSeite(QWidget):
         q.addWidget(knopf_vcf)
         aussen.addWidget(quelle)
 
+    def _baue_treffer(self, aussen: QVBoxLayout) -> None:
+        """The hit list, hidden until a search or a file delivered patients."""
         self.treffer_gruppe = QGroupBox(self.tr("Treffer (anklicken übernimmt die Daten)"))
         tg = QVBoxLayout(self.treffer_gruppe)
         self.liste = QListWidget()
@@ -140,6 +162,9 @@ class PatientSeite(QWidget):
         self.treffer_gruppe.setVisible(False)  # shown once a search or a file delivered hits
         aussen.addWidget(self.treffer_gruppe)
 
+    def _baue_felder(self, aussen: QVBoxLayout) -> None:
+        """The form of identifiers: the salutation box and one line field per identifier,
+        reachable by name through ``self.f``."""
         felder = QGroupBox(self.tr("Identifikatoren (werden geschwärzt)"))
         form = QFormLayout(felder)
         self.geschlecht = QComboBox()
@@ -163,6 +188,8 @@ class PatientSeite(QWidget):
         self.f["hausnummer"].setMaximumWidth(120)
         aussen.addWidget(felder)
 
+    def _baue_zusatz(self, aussen: QVBoxLayout) -> None:
+        """The three list fields for relatives, referrers and further terms, side by side."""
         zusatz = QGroupBox(self.tr(
             "Weitere Personen und Begriffe (eine je Zeile; Textdatei hierher ziehen)"))
         z = QHBoxLayout(zusatz)
@@ -180,6 +207,8 @@ class PatientSeite(QWidget):
             z.addWidget(w)
         aussen.addWidget(zusatz)
 
+    def _baue_fusszeile(self, aussen: QVBoxLayout) -> None:
+        """The hint line and the default button that hands the patient to the session."""
         unten = QHBoxLayout()
         self.hinweis = QLabel("")
         self.hinweis.setWordWrap(True)
@@ -192,16 +221,21 @@ class PatientSeite(QWidget):
 
     # -- sources -----------------------------------------------------------------------------------
     def _melde(self, titel: str, text: str) -> None:
+        """Show an information box, or raise in the synchronous test mode (no modal dialogue
+        can be answered offscreen)."""
         if self.synchron:
             raise RuntimeError(text)
         QMessageBox.information(self, titel, text)
 
     def adressbuecher_einrichten(self) -> None:
+        """Open the address-book dialogue and confirm in the hint line when it was saved."""
         dialog = AdressbuchDialog(self)
         if dialog.exec():
             self.hinweis.setText(self.tr("Adressbücher gespeichert."))
 
     def suchen(self) -> adressbuch.Suchergebnis | None:
+        """Search the configured address books for the field's term and show the hits;
+        None without a term or without any address book (then the dialogue opens)."""
         begriff = self.suche.text().strip()
         if not begriff:
             return None
@@ -221,6 +255,7 @@ class PatientSeite(QWidget):
         return ergebnis
 
     def datei_laden(self) -> None:
+        """Pick a JSON or TOML patient file and show its patient as the single hit."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Patientendatei"), "",
             self.tr("Patientendatei JSON/TOML (*.json *.toml);;Alle Dateien (*)"))
@@ -231,6 +266,7 @@ class PatientSeite(QWidget):
                 QMessageBox.warning(self, self.tr("Patientendatei"), str(e))
 
     def vorlage_speichern(self) -> None:
+        """Write an empty patient file (JSON) to a place of the user's choice."""
         pfad, _ = QFileDialog.getSaveFileName(self, self.tr("Vorlage speichern"),
                                               "patient.json", self.tr("JSON (*.json)"))
         if pfad:
@@ -238,11 +274,14 @@ class PatientSeite(QWidget):
             self.hinweis.setText(self.tr("Vorlage geschrieben: {pfad}").format(pfad=pfad))
 
     def vcf_laden(self) -> None:
+        """Pick a vCard file and show its named contacts as hits."""
         pfad, _ = QFileDialog.getOpenFileName(self, self.tr("vCard"), "", self.tr("vCard (*.vcf)"))
         if pfad:
             self.zeige_treffer([p for p in patienten_aus_vcf(pfad) if p.nachname or p.vorname])
 
     def zeige_treffer(self, patienten: list[Patient]) -> None:
+        """List the patients found; a single hit fills the form at once, none reports
+        "Kein Treffer"."""
         self._treffer = patienten
         self.treffer_gruppe.setVisible(bool(patienten))
         self.liste.clear()
@@ -257,12 +296,14 @@ class PatientSeite(QWidget):
             self.hinweis.setText(self.tr("Kein Treffer."))
 
     def _treffer_gewaehlt(self) -> None:
+        """Fill the form with the hit selected in the list."""
         zeile = self.liste.currentRow()
         if 0 <= zeile < len(self._treffer):
             self.fuelle(self._treffer[zeile])
 
     # -- form ------------------------------------------------------------------------------------
     def fuelle(self, p: Patient) -> None:
+        """Put a patient's identifiers into the fields; the card's notes go to the hint line."""
         strasse, hausnummer = strasse_und_nummer(p.strasse)
         werte = {
             "nachname": p.nachname, "vorname": p.vorname, "geburtsname": p.geburtsname,
@@ -286,7 +327,10 @@ class PatientSeite(QWidget):
             self.hinweis.setText("")
 
     def patient(self) -> Patient:
+        """The patient as the fields describe them now; street and house number are joined
+        again, an unreadable birth date becomes None."""
         def liste(name: str) -> list[str]:
+            """The non-empty ;-separated entries of a field."""
             return [t.strip() for t in self.f[name].text().split(";") if t.strip()]
 
         geburtsdatum: dt.date | None = parse_datum(self.f["geburtsdatum"].text()) \
@@ -313,6 +357,8 @@ class PatientSeite(QWidget):
         )
 
     def uebernehmen(self) -> None:
+        """Hand the patient to the session and emit ``uebernommen``; a missing surname or an
+        unreadable birth date is refused with a warning."""
         p = self.patient()
         if not p.nachname:
             QMessageBox.warning(self, self.tr("Patient"), self.tr("Der Nachname fehlt."))

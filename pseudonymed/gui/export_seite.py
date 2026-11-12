@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.ablauf import Ergebnis
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
 from pseudonymed.pruefung.bericht import als_text
@@ -35,6 +36,9 @@ AMPELFARBEN = {"grau": "#9a9a9a", "gruen": "#28a040", "gelb": "#e6a500", "rot": 
 
 
 class ExportSeite(QWidget):
+    """Step 9: the re-check with its two lights (re-check, residual risk), the output
+    options and the export of the checked files."""
+
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
         super().__init__(eltern)
         self.sitzung = sitzung
@@ -43,7 +47,15 @@ class ExportSeite(QWidget):
         self._warteschlange: list[Dokument] = []
         self._phase = "pruefen"
         aussen = QVBoxLayout(self)
+        self._baue_ampeln(aussen)
+        self._baue_optionen(aussen)
+        self._baue_ausgabe(aussen)
+        self._ampel_setzen("grau", self.tr("Noch nicht geprüft."))
 
+    # -- layout ------------------------------------------------------------------------------------
+    def _baue_ampeln(self, aussen: QVBoxLayout) -> None:
+        """The two lights with their texts, the re-check button and the tick box that
+        confirms a red residual risk."""
         kopf = QHBoxLayout()
         kopf.addWidget(QLabel(self.tr("Erneute Prüfung des Ergebnisses:")))
         self.ampel_text = QLabel("")
@@ -71,6 +83,8 @@ class ExportSeite(QWidget):
         self.risiko_bestaetigt.toggled.connect(lambda _an: self._knopf_schalten())
         aussen.addWidget(self.risiko_bestaetigt)
 
+    def _baue_optionen(self, aussen: QVBoxLayout) -> None:
+        """The output group: target folder and the files and features to write."""
         optionen = QGroupBox(self.tr("Ausgabe"))
         form = QFormLayout(optionen)
         zeile = QHBoxLayout()
@@ -104,10 +118,11 @@ class ExportSeite(QWidget):
             form.addRow(w)
         aussen.addWidget(optionen)
 
+    def _baue_ausgabe(self, aussen: QVBoxLayout) -> None:
+        """The protocol view, the status line and the buttons (open folder, export)."""
         self.ausgabe = QPlainTextEdit()
         self.ausgabe.setReadOnly(True)
         aussen.addWidget(self.ausgabe, 1)
-
         unten = QHBoxLayout()
         self.status = QLabel("")
         self.oeffnen = QPushButton(self.tr("Zielordner öffnen"))
@@ -119,14 +134,15 @@ class ExportSeite(QWidget):
         unten.addWidget(self.oeffnen)
         unten.addWidget(self.knopf)
         aussen.addLayout(unten)
-        self._ampel_setzen("grau", self.tr("Noch nicht geprüft."))
 
     def ziel_waehlen(self) -> None:
+        """Pick the target folder."""
         ordner = QFileDialog.getExistingDirectory(self, self.tr("Zielordner"))
         if ordner:
             self.ziel.setText(ordner)
 
     def _optionen_uebernehmen(self) -> None:
+        """Copy the output options into the session's run options."""
         o = self.sitzung.optionen
         o.ziel_ordner = Path(self.ziel.text()) if self.ziel.text().strip() else None
         o.textdatei = self.textdatei.isChecked()
@@ -138,8 +154,13 @@ class ExportSeite(QWidget):
         o.schwaerzen.rastern = self.rastern.isChecked()
         o.vorschau = "immer" if self.vorschau.isChecked() else "auto"
 
+    def _pruefbereite(self) -> list[Dokument]:
+        """The documents analysed and not yet exported."""
+        return [d for d in self.sitzung.dokumente if d.pruefbereit]
+
     # -- traffic light -----------------------------------------------------------------------------
     def _ampel_setzen(self, farbe: str, text: str) -> None:
+        """Colour the re-check light, show its text, then refresh risk light and button."""
         self.ampel.setStyleSheet(
             f"background: {AMPELFARBEN[farbe]}; border-radius: 14px; border: 1px solid #555;")
         self.ampel.setToolTip(text)
@@ -149,6 +170,8 @@ class ExportSeite(QWidget):
         self._knopf_schalten()
 
     def _risiko_setzen(self) -> None:
+        """Colour the residual-risk light from the control step's estimate; the confirming
+        tick box appears only for red and is cleared otherwise."""
         gesamt, fruehere = self.sitzung.kontrolle()
         self.risiko_farbe = gesamt.ampel if gesamt is not None else "grau"
         self.risiko_ampel.setStyleSheet(
@@ -164,6 +187,8 @@ class ExportSeite(QWidget):
             self.risiko_bestaetigt.setChecked(False)
 
     def _knopf_schalten(self) -> None:
+        """Enable the export button only for green or yellow, and for a red residual risk
+        only once it is confirmed."""
         frei = self.farbe in ("gruen", "gelb")
         rot = getattr(self, "risiko_farbe", "grau") == "rot"
         if rot and not self.risiko_bestaetigt.isChecked():
@@ -184,72 +209,100 @@ class ExportSeite(QWidget):
             return
         self._optionen_uebernehmen()
         self._phase = "pruefen"
-        self._warteschlange = [d for d in self.sitzung.dokumente if d.pruefbereit]
-        if not self._warteschlange:
-            return
+        offen = self._pruefbereite()
+        if offen:
+            self._pruefung_starten(offen)
+
+    def _pruefung_starten(self, dokumente: list[Dokument]) -> None:
+        """Queue these documents for the re-check, clear the protocol and set the light."""
+        self._phase = "pruefen"
+        self._warteschlange = list(dokumente)
         self.ausgabe.clear()
         self._ampel_setzen("grau", self.tr("Erneute Prüfung läuft …"))
         self._naechstes()
 
     def _nach_pruefung(self) -> None:
+        """Show the outcome of the re-check: the light, the status line and, for red, the
+        residual hits per document."""
         farbe, text = self.sitzung.ampel()
         self._ampel_setzen(farbe, self.tr(text))
         if farbe == "rot":
-            rot = [d for d in self.sitzung.dokumente
-                   if d.pruefbereit and d.vorpruefung is not None
-                   and not d.vorpruefung.freigegeben]
-            zeilen = []
-            for d in rot:
-                g = d.vorpruefung.bericht.gegenprobe
-                reste = ", ".join(f"Seite {r['seite']}: {r['regel']}" for r in g.resttreffer[:8])
-                zeilen.append(f"{d.pfad.name}: {len(g.resttreffer)} Resttreffer ({reste})")
-            meldung = self.tr(
-                "Abbruch: Bei der erneuten Prüfung wurden noch Daten aus „1 Patientendaten“"
-                " gefunden."
-                " Es wird nichts exportiert. Bitte im Prüfschritt nacharbeiten (Kasten oder"
-                " Maske) und erneut prüfen.") + "\n\n" + "\n".join(zeilen)
-            self.status.setText(meldung.split("\n")[0])
-            if not self.synchron:
-                QMessageBox.critical(self, self.tr("Export nicht möglich"), meldung)
+            self._abbruch_melden()
         elif farbe == "gelb":
             self.status.setText(self.tr("Bereit; bitte die Warnungen lesen."))
         elif farbe == "gruen":
             self.status.setText(self.tr("Bereit zum Export."))
 
+    def _abbruch_melden(self) -> None:
+        """Status line and, outside synchronous mode, a dialog: the re-check still found
+        patient data, nothing will be exported, with the residual hits per document."""
+        meldung = self.tr(
+            "Abbruch: Bei der erneuten Prüfung wurden noch Daten aus „1 Patientendaten“"
+            " gefunden."
+            " Es wird nichts exportiert. Bitte im Prüfschritt nacharbeiten (Kasten oder"
+            " Maske) und erneut prüfen.") + "\n\n" + "\n".join(self._resttreffer_zeilen())
+        self.status.setText(meldung.split("\n")[0])
+        if not self.synchron:
+            QMessageBox.critical(self, self.tr("Export nicht möglich"), meldung)
+
+    def _resttreffer_zeilen(self) -> list[str]:
+        """One line per document that failed the re-check: its name, the number of
+        residual hits and the first of them with page and rule."""
+        zeilen = []
+        for d in self.sitzung.dokumente:
+            if not d.pruefbereit or d.vorpruefung is None or d.vorpruefung.freigegeben:
+                continue
+            g = d.vorpruefung.bericht.gegenprobe
+            reste = g.resttreffer if g is not None else []
+            kurz = ", ".join(f"Seite {r['seite']}: {r['regel']}" for r in reste[:8])
+            zeilen.append(f"{d.pfad.name}: {len(reste)} Resttreffer ({kurz})")
+        return zeilen
+
     # -- export ------------------------------------------------------------------------------------
     def exportieren(self) -> None:
+        """Write the checked files: re-check first when something changed since the last
+        check, refuse while the re-check failed or a red residual risk is unconfirmed."""
         self._optionen_uebernehmen()
-        offen = [d for d in self.sitzung.dokumente if d.pruefbereit]
+        offen = self._pruefbereite()
         if not offen:
-            if self.synchron:
-                raise RuntimeError("Keine analysierten Dokumente.")
-            QMessageBox.information(self, self.tr("Export"),
-                                    self.tr("Keine analysierten Dokumente."))
+            self._nichts_zu_exportieren()
             return
         if any(not d.vorpruefung_aktuell for d in offen):
-            self._phase = "pruefen"  # something changed since the check: check again first
-            self._warteschlange = list(offen)
-            self.ausgabe.clear()
-            self._ampel_setzen("grau", self.tr("Erneute Prüfung läuft …"))
-            self._naechstes()
+            self._pruefung_starten(offen)  # something changed since the check: check again first
             return
-        if any(not d.vorpruefung.freigegeben for d in offen):
+        if not self._freigabe_steht(offen):
+            return
+        self._phase = "exportieren"
+        self._warteschlange = list(offen)
+        self._naechstes()
+
+    def _nichts_zu_exportieren(self) -> None:
+        """Tell the user that no analysed document is waiting; synchronous mode raises."""
+        if self.synchron:
+            raise RuntimeError("Keine analysierten Dokumente.")
+        QMessageBox.information(self, self.tr("Export"),
+                                self.tr("Keine analysierten Dokumente."))
+
+    def _freigabe_steht(self, offen: list[Dokument]) -> bool:
+        """True when every re-check passed and a red residual risk, if any, is confirmed;
+        otherwise the page says why and synchronous mode raises."""
+        if any(d.vorpruefung is None or not d.vorpruefung.freigegeben for d in offen):
             self._nach_pruefung()
             if self.synchron:
                 raise RuntimeError("Erneute Prüfung nicht bestanden; nichts exportiert.")
-            return
+            return False
         self._risiko_setzen()
         if self.risiko_farbe == "rot" and not self.risiko_bestaetigt.isChecked():
             self.status.setText(self.tr("Rotes Restrisiko: bitte in „8 Kontrolle“ nacharbeiten"
                                         " oder den Export ausdrücklich bestätigen."))
             if self.synchron:
                 raise RuntimeError("Rotes Restrisiko nicht bestätigt; nichts exportiert.")
-            return
-        self._phase = "exportieren"
-        self._warteschlange = list(offen)
-        self._naechstes()
+            return False
+        return True
 
     def _naechstes(self) -> None:
+        """Check or export the next queued document (in a worker thread unless synchronous)
+        or, with the queue empty, finish the phase."""
         if not self._warteschlange:
             if self._phase == "pruefen":
                 self._nach_pruefung()
@@ -281,36 +334,44 @@ class ExportSeite(QWidget):
         self._arbeiter.fehler.connect(lambda e, d=d: self._fehler(e, d))
         self._arbeiter.start()
 
-    def _fertig(self, ergebnis) -> None:
+    def _fertig(self, ergebnis: Ergebnis) -> None:
+        """Append the document's report and outcome to the protocol, then go on."""
         text = als_text(ergebnis.bericht)
         if self._phase == "pruefen":
             text += (self.tr("Erneute Prüfung bestanden; Export möglich.") if ergebnis.freigegeben
                      else self.tr("Erneute Prüfung NICHT bestanden; Export gesperrt.")) + "\n"
         elif ergebnis.freigegeben:
-            text += self.tr("Freigegeben: {pfad}").format(pfad=ergebnis.ziel) + "\n"
-            if ergebnis.ziel_txt and not ergebnis.ist_text:
-                text += self.tr("Text: {pfad}").format(pfad=ergebnis.ziel_txt) + "\n"
-            if ergebnis.ziel_md:
-                text += self.tr("Markdown: {pfad}").format(pfad=ergebnis.ziel_md) + "\n"
-            if ergebnis.ziel_vokabular:
-                text += self.tr("Vokabular: {pfad}").format(pfad=ergebnis.ziel_vokabular) + "\n"
-            if ergebnis.ziel_kapsel:
-                text += self.tr("Schlüsselkapsel (nur an den Empfänger geben): {pfad}").format(
-                    pfad=ergebnis.ziel_kapsel) + "\n"
-            if ergebnis.vorschau:
-                text += self.tr("Vorschau: {pfad}").format(pfad=ergebnis.vorschau[0].parent) + "\n"
+            text += "".join(zeile + "\n" for zeile in self._freigabe_zeilen(ergebnis))
         else:
             text += self.tr("NICHT freigegeben.") + "\n"
         self.ausgabe.appendPlainText(text + "\n")
         self._naechstes()
 
+    def _freigabe_zeilen(self, ergebnis: Ergebnis) -> list[str]:
+        """The files written for a released document, one line each."""
+        zeilen = [self.tr("Freigegeben: {pfad}").format(pfad=ergebnis.ziel)]
+        if ergebnis.ziel_txt and not ergebnis.ist_text:
+            zeilen.append(self.tr("Text: {pfad}").format(pfad=ergebnis.ziel_txt))
+        if ergebnis.ziel_md:
+            zeilen.append(self.tr("Markdown: {pfad}").format(pfad=ergebnis.ziel_md))
+        if ergebnis.ziel_vokabular:
+            zeilen.append(self.tr("Vokabular: {pfad}").format(pfad=ergebnis.ziel_vokabular))
+        if ergebnis.ziel_kapsel:
+            zeilen.append(self.tr("Schlüsselkapsel (nur an den Empfänger geben): {pfad}").format(
+                pfad=ergebnis.ziel_kapsel))
+        if ergebnis.vorschau:
+            zeilen.append(self.tr("Vorschau: {pfad}").format(pfad=ergebnis.vorschau[0].parent))
+        return zeilen
+
     def _fehler(self, e: Exception, d: Dokument) -> None:
+        """Note the error on the document and in the protocol, then go on."""
         d.fehler = str(e)
         self.ausgabe.appendPlainText(
             self.tr("{name}: Fehler: {fehler}").format(name=d.pfad.name, fehler=e) + "\n")
         self._naechstes()
 
     def ordner_oeffnen(self) -> None:
+        """Open the target folder (or the first document's folder) in the file manager."""
         ordner = self.sitzung.optionen.ziel_ordner
         if ordner is None and self.sitzung.dokumente:
             ordner = self.sitzung.dokumente[0].pfad.parent

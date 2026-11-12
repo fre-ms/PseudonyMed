@@ -33,12 +33,15 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.erkennung import zusatzdaten as zusatzmodul
-from pseudonymed.gui.sitzung import Sitzung
+from pseudonymed.gui.sitzung import Dokument, Sitzung
 from pseudonymed.pseudonyme import pgp as pgpmodul
 from pseudonymed.pseudonyme import sicherung as sichmodul
 
 
 class DatenbankSeite(QWidget):
+    """Step 11: what the database holds, where it and the key live, backup and restore,
+    and the reference data the user may fetch for it."""
+
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
         super().__init__(eltern)
         self.sitzung = sitzung
@@ -46,7 +49,17 @@ class DatenbankSeite(QWidget):
         self.manifest: sichmodul.Manifest | None = None
         self.archiv: Path | None = None
         aussen = QVBoxLayout(self)
+        self._baue_kopf(aussen)
+        self._baue_tabelle(aussen)
+        self._baue_speicherort(aussen)
+        self._baue_sichern(aussen)
+        self._baue_wiederherstellen(aussen)
+        self._baue_zusatzdaten(aussen)
+        self.holen = zusatzmodul.abrufen  # replaced in tests
 
+    # -- layout ------------------------------------------------------------------------------------
+    def _baue_kopf(self, aussen: QVBoxLayout) -> None:
+        """The explanatory line and the refresh button."""
         kopf = QHBoxLayout()
         kopf.addWidget(QLabel(self.tr(
             "Datenbank und Schlüssel: alles, was zur Rückersetzung nötig ist. Sichern Sie beides"
@@ -56,6 +69,8 @@ class DatenbankSeite(QWidget):
         kopf.addWidget(neu)
         aussen.addLayout(kopf)
 
+    def _baue_tabelle(self, aussen: QVBoxLayout) -> None:
+        """The two-column statistics table (feature, value)."""
         self.tabelle = QTableWidget(0, 2)
         self.tabelle.setHorizontalHeaderLabels([self.tr("Merkmal"), self.tr("Wert")])
         kopfzeile = self.tabelle.horizontalHeader()
@@ -65,6 +80,9 @@ class DatenbankSeite(QWidget):
         self.tabelle.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         aussen.addWidget(self.tabelle, 1)
 
+    def _baue_speicherort(self, aussen: QVBoxLayout) -> None:
+        """The group for moving database and key file; fixed when the session was started
+        with an explicit path (tests, --speicher)."""
         ort = QGroupBox(self.tr("Speicherort"))
         of = QFormLayout(ort)
         z1 = QHBoxLayout()
@@ -95,10 +113,12 @@ class DatenbankSeite(QWidget):
         oz.addWidget(self.ort_status, 1)
         oz.addWidget(self.ort_knopf)
         of.addRow(oz)
-        if sitzung.speicherpfad is not None:  # an explicit path (tests, --speicher): fixed
+        if self.sitzung.speicherpfad is not None:  # an explicit path (tests, --speicher): fixed
             ort.setEnabled(False)
         aussen.addWidget(ort)
 
+    def _baue_sichern(self, aussen: QVBoxLayout) -> None:
+        """The backup group: target folder, what to include, passphrase or plain."""
         export = QGroupBox(self.tr("Sichern (Export)"))
         ef = QFormLayout(export)
         zeile = QHBoxLayout()
@@ -144,6 +164,8 @@ class DatenbankSeite(QWidget):
         ef.addRow(ez)
         aussen.addWidget(export)
 
+    def _baue_wiederherstellen(self, aussen: QVBoxLayout) -> None:
+        """The restore group: archive, passphrase, the manifest, mode and what to take over."""
         imp = QGroupBox(self.tr("Wiederherstellen (Import)"))
         jf = QFormLayout(imp)
         zeile2 = QHBoxLayout()
@@ -188,6 +210,8 @@ class DatenbankSeite(QWidget):
         jf.addRow(iz)
         aussen.addWidget(imp)
 
+    def _baue_zusatzdaten(self, aussen: QVBoxLayout) -> None:
+        """The group for the reference data that is not bundled (Austrian hospitals)."""
         zusatz = QGroupBox(self.tr("Zusatzdaten (nicht mitgeliefert)"))
         zl = QVBoxLayout(zusatz)
         hinweis = QLabel(self.tr(
@@ -210,10 +234,10 @@ class DatenbankSeite(QWidget):
         zk.addWidget(zusatz_datei)
         zl.addLayout(zk)
         aussen.addWidget(zusatz)
-        self.holen = zusatzmodul.abrufen  # replaced in tests
 
     # -- optional reference data -------------------------------------------------------------------
     def kliniken_at_aus_datei(self) -> None:
+        """Load the ministry's list of Austrian hospitals from a workbook the user picks."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Liste der Krankenanstalten (Excel-Mappe des Ministeriums)"), "",
             self.tr("Excel-Mappe (*.xlsx)"))
@@ -222,17 +246,12 @@ class DatenbankSeite(QWidget):
 
     def kliniken_at_laden(self, datei: Path | None = None
                           ) -> zusatzmodul.Ladebericht | None:
+        """Load the Austrian hospital list into the local database, from the ministry's
+        site or from ``datei``; None when the user declined or the load failed."""
         from pseudonymed.erkennung.vokabular import Vokabular
 
         if not self.synchron:
-            frage = self.tr(
-                "Quelle: BMASGPK, Liste der Krankenanstalten in Österreich. Nachdruck mit"
-                " Quellenangabe außer zu kommerziellen Zwecken gestattet. Die Liste kommt nur in"
-                " Ihre lokale Datenbank.") + "\n\n" + (
-                self.tr("Jetzt beim Ministerium laden?") if datei is None else
-                self.tr("Jetzt aus der gewählten Datei laden?"))
-            if QMessageBox.question(self, self.tr("Zusatzdaten"), frage) != \
-                    QMessageBox.StandardButton.Yes:
+            if not self._zusatzdaten_bestaetigt(datei):
                 return None
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -241,9 +260,8 @@ class DatenbankSeite(QWidget):
                                                       holen=self.holen)
         except (zusatzmodul.ZusatzFehler, OSError, ValueError, KeyError, zipfile.BadZipFile,
                 ET.ParseError) as e:
-            self.zusatz_status.setText(self.tr("Laden fehlgeschlagen: {fehler}").format(fehler=e))
-            if self.synchron:
-                raise RuntimeError(str(e)) from e
+            self._fehlgeschlagen(self.zusatz_status,
+                                 self.tr("Laden fehlgeschlagen: {fehler}").format(fehler=e), e)
             return None
         finally:
             if not self.synchron:
@@ -254,8 +272,21 @@ class DatenbankSeite(QWidget):
         self.aktualisiere()
         return bericht
 
+    def _zusatzdaten_bestaetigt(self, datei: Path | None) -> bool:
+        """True when the user, told the source and its licence, wants the list loaded now."""
+        frage = self.tr(
+            "Quelle: BMASGPK, Liste der Krankenanstalten in Österreich. Nachdruck mit"
+            " Quellenangabe außer zu kommerziellen Zwecken gestattet. Die Liste kommt nur in"
+            " Ihre lokale Datenbank.") + "\n\n" + (
+            self.tr("Jetzt beim Ministerium laden?") if datei is None else
+            self.tr("Jetzt aus der gewählten Datei laden?"))
+        return QMessageBox.question(self, self.tr("Zusatzdaten"), frage) == \
+            QMessageBox.StandardButton.Yes
+
     # -- statistics --------------------------------------------------------------------------------
     def aktualisiere(self) -> sichmodul.Statistik:
+        """Re-read the statistics into the table and the paths into the location fields
+        (a field being edited keeps its text); returns the statistics."""
         st = sichmodul.statistik(self.sitzung.speicherpfad)
         if not self.ort_datenbank.hasFocus():
             self.ort_datenbank.setText(str(st.pfad))
@@ -269,27 +300,42 @@ class DatenbankSeite(QWidget):
         return st
 
     def _melde(self, titel: str, text: str, fehler: bool = False) -> None:
+        """Show a message box; synchronous mode (tests) raises instead of blocking."""
         if self.synchron:
             raise RuntimeError(text)
         (QMessageBox.warning if fehler else QMessageBox.information)(self, titel, text)
 
+    def _fehlgeschlagen(self, anzeige: QLabel, text: str, fehler: Exception) -> None:
+        """Report a failed action in its status line; synchronous mode (tests) raises the
+        failure instead of leaving it on the page."""
+        anzeige.setText(text)
+        if self.synchron:
+            raise RuntimeError(str(fehler)) from fehler
+
+    def _offene_dokumente(self) -> list[Dokument]:
+        """Documents analysed but not yet exported: their mappings are not in the database
+        yet, so it must not be moved or replaced under them."""
+        return [d for d in self.sitzung.dokumente if d.pruefbereit]
+
     # -- storage location --------------------------------------------------------------------------
     def ort_datenbank_waehlen(self) -> None:
+        """Pick the database file in a save dialog."""
         pfad, _ = QFileDialog.getSaveFileName(self, self.tr("Datenbank"), self.ort_datenbank.text(),
                                               self.tr("SQLite (*.sqlite)"))
         if pfad:
             self.ort_datenbank.setText(pfad)
 
     def ort_schluessel_waehlen(self) -> None:
+        """Pick the key file in a save dialog."""
         pfad, _ = QFileDialog.getSaveFileName(self, self.tr("Schlüsseldatei"),
                                               self.ort_schluessel.text(), self.tr("Text (*.txt)"))
         if pfad:
             self.ort_schluessel.setText(pfad)
 
     def speicherort_setzen(self) -> sichmodul.Verlegung | None:
-        offen = [d for d in self.sitzung.dokumente
-                 if d.vorbereitung is not None and not d.vorbereitung.abgeschlossen]
-        if offen:
+        """Move database and key to the paths entered (copying when ticked); None when
+        documents still wait for their export or the move failed."""
+        if self._offene_dokumente():
             self._melde(self.tr("Speicherort"), self.tr(
                 "Es gibt analysierte, noch nicht exportierte Dokumente. Bitte zuerst exportieren"
                 " oder entfernen."), True)
@@ -299,10 +345,8 @@ class DatenbankSeite(QWidget):
                                   Path(self.ort_schluessel.text().strip()),
                                   self.ort_kopieren.isChecked())
         except (sichmodul.SicherungFehler, OSError) as e:
-            self.ort_status.setText(self.tr("Speicherort nicht übernommen: {fehler}").format(
-                fehler=e))
-            if self.synchron:
-                raise RuntimeError(str(e)) from e
+            self._fehlgeschlagen(self.ort_status, self.tr(
+                "Speicherort nicht übernommen: {fehler}").format(fehler=e), e)
             return None
         self.ort_status.setText(v.beschreibung())
         self.aktualisiere()
@@ -310,36 +354,33 @@ class DatenbankSeite(QWidget):
 
     # -- export --------------------------------------------------------------------------------
     def export_ziel_waehlen(self) -> None:
+        """Pick the folder the backup archive goes to."""
         ordner = QFileDialog.getExistingDirectory(self, self.tr("Zielordner der Sicherung"))
         if ordner:
             self.export_ziel.setText(ordner)
 
     def exportieren(self) -> Path | None:
+        """Write the backup archive into the target folder, encrypted with the passphrase
+        unless plain was chosen; returns its path, None when input was missing or it failed."""
         ziel = self.export_ziel.text().strip()
         if not ziel:
             self._melde(self.tr("Sichern"), self.tr("Bitte einen Zielordner wählen."), True)
             return None
         passphrase: str | None = None
         if not self.unverschluesselt.isChecked():
+            fehler = self._passphrase_fehler()
+            if fehler:
+                self._melde(self.tr("Sichern"), fehler, True)
+                return None
             passphrase = self.export_passphrase.text()
-            if len(passphrase) < 8:
-                self._melde(self.tr("Sichern"), self.tr(
-                    "Bitte eine Passphrase mit mindestens 8 Zeichen eingeben oder"
-                    " „Unverschlüsselt“ wählen."), True)
-                return None
-            if passphrase != self.export_passphrase2.text():
-                self._melde(self.tr("Sichern"), self.tr("Die Wiederholung stimmt nicht."), True)
-                return None
         try:
             pfad = sichmodul.exportiere(Path(ziel), self.sitzung.speicherpfad,
                                         konfig=self.mit_konfig.isChecked(),
                                         vokabular=self.mit_vokabular.isChecked(),
                                         passphrase=passphrase)
         except (sichmodul.SicherungFehler, pgpmodul.PGPFehler, OSError) as e:
-            self.export_status.setText(self.tr("Sicherung fehlgeschlagen: {fehler}").format(
-                fehler=e))
-            if self.synchron:
-                raise RuntimeError(str(e)) from e
+            self._fehlgeschlagen(self.export_status, self.tr(
+                "Sicherung fehlgeschlagen: {fehler}").format(fehler=e), e)
             return None
         self.export_status.setText(self.tr("Gesichert: {pfad}").format(pfad=pfad) + (
             self.tr(" (verschlüsselt; gpg --decrypt öffnet das Archiv auch ohne PseudonyMed)")
@@ -348,8 +389,20 @@ class DatenbankSeite(QWidget):
         self.export_passphrase2.clear()
         return pfad
 
+    def _passphrase_fehler(self) -> str:
+        """Why the entered passphrase cannot be used (too short, repetition differs), or an
+        empty string when it can."""
+        if len(self.export_passphrase.text()) < 8:
+            return self.tr(
+                "Bitte eine Passphrase mit mindestens 8 Zeichen eingeben oder"
+                " „Unverschlüsselt“ wählen.")
+        if self.export_passphrase.text() != self.export_passphrase2.text():
+            return self.tr("Die Wiederholung stimmt nicht.")
+        return ""
+
     # -- import ------------------------------------------------------------------------------------
     def archiv_waehlen(self) -> None:
+        """Pick a backup archive and check it at once."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Sicherungsarchiv"), "",
             self.tr("PseudonyMed-Sicherungen (*.zip *.gpg);;Alle Dateien (*)"))
@@ -358,6 +411,8 @@ class DatenbankSeite(QWidget):
             self.archiv_pruefen()
 
     def archiv_pruefen(self) -> sichmodul.Manifest | None:
+        """Read and verify the archive's manifest, compare its key with the local one and
+        enable the import; None when no archive is named or it cannot be read."""
         pfad = self.import_pfad.text().strip()
         self.manifest, self.archiv = None, None
         self.import_knopf.setEnabled(False)
@@ -367,13 +422,19 @@ class DatenbankSeite(QWidget):
         try:
             m = sichmodul.pruefe(Path(pfad), self.import_passphrase.text() or None)
         except (sichmodul.SicherungFehler, OSError) as e:
-            self.archiv_info.setText(self.tr("Archiv nicht lesbar: {fehler}").format(fehler=e))
-            if self.synchron:
-                raise RuntimeError(str(e)) from e
+            self._fehlgeschlagen(self.archiv_info,
+                                 self.tr("Archiv nicht lesbar: {fehler}").format(fehler=e), e)
             return None
         st = sichmodul.statistik(self.sitzung.speicherpfad)
-        gleich = st.schluessel_kennung and st.schluessel_kennung == m.schluessel_kennung
         self.manifest, self.archiv = m, Path(pfad)
+        self._importmodus_anbieten(m, st)
+        self.import_knopf.setEnabled(True)
+        return m
+
+    def _importmodus_anbieten(self, m: sichmodul.Manifest, st: sichmodul.Statistik) -> None:
+        """Describe the archive and offer merging only when its key is the local one (or
+        there is no local database yet); with another key only replacing remains."""
+        gleich = st.schluessel_kennung and st.schluessel_kennung == m.schluessel_kennung
         self.archiv_info.setText(self.tr("Archiv: {beschreibung}. ").format(
             beschreibung=m.beschreibung()) + (
             self.tr("Gleicher Schlüssel wie lokal: Zusammenführen möglich.") if gleich else
@@ -381,39 +442,42 @@ class DatenbankSeite(QWidget):
         self.modus_zusammen.setEnabled(bool(gleich) or not st.existiert)
         if not gleich and st.existiert:
             self.modus_ersetzen.setChecked(True)
-        self.import_knopf.setEnabled(True)
-        return m
 
     def importieren(self) -> sichmodul.Importbericht | None:
+        """Restore from the checked archive in the chosen mode; None when no archive was
+        checked, documents still wait for their export, the user declined or it failed."""
         if self.manifest is None or self.archiv is None:
             self._melde(self.tr("Importieren"), self.tr("Bitte zuerst ein Archiv prüfen."), True)
             return None
-        offen = [d for d in self.sitzung.dokumente
-                 if d.vorbereitung is not None and not d.vorbereitung.abgeschlossen]
-        if offen:
+        if self._offene_dokumente():
             self._melde(self.tr("Importieren"), self.tr(
                 "Es gibt analysierte, noch nicht exportierte Dokumente. Bitte zuerst exportieren"
                 " oder entfernen, dann importieren."), True)
             return None
         modus = "ersetzen" if self.modus_ersetzen.isChecked() else "zusammenfuehren"
-        if not self.synchron:
-            frage = (self.tr("Datenbank und Schlüssel durch das Archiv ersetzen? Die jetzigen"
-                             " werden vorher daneben gesichert.") if modus == "ersetzen" else
-                     self.tr("Einträge des Archivs in die lokale Datenbank übernehmen?"))
-            if QMessageBox.question(self, self.tr("Importieren"), frage) != \
-                    QMessageBox.StandardButton.Yes:
-                return None
+        if not self._import_bestaetigt(modus):
+            return None
         try:
             b = sichmodul.importiere(self.archiv, self.sitzung.speicherpfad,
                                      self.import_passphrase.text() or None, modus,
                                      konfig=self.import_konfig.isChecked(),
                                      vokabular=self.import_vokabular.isChecked())
         except (sichmodul.SicherungFehler, OSError) as e:
-            self.import_status.setText(self.tr("Import fehlgeschlagen: {fehler}").format(fehler=e))
-            if self.synchron:
-                raise RuntimeError(str(e)) from e
+            self._fehlgeschlagen(self.import_status,
+                                 self.tr("Import fehlgeschlagen: {fehler}").format(fehler=e), e)
             return None
         self.import_status.setText(b.beschreibung())
         self.import_passphrase.clear()
         self.aktualisiere()
         return b
+
+    def _import_bestaetigt(self, modus: str) -> bool:
+        """True when the user confirmed the import in the given mode; synchronous mode
+        (tests) never asks."""
+        if self.synchron:
+            return True
+        frage = (self.tr("Datenbank und Schlüssel durch das Archiv ersetzen? Die jetzigen"
+                         " werden vorher daneben gesichert.") if modus == "ersetzen" else
+                 self.tr("Einträge des Archivs in die lokale Datenbank übernehmen?"))
+        return QMessageBox.question(self, self.tr("Importieren"), frage) == \
+            QMessageBox.StandardButton.Yes

@@ -14,7 +14,11 @@ from PySide6.QtCore import QCoreApplication, QLocale, QTranslator
 from pseudonymed.konfig import lade_einstellungen
 
 ORDNER = Path(__file__).parent / "uebersetzungen"
+
+
 def sprache_bestimmen(argumente: list[str]) -> str:
+    """The language code in lower case: from the command line, else the configuration,
+    else the system locale (for example "de_de", "en_gb")."""
     for i, a in enumerate(argumente):
         if a in ("--sprache", "--language") and i + 1 < len(argumente):
             return argumente[i + 1].lower()
@@ -27,6 +31,8 @@ def sprache_bestimmen(argumente: list[str]) -> str:
 
 
 def ohne_sprachargumente(argumente: list[str]) -> list[str]:
+    """The command line without ``--sprache``/``--language`` and their values, as Qt
+    gets it."""
     rest: list[str] = []
     ueberspringe = False
     for a in argumente:

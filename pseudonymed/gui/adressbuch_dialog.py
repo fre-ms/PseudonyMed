@@ -34,6 +34,9 @@ from pseudonymed.quellen.carddav import CardDAVClient, CardDAVFehler
 
 
 class AdressbuchDialog(QDialog):
+    """Where patients come from: a local vCard file or folder, and a Nextcloud address
+    book over CardDAV with its app password kept in the keyring."""
+
     def __init__(self, eltern: QWidget | None = None) -> None:
         super().__init__(eltern)
         self.setWindowTitle(self.tr("Adressbücher einrichten"))
@@ -104,23 +107,29 @@ class AdressbuchDialog(QDialog):
 
     # -- local -------------------------------------------------------------------------------------
     def lokal_datei(self) -> None:
+        """Pick a vCard file for the local address book."""
         pfad, _ = QFileDialog.getOpenFileName(self, self.tr("vCard-Datei"), "",
                                               self.tr("vCard (*.vcf *.vcard);;Alle Dateien (*)"))
         if pfad:
             self.lokal.setText(pfad)
 
     def lokal_ordner(self) -> None:
+        """Pick a folder of vCard files for the local address book."""
         pfad = QFileDialog.getExistingDirectory(self, self.tr("Ordner mit vCard-Dateien"))
         if pfad:
             self.lokal.setText(pfad)
 
     # -- CardDAV -----------------------------------------------------------------------------------
     def _konfig(self) -> CardDAVKonfig:
+        """The CardDAV settings as the fields hold them now (without the password)."""
         return CardDAVKonfig(url=self.url.text().strip(), benutzer=self.benutzer.text().strip(),
                              adressbuch=(self.adressbuch.currentData()
                                          or self.adressbuch.currentText()).strip())
 
     def lade_adressbuecher(self) -> list[str]:
+        """List the server's address books in the box, keeping the one chosen before;
+        returns their URIs, empty when the fields are incomplete or the server
+        refuses."""
         k = self._konfig()
         if not k.vollstaendig or not self.passwort.text():
             self.status.setText(self.tr("Adresse, Benutzer und App-Passwort eingeben."))
@@ -144,6 +153,9 @@ class AdressbuchDialog(QDialog):
         return [b.uri for b in buecher]
 
     def speichern(self) -> bool:
+        """Check both sources and write the settings; a CardDAV password goes to the
+        keyring, or into the configuration file when there is none.  Closes the dialog
+        on success; False (with the reason in the status line) otherwise."""
         e = lade_einstellungen()
         lokal = self.lokal.text().strip()
         if lokal and not lokale_dateien(lokal):

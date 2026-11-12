@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, NamedTuple
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,15 +29,37 @@ from pseudonymed.pseudonyme.kapsel import Kapsel
 from pseudonymed.pseudonyme.rueckersetzung import rueckersetzen
 
 
+class _Zuordnungsquelle(NamedTuple):
+    """Where the clear data come from: the mapping pseudonym → clear text, the patient
+    info and the identifiers this source knows (an opened capsule or the local store)."""
+
+    zuordnung: dict[str, str]
+    info: dict[str, Any] | None
+    bekannte: list[str]
+
+
 class RueckersetzenSeite(QWidget):
+    """Step "10 Reidentifikation": re-identify a language model's answer locally, from the
+    store's mapping of a chosen person or from a sender's capsule."""
+
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
+        """Build the page region by region and fill the person box from the store."""
         super().__init__(eltern)
         self.sitzung = sitzung
         self.synchron = False
         self.kapsel: Kapsel | None = None
         self.passphrase: str | None = None  # tests set it; the app asks
         aussen = QVBoxLayout(self)
+        self._baue_kapselgruppe(aussen)
+        self._baue_personenzeile(aussen)
+        self._baue_eingabe(aussen)
+        self._baue_ausgabe(aussen)
+        self.aktualisiere()
 
+    # -- build -------------------------------------------------------------------------------------
+    def _baue_kapselgruppe(self, aussen: QVBoxLayout) -> None:
+        """The capsule group: open and close buttons, the private-key field with its file
+        picker, and the explanation; disabled without an OpenPGP engine."""
         kapselgruppe = QGroupBox(self.tr("Schlüsselkapsel eines Absenders"))
         kz = QVBoxLayout(kapselgruppe)
         zeile = QHBoxLayout()
@@ -65,6 +88,8 @@ class RueckersetzenSeite(QWidget):
             kapselgruppe.setToolTip(self.tr("Extra 'pgp' (pysequoia) oder GnuPG installieren."))
         aussen.addWidget(kapselgruppe)
 
+    def _baue_personenzeile(self, aussen: QVBoxLayout) -> None:
+        """The person box, the name form box and the button that reloads the list."""
         oben = QHBoxLayout()
         oben.addWidget(QLabel(self.tr("Person:")))
         self.person = QComboBox()
@@ -78,6 +103,8 @@ class RueckersetzenSeite(QWidget):
         oben.addWidget(neu)
         aussen.addLayout(oben)
 
+    def _baue_eingabe(self, aussen: QVBoxLayout) -> None:
+        """The input text with the load button and the re-identify button beneath it."""
         self.eingabe = QPlainTextEdit()
         self.eingabe.setPlaceholderText(self.tr("Text des Sprachmodells hier einfügen …"))
         aussen.addWidget(self.eingabe, 1)
@@ -91,6 +118,8 @@ class RueckersetzenSeite(QWidget):
         mitte.addWidget(knopf)
         aussen.addLayout(mitte)
 
+    def _baue_ausgabe(self, aussen: QVBoxLayout) -> None:
+        """The read-only output text with the hint line and the copy and save buttons."""
         self.ausgabe = QPlainTextEdit()
         self.ausgabe.setReadOnly(True)
         aussen.addWidget(self.ausgabe, 1)
@@ -105,9 +134,9 @@ class RueckersetzenSeite(QWidget):
         unten.addWidget(kopieren)
         unten.addWidget(speichern)
         aussen.addLayout(unten)
-        self.aktualisiere()
 
     def aktualisiere(self) -> None:
+        """Reload the person box from the store and preselect the session's patient."""
         self.person.clear()
         with self.sitzung.speicher() as sp:
             for e in sp.finde():
@@ -122,6 +151,7 @@ class RueckersetzenSeite(QWidget):
                     self.person.setCurrentIndex(i)
 
     def laden(self) -> None:
+        """Pick a text file and put its content into the input field."""
         pfad, _ = QFileDialog.getOpenFileName(self, self.tr("Text"), "",
                                               self.tr("Text (*.txt *.md);;Alle (*)"))
         if pfad:
@@ -130,6 +160,7 @@ class RueckersetzenSeite(QWidget):
 
     # -- capsules ----------------------------------------------------------------------------------
     def schluessel_waehlen(self) -> None:
+        """Pick the private key file and remember it in the settings."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Privater Schlüssel"), "",
             self.tr("OpenPGP-Schlüssel (*.asc *.gpg *.pgp);;Alle Dateien (*)"))
@@ -138,6 +169,7 @@ class RueckersetzenSeite(QWidget):
             self._schluessel_merken()
 
     def _schluessel_merken(self) -> None:
+        """Store the key field in the settings when it changed; a failed write is ignored."""
         e = lade_einstellungen()
         if e.pgp_privater_schluessel != self.privater_schluessel.text().strip():
             e.pgp_privater_schluessel = self.privater_schluessel.text().strip()
@@ -147,6 +179,7 @@ class RueckersetzenSeite(QWidget):
                 pass
 
     def kapsel_waehlen(self) -> None:
+        """Pick a capsule file and open it."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Schlüsselkapsel"), "",
             self.tr("Kapseln (*.kapsel.asc *.asc);;Alle Dateien (*)"))
@@ -156,64 +189,68 @@ class RueckersetzenSeite(QWidget):
     def kapsel_oeffnen(self, pfad: Path, passphrase: str | None = None) -> Kapsel | None:
         """Decrypt a capsule (asking for the passphrase when a key file needs one) and
         switch the re-identification to its mapping."""
-        schluessel = self.privater_schluessel.text().strip() or None
-        passphrase = passphrase if passphrase is not None else self.passphrase
         try:
-            try:
-                k = kapselmodul.oeffne(pfad, schluessel, passphrase)
-            except pgpmodul.PGPFehler as e:
-                if "Passphrase" not in str(e) or self.synchron:
-                    raise
-                eingabe, ok = QInputDialog.getText(
-                    self, self.tr("Passphrase"),
-                    self.tr("Passphrase des privaten Schlüssels:"), QLineEdit.EchoMode.Password)
-                if not ok:
-                    return None
-                k = kapselmodul.oeffne(pfad, schluessel, eingabe)
+            k = self._kapsel_entschluesseln(pfad, passphrase)
         except (pgpmodul.PGPFehler, kapselmodul.KapselFehler, OSError) as e:
             self.kapsel_info.setText(self.tr("Kapsel nicht lesbar: {fehler}").format(fehler=e))
             if self.synchron:
                 raise RuntimeError(str(e)) from e
             return None
+        if k is None:
+            return None
         self.kapsel = k
-        lokal = ""
-        try:
-            with self.sitzung.speicher() as sp:
-                gleiche = [v for v in abgleichen(k.als_patient(), sp.kandidaten()) if v.gleich]
-            if gleiche:
-                lokal = self.tr(" Entspricht dem lokalen Eintrag {kennung}.").format(
-                    kennung=gleiche[0].kennung)
-            else:
-                lokal = self.tr(" Kein passender Eintrag in der lokalen Datenbank.")
-        except OSError:
-            pass
         self.kapsel_info.setText(self.tr("Kapsel geöffnet: {beschreibung}.").format(
-            beschreibung=k.beschreibung()) + lokal)
+            beschreibung=k.beschreibung()) + self._lokaler_abgleich(k))
         self.person.setEnabled(False)
         self.kapsel_schliessen_knopf.setEnabled(True)
         return k
 
+    def _kapsel_entschluesseln(self, pfad: Path, passphrase: str | None) -> Kapsel | None:
+        """Open the capsule with the configured key; when the key wants a passphrase that was
+        not given, ask for it once (None when the dialogue is cancelled).  Every other
+        failure propagates to the caller."""
+        schluessel = self.privater_schluessel.text().strip() or None
+        passphrase = passphrase if passphrase is not None else self.passphrase
+        try:
+            return kapselmodul.oeffne(pfad, schluessel, passphrase)
+        except pgpmodul.PGPFehler as e:
+            if "Passphrase" not in str(e) or self.synchron:
+                raise
+        eingabe, ok = QInputDialog.getText(
+            self, self.tr("Passphrase"),
+            self.tr("Passphrase des privaten Schlüssels:"), QLineEdit.EchoMode.Password)
+        if not ok:
+            return None
+        return kapselmodul.oeffne(pfad, schluessel, eingabe)
+
+    def _lokaler_abgleich(self, k: Kapsel) -> str:
+        """A sentence saying whether the capsule's person matches an entry of the local
+        store; empty when the store cannot be read."""
+        try:
+            with self.sitzung.speicher() as sp:
+                gleiche = [v for v in abgleichen(k.als_patient(), sp.kandidaten()) if v.gleich]
+        except OSError:
+            return ""
+        if gleiche:
+            return self.tr(" Entspricht dem lokalen Eintrag {kennung}.").format(
+                kennung=gleiche[0].kennung)
+        return self.tr(" Kein passender Eintrag in der lokalen Datenbank.")
+
     def kapsel_schliessen(self) -> None:
+        """Drop the capsule and re-identify from the local store again."""
         self.kapsel = None
         self.person.setEnabled(True)
         self.kapsel_schliessen_knopf.setEnabled(False)
         self.kapsel_info.setText(self.tr("Kapsel geschlossen; wieder lokale Datenbank."))
 
     def rueckersetzen(self) -> None:
-        if self.kapsel is not None:
-            zuordnung, info, bekannte = self.kapsel.zuordnungen, self.kapsel.info(), \
-                [self.kapsel.kennung]
-        else:
-            schluessel = self.person.currentData()
-            if not schluessel:
-                self.hinweis.setText(self.tr("Keine Person gewählt."))
-                return
-            with self.sitzung.speicher() as sp:
-                zuordnung = sp.zuordnung(schluessel)
-                info = sp.patient_info(schluessel)
-                bekannte = sp.kennungen()
-        r = rueckersetzen(self.eingabe.toPlainText(), zuordnung, info,
-                          form=self.form.currentData(), bekannte_kennungen=bekannte)
+        """Put the clear data back into the input text and report what stayed unresolved."""
+        quelle = self._zuordnungsquelle()
+        if quelle is None:
+            self.hinweis.setText(self.tr("Keine Person gewählt."))
+            return
+        r = rueckersetzen(self.eingabe.toPlainText(), quelle.zuordnung, quelle.info,
+                          form=self.form.currentData(), bekannte_kennungen=quelle.bekannte)
         self.ausgabe.setPlainText(r.text)
         if r.verbleibend:
             teile = [f"{rest} ({r.hinweise[rest]})" if rest in r.hinweise else rest
@@ -223,10 +260,25 @@ class RueckersetzenSeite(QWidget):
         else:
             self.hinweis.setText(self.tr("{n} Ersetzungen, nichts offen.").format(n=r.ersetzt))
 
+    def _zuordnungsquelle(self) -> _Zuordnungsquelle | None:
+        """The opened capsule if there is one, else the person chosen from the local store;
+        None when no person is chosen."""
+        if self.kapsel is not None:
+            return _Zuordnungsquelle(self.kapsel.zuordnungen, self.kapsel.info(),
+                                     [self.kapsel.kennung])
+        schluessel = self.person.currentData()
+        if not schluessel:
+            return None
+        with self.sitzung.speicher() as sp:
+            return _Zuordnungsquelle(sp.zuordnung(schluessel), sp.patient_info(schluessel),
+                                     sp.kennungen())
+
     def kopieren(self) -> None:
+        """Copy the output text to the clipboard."""
         QApplication.clipboard().setText(self.ausgabe.toPlainText())
 
     def speichern(self) -> None:
+        """Save the output text to a file of the user's choice."""
         pfad, _ = QFileDialog.getSaveFileName(self, self.tr("Speichern"), "",
                                               self.tr("Text (*.txt)"))
         if pfad:

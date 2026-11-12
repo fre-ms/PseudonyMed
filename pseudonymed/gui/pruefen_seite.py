@@ -1,7 +1,8 @@
-"""Step 3: look at every page, drop false hits, draw boxes over what was missed."""
+"""Step 7: look at every page, drop false hits, draw boxes over what was missed."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
@@ -39,6 +40,8 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed import arbeitsstand as standmodul
+from pseudonymed.ablauf import Textvorbereitung, Vorbereitung
+from pseudonymed.dokument.textebene import Box
 from pseudonymed.gui.sitzung import Dokument, Sitzung
 from pseudonymed.kern.modell import Fundstelle
 
@@ -54,6 +57,8 @@ VORSCHAU_DPI = 100
 
 
 def farbe(f: Fundstelle) -> QColor:
+    """The traffic-light colour of a hit: yellow for a line blanked as unreadable, red for
+    everything that will be redacted."""
     return GELB if f.regel == "ocr.unlesbar" else ROT
 
 
@@ -62,7 +67,16 @@ def geraten(f: Fundstelle) -> bool:
     return f.regel.startswith(("ner.", "unscharf.", "identifikator."))
 
 
-def _rect(rect: tuple[float, float, float, float], skala: float) -> QRectF:
+def _trefferfarbe(f: Fundstelle, gewaehlt: bool) -> tuple[QColor, int]:
+    """Colour and fill opacity of a hit: a mask is solid black, every other hit wears its
+    traffic-light colour, more opaque when it is the selected one."""
+    if f.regel == "maske":
+        return SCHWARZ, 160
+    return farbe(f), 90 if gewaehlt else 45
+
+
+def _rect(rect: Box, skala: float) -> QRectF:
+    """A page rectangle (points) as a scene rectangle (pixels of the preview)."""
     return QRectF(rect[0] * skala, rect[1] * skala, (rect[2] - rect[0]) * skala,
                   (rect[3] - rect[1]) * skala)
 
@@ -77,6 +91,7 @@ class Seitenansicht(QGraphicsView):
     gezoomt = Signal(float)  # absolute scale factor
 
     def __init__(self, eltern: QWidget | None = None) -> None:
+        """An empty scene at preview scale; the scroll bars report their position."""
         super().__init__(eltern)
         self._szene = QGraphicsScene(self)
         self.setScene(self._szene)
@@ -85,6 +100,7 @@ class Seitenansicht(QGraphicsView):
         self._items: dict[int, Fundstelle] = {}
         self._start: QPointF | None = None
         self._gummi: QGraphicsRectItem | None = None
+        self._erweitern = False  # Ctrl/Cmd was held when the drag (or click) began
         self.masken_modus = False  # drag draws a mask instead of a labelled box
         self.loeschmodus = False  # the mask erases (white) rather than redacts (black)
         self._folgt = False  # while following another view
@@ -94,9 +110,11 @@ class Seitenansicht(QGraphicsView):
 
     # -- linking two views -------------------------------------------------------------------------
     def _relativ(self, leiste) -> float:
+        """A scroll bar's position as a fraction of its range (0 when it cannot scroll)."""
         return leiste.value() / leiste.maximum() if leiste.maximum() > 0 else 0.0
 
     def _scroll_melden(self, _wert: int) -> None:
+        """Tell a linked view where we are, unless we are following it right now."""
         if not self._folgt:
             self.gescrollt.emit(self._relativ(self.horizontalScrollBar()),
                                 self._relativ(self.verticalScrollBar()))
@@ -122,6 +140,7 @@ class Seitenansicht(QGraphicsView):
 
     @property
     def zoomfaktor(self) -> float:
+        """The zoom the user chose, relative to the base scale."""
         return self.transform().m11() / self.basis_skala
 
     def setze_basis(self, basis: float) -> None:
@@ -131,6 +150,7 @@ class Seitenansicht(QGraphicsView):
         self.folge_zoom(faktor)
 
     def _zoom_melden(self) -> None:
+        """Tell a linked view the new zoom factor, unless we are following it right now."""
         if not self._folgt:
             self.gezoomt.emit(self.zoomfaktor)
 
@@ -142,8 +162,11 @@ class Seitenansicht(QGraphicsView):
         a.gezoomt.connect(b.folge_zoom)
         b.gezoomt.connect(a.folge_zoom)
 
-    def _kasten(self, rect: tuple[float, float, float, float], farbe_: QColor, breite: float,
+    # -- painting ----------------------------------------------------------------------------------
+    def _kasten(self, rect: Box, farbe_: QColor, breite: float,
                 alpha: int, gestrichelt: bool = False, hinweis: str = "") -> QGraphicsRectItem:
+        """Add one rectangle to the scene: outline in the colour, fill in the same colour
+        with the given opacity, dashed for a guess, a tooltip when there is one."""
         item = QGraphicsRectItem(_rect(rect, self.skala))
         stift = QPen(farbe_, breite)
         if gestrichelt:
@@ -158,34 +181,56 @@ class Seitenansicht(QGraphicsView):
         return item
 
     def zeige(self, png: bytes, fundstellen: list[Fundstelle], gewaehlt: Fundstelle | None,
-              fachrects: list[tuple[float, float, float, float]] = (),
-              verworfen: list[Fundstelle] = (),
-              unsicher: list[tuple[float, float, float, float]] = (),
-              auswahl: list[tuple[float, float, float, float]] = ()) -> None:
+              fachrects: Sequence[Box] = (),
+              verworfen: Sequence[Fundstelle] = (),
+              unsicher: Sequence[Box] = (),
+              auswahl: Sequence[Box] = ()) -> None:
+        """Paint the page and everything on it, in this order (later lies on top): the
+        protected medical terms, the words the user picked, the badly read words, the
+        discarded hits, the hits.  Only hits and discarded hits are clickable."""
+        self._zeige_bild(png)
+        self._zeige_marken(fachrects, auswahl, unsicher)
+        self._zeige_verworfene(verworfen, gewaehlt)
+        self._zeige_treffer(fundstellen, gewaehlt)
+
+    def _zeige_bild(self, png: bytes) -> None:
+        """Start over with the page image; nothing is clickable yet."""
         self._szene.clear()
         self._items.clear()
         bild = QImage.fromData(png)
         self._szene.addItem(QGraphicsPixmapItem(QPixmap.fromImage(bild)))
         self._szene.setSceneRect(0, 0, bild.width(), bild.height())
-        for rect in fachrects:  # protected medical terms: stay, click to select the word
+
+    def _zeige_marken(self, fachrects: Sequence[Box], auswahl: Sequence[Box],
+                      unsicher: Sequence[Box]) -> None:
+        """Marks that are not hits: green for a protected medical term (it stays), blue for
+        a word the user picked (not yet in the list), a yellow outline for a word the OCR
+        read badly (worth a look)."""
+        for rect in fachrects:
             self._kasten(rect, GRUEN, 1, 28, hinweis=self.tr("Fachbegriff (bleibt)"))
-        for rect in auswahl:  # words picked by the user, not yet in the list
+        for rect in auswahl:
             self._kasten(rect, BLAU, 2, 50, hinweis=self.tr("Auswahl (aufnehmen?)"))
-        for rect in unsicher:  # badly read words: look, not hits
+        for rect in unsicher:
             self._kasten(rect, GELB, 1, 0, hinweis=self.tr("unsicher gelesen"))
-        for f in verworfen:  # discarded hits: stay, click to take back
+
+    def _zeige_verworfene(self, verworfen: Sequence[Fundstelle],
+                          gewaehlt: Fundstelle | None) -> None:
+        """Discarded hits: green and dashed, clickable so that they can be taken back; the
+        selected one heavier and more opaque."""
+        for f in verworfen:
+            hinweis = self.tr("verworfen, bleibt: {regel}").format(regel=f.regel)
             for rect in f.rects:
                 item = self._kasten(rect, GRUEN, 3 if f is gewaehlt else 1.5,
                                     60 if f is gewaehlt else 30, gestrichelt=True,
-                                    hinweis=self.tr("verworfen, bleibt: {regel}").format(
-                                        regel=f.regel))
+                                    hinweis=hinweis)
                 self._items[id(item)] = f
+
+    def _zeige_treffer(self, fundstellen: Sequence[Fundstelle],
+                       gewaehlt: Fundstelle | None) -> None:
+        """The hits: traffic-light colour or black for a mask, dashed for a guess, the
+        selected one heavier; the tooltip names rule and pseudonym."""
         for f in fundstellen:
-            c = farbe(f)
-            if f.regel == "maske":
-                c, alpha = SCHWARZ, 160
-            else:
-                alpha = 90 if f is gewaehlt else 45
+            c, alpha = _trefferfarbe(f, f is gewaehlt)
             for rect in f.rects:
                 item = self._kasten(rect, c, 3 if f is gewaehlt else 1.5, alpha,
                                     gestrichelt=geraten(f),
@@ -193,6 +238,7 @@ class Seitenansicht(QGraphicsView):
                 self._items[id(item)] = f
 
     def zeige_leer(self) -> None:
+        """Clear the view (no document chosen)."""
         self._szene.clear()
         self._items.clear()
 
@@ -206,10 +252,12 @@ class Seitenansicht(QGraphicsView):
         super().wheelEvent(event)
 
     def zoom(self, faktor: float) -> None:
+        """Zoom by the factor (the zoom buttons) and tell a linked view."""
         self.scale(faktor, faktor)
         self._zoom_melden()
 
     def zoom_zuruecksetzen(self) -> None:
+        """Back to the base scale and tell a linked view."""
         self.resetTransform()
         self.scale(self.basis_skala, self.basis_skala)
         self._zoom_melden()
@@ -262,7 +310,7 @@ class Seitenansicht(QGraphicsView):
                                          r.right() / self.skala, r.bottom() / self.skala))
         else:  # a plain click: the word under it (Ctrl/Cmd extends the selection)
             self.punkt_gewaehlt.emit(r.left() / self.skala, r.top() / self.skala,
-                                     getattr(self, "_erweitern", False))
+                                     self._erweitern)
 
 
 def _als_linksklick(event):
@@ -280,6 +328,7 @@ class Textansicht(QTextEdit):
     treffer_gewaehlt = Signal(object)
 
     def __init__(self, eltern: QWidget | None = None) -> None:
+        """A read-only editor; the font is remembered so that the zoom can be reset."""
         super().__init__(eltern)
         self.setReadOnly(True)
         self._treffer: list[Fundstelle] = []
@@ -287,27 +336,47 @@ class Textansicht(QTextEdit):
         self._schrift = self.font()
 
     def zeige(self, text: str, fundstellen: list[Fundstelle], gewaehlt: Fundstelle | None,
-              fachspannen: list[tuple[int, int]] = (), verworfen: list[Fundstelle] = ()) -> None:
-        if text != self._text:
-            self._text = text
-            self.setPlainText(text)
+              fachspannen: Sequence[tuple[int, int]] = (),
+              verworfen: Sequence[Fundstelle] = ()) -> None:
+        """Show the text with a background span per medical term, discarded hit and hit,
+        and scroll to the selected hit.  Empty spans are neither shown nor clickable."""
+        self._setze_text(text)
         aktiv = [f for f in fundstellen if f.ende > f.start]
         bleibt = [f for f in verworfen if f.ende > f.start]
         self._treffer = aktiv + bleibt
+        self.setExtraSelections(self._hervorhebungen(fachspannen, bleibt, aktiv, gewaehlt))
+        self._springe_zu(gewaehlt, text)
+
+    def _setze_text(self, text: str) -> None:
+        """Load the text only when it changed, so that a redraw keeps scroll position and
+        selection."""
+        if text != self._text:
+            self._text = text
+            self.setPlainText(text)
+
+    def _hervorhebungen(self, fachspannen: Sequence[tuple[int, int]],
+                        bleibt: Sequence[Fundstelle], aktiv: Sequence[Fundstelle],
+                        gewaehlt: Fundstelle | None) -> list[QTextEdit.ExtraSelection]:
+        """One background span each: green for medical terms and discarded hits, the
+        traffic-light colour for hits; the selected hit is more opaque."""
         auswahlen = [self._auswahl(a, b, GRUEN, 45) for a, b in fachspannen]
-        for f in bleibt:
-            auswahlen.append(self._auswahl(f.start, f.ende, GRUEN, 150 if f is gewaehlt else 70))
-        for f in aktiv:
-            auswahlen.append(self._auswahl(f.start, f.ende, farbe(f),
-                                           170 if f is gewaehlt else 80))
-        self.setExtraSelections(auswahlen)
-        if gewaehlt is not None and gewaehlt.ende > gewaehlt.start:
-            cursor = self.textCursor()
-            cursor.setPosition(min(gewaehlt.start, len(text)))
-            self.setTextCursor(cursor)
-            self.ensureCursorVisible()
+        auswahlen += [self._auswahl(f.start, f.ende, GRUEN, 150 if f is gewaehlt else 70)
+                      for f in bleibt]
+        auswahlen += [self._auswahl(f.start, f.ende, farbe(f), 170 if f is gewaehlt else 80)
+                      for f in aktiv]
+        return auswahlen
+
+    def _springe_zu(self, gewaehlt: Fundstelle | None, text: str) -> None:
+        """Put the cursor at the start of the selected hit and scroll it into view."""
+        if gewaehlt is None or gewaehlt.ende <= gewaehlt.start:
+            return
+        cursor = self.textCursor()
+        cursor.setPosition(min(gewaehlt.start, len(text)))
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
 
     def _auswahl(self, a: int, b: int, c: QColor, alpha: int) -> QTextEdit.ExtraSelection:
+        """A background span over ``[a, b)`` in the colour with the given opacity."""
         s = QTextEdit.ExtraSelection()
         cursor = QTextCursor(self.document())
         cursor.setPosition(a)
@@ -336,17 +405,25 @@ class Textansicht(QTextEdit):
         return cursor.selectionStart(), cursor.selectionEnd()
 
     def zoom(self, faktor: float) -> None:
+        """One font step larger for a factor above 1, else one smaller (the zoom buttons)."""
         if faktor > 1:
             self.zoomIn(1)
         else:
             self.zoomOut(1)
 
     def zoom_zuruecksetzen(self) -> None:
+        """Back to the font the view started with."""
         self.setFont(self._schrift)
 
 
 class PruefenSeite(QWidget):
+    """Step 7, the visual review: the tree of documents and pages on the left, the page or
+    the text in the middle, and on the right the table of hits with the controls to
+    discard, take up, box and mask, and the button that saves the working state."""
+
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
+        """Build the three regions of the splitter; nothing is shown until
+        :meth:`aktualisiere` fills the tree."""
         super().__init__(eltern)
         self.sitzung = sitzung
         self.dokument: Dokument | None = None
@@ -357,11 +434,22 @@ class PruefenSeite(QWidget):
 
         aussen = QVBoxLayout(self)
         teiler = QSplitter(Qt.Orientation.Horizontal)
+        self._baue_baum(teiler)
+        self._baue_ansichten(teiler)
+        teiler.addWidget(self._baue_rechts())
+        teiler.setSizes([180, 620, 360])
+        aussen.addWidget(teiler, 1)
+
+    # -- building ----------------------------------------------------------------------------------
+    def _baue_baum(self, teiler: QSplitter) -> None:
+        """Left: the tree of documents and their pages."""
         self.baum = QTreeWidget()
         self.baum.setHeaderLabels([self.tr("Dokument / Seite")])
         self.baum.currentItemChanged.connect(self._seite_gewaehlt)
         teiler.addWidget(self.baum)
 
+    def _baue_ansichten(self, teiler: QSplitter) -> None:
+        """Middle: the page view and the text view, stacked; one of them is in front."""
         self.ansicht = Seitenansicht()
         self.ansicht.treffer_gewaehlt.connect(self.waehle)
         self.ansicht.kasten_gezeichnet.connect(self.kasten)
@@ -373,8 +461,23 @@ class PruefenSeite(QWidget):
         self.stapel.addWidget(self.textansicht)
         teiler.addWidget(self.stapel)
 
+    def _baue_rechts(self) -> QWidget:
+        """Right: the legend, the table of hits, the options, the replacement text, the
+        buttons, the hint line and the working-state button."""
         rechts = QWidget()
         r = QVBoxLayout(rechts)
+        self._baue_legende(r)
+        self._baue_tabelle(r)
+        self._baue_optionen(r)
+        self._baue_knoepfe(r)
+        self.hinweis = QLabel("")
+        self.hinweis.setWordWrap(True)
+        r.addWidget(self.hinweis)
+        self._baue_speichern(r)
+        return rechts
+
+    def _baue_legende(self, r: QVBoxLayout) -> None:
+        """The legend: what the colours mean and how mouse and keys work."""
         legende = QLabel(self.tr(
             "Rot: wird geschwärzt (gestrichelt: Vorschlag von NER oder unscharfer Suche) ·"
             " Gelb: unsicher gelesen (unlesbare Zeilen werden vorsorglich geschwärzt) ·"
@@ -388,6 +491,9 @@ class PruefenSeite(QWidget):
             " ausgewählten Text auf. Die Quelle jedes Treffers steht in der Tabelle."))
         legende.setWordWrap(True)
         r.addWidget(legende)
+
+    def _baue_tabelle(self, r: QVBoxLayout) -> None:
+        """The table of hits: page, rule, pseudonym, source; a row selects its hit."""
         self.tabelle = QTableWidget(0, 4)
         self.tabelle.setHorizontalHeaderLabels([self.tr("Seite"), self.tr("Regel"),
                                                 self.tr("Pseudonym"), self.tr("Quelle")])
@@ -396,6 +502,10 @@ class PruefenSeite(QWidget):
         self.tabelle.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tabelle.itemSelectionChanged.connect(self._zeile_gewaehlt)
         r.addWidget(self.tabelle, 1)
+
+    def _baue_optionen(self, r: QVBoxLayout) -> None:
+        """The two options (show medical terms, remember discards) and the field with the
+        replacement text for boxes and take-ups."""
         self.fach_anzeigen = QCheckBox(self.tr("Fachbegriffe markieren"))
         self.fach_anzeigen.setChecked(True)
         self.fach_anzeigen.toggled.connect(lambda _an: self.zeichne())
@@ -415,6 +525,9 @@ class PruefenSeite(QWidget):
             " ([Begriff …]), den die Reidentifikation zurücksetzt."))
         ersatz.addWidget(self.ersatztext, 1)
         r.addLayout(ersatz)
+
+    def _baue_knoepfe(self, r: QVBoxLayout) -> None:
+        """The row of buttons: discard, take up, mask mode and the three zoom buttons."""
         knoepfe = QHBoxLayout()
         self.verwerfen = QPushButton(self.tr("Treffer verwerfen"))
         self.verwerfen.clicked.connect(self.verwerfe)
@@ -440,9 +553,9 @@ class PruefenSeite(QWidget):
             k.clicked.connect(aktion)
             knoepfe.addWidget(k)
         r.addLayout(knoepfe)
-        self.hinweis = QLabel("")
-        self.hinweis.setWordWrap(True)
-        r.addWidget(self.hinweis)
+
+    def _baue_speichern(self, r: QVBoxLayout) -> None:
+        """The button that writes the working state."""
         self.speichern = QPushButton(self.tr("Arbeitsstand speichern …"))
         self.speichern.setToolTip(self.tr(
             "Das aufbereitete Dokument und eine Konfigurationsdatei schreiben, aus denen sich"
@@ -450,33 +563,40 @@ class PruefenSeite(QWidget):
             " Texterkennung, Treffer, Entscheidungen). Beide Dateien enthalten Klardaten."))
         self.speichern.clicked.connect(self.arbeitsstand_waehlen)
         r.addWidget(self.speichern)
-        teiler.addWidget(rechts)
-        teiler.setSizes([180, 620, 360])
-        aussen.addWidget(teiler, 1)
 
     # -- navigation -------------------------------------------------------------------------------
     def aktualisiere(self) -> None:
+        """Rebuild the tree from the session's analysed, not yet exported documents and go
+        to the first page."""
         self.baum.clear()
         for d in self.sitzung.dokumente:
             if d.vorbereitung is None or d.vorbereitung.abgeschlossen:
                 continue
-            knoten = QTreeWidgetItem([d.pfad.name])  # file name, not translated
-            knoten.setData(0, Qt.ItemDataRole.UserRole, (id(d), -1))
-            for s in d.vorbereitung.seiten:
-                if d.vorbereitung.ist_text:
-                    kind = QTreeWidgetItem([self.tr("Text")])
-                else:
-                    kind = QTreeWidgetItem([self.tr("Seite {nummer}").format(nummer=s.nummer + 1)
-                                            + (" (OCR)" if s.ocr is not None else "")])
-                kind.setData(0, Qt.ItemDataRole.UserRole, (id(d), s.nummer))
-                knoten.addChild(kind)
+            knoten = self._baumknoten(d, d.vorbereitung)
             self.baum.addTopLevelItem(knoten)
             knoten.setExpanded(True)
-        if self.baum.topLevelItemCount():
-            erster = self.baum.topLevelItem(0)
-            self.baum.setCurrentItem(erster.child(0) if erster.childCount() else erster)
+        erster = self.baum.topLevelItem(0)
+        if erster is not None:
+            kind = erster.child(0)
+            self.baum.setCurrentItem(kind if kind is not None else erster)
+
+    def _baumknoten(self, d: Dokument, v: Vorbereitung | Textvorbereitung) -> QTreeWidgetItem:
+        """The node of one document with a child per page: "Text" for a text file, else the
+        page number with an OCR mark; the user-role data names document and page."""
+        knoten = QTreeWidgetItem([d.pfad.name])  # file name, not translated
+        knoten.setData(0, Qt.ItemDataRole.UserRole, (id(d), -1))
+        for s in v.seiten:
+            if v.ist_text:
+                kind = QTreeWidgetItem([self.tr("Text")])
+            else:
+                kind = QTreeWidgetItem([self.tr("Seite {nummer}").format(nummer=s.nummer + 1)
+                                        + (" (OCR)" if s.ocr is not None else "")])
+            kind.setData(0, Qt.ItemDataRole.UserRole, (id(d), s.nummer))
+            knoten.addChild(kind)
+        return knoten
 
     def _seite_gewaehlt(self, aktuell: QTreeWidgetItem | None, _vorher=None) -> None:
+        """The tree's current item changed: show that document and page, nothing selected."""
         if aktuell is None:
             return
         kennung, nummer = aktuell.data(0, Qt.ItemDataRole.UserRole)
@@ -489,29 +609,67 @@ class PruefenSeite(QWidget):
         self.auswahl = None
         self.zeichne()
 
+    def _vorbereitung(self) -> Vorbereitung | Textvorbereitung | None:
+        """The preparation under review, or None before a document was chosen."""
+        return None if self.dokument is None else self.dokument.vorbereitung
+
+    def _seitenvorbereitung(self) -> Vorbereitung | None:
+        """The preparation under review when it has pages to click into; None for a text
+        file or before a document was chosen."""
+        v = self._vorbereitung()
+        return v if isinstance(v, Vorbereitung) else None
+
     def fundstellen(self) -> list[Fundstelle]:
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        """The hits of the page under review (all of them for a text file)."""
+        v = self._vorbereitung()
+        if v is None:
             return []
-        return [f for f in self.dokument.vorbereitung.fundstellen if f.seite == self.seite]
+        return [f for f in v.fundstellen if f.seite == self.seite]
 
-    def _aktive_ansicht(self):
-        return self.stapel.currentWidget()
+    def _aktive_ansicht(self) -> Seitenansicht | Textansicht:
+        """The view in front: the text view for a text file, else the page view."""
+        return (self.textansicht if self.stapel.currentWidget() is self.textansicht
+                else self.ansicht)
 
+    # -- drawing -----------------------------------------------------------------------------------
     def _zeige_ansicht(self, treffer: list[Fundstelle]) -> None:
-        v = self.dokument.vorbereitung
-        zeigen = self.fach_anzeigen.isChecked()
+        """Show the hits in the view that fits the document and adapt the buttons to it."""
+        v = self._vorbereitung()
+        if v is None:
+            return
         verworfen = [f for f in v.verworfen if f.seite == self.seite]
-        if v.ist_text:
-            fach = v.fachbegriffe_spannen(self.seite) if zeigen else []
-            self.textansicht.zeige(v.text, treffer, self.gewaehlt, fach, verworfen)
-            self.stapel.setCurrentWidget(self.textansicht)
+        if isinstance(v, Textvorbereitung):
+            self._zeige_text(v, treffer, verworfen)
         else:
-            fach = v.fachbegriffe_rects(self.seite) if zeigen else []
-            auswahl = ([tuple(r) for r in v.seiten[self.seite].textbasis.rects(*self.auswahl)]
-                       if self.auswahl is not None else [])
-            self.ansicht.zeige(v.seitenbild(self.seite, VORSCHAU_DPI), treffer, self.gewaehlt,
-                               fach, verworfen, v.unsichere_rects(self.seite), auswahl)
-            self.stapel.setCurrentWidget(self.ansicht)
+            self._zeige_seite(v, treffer, verworfen)
+        self._knoepfe_anpassen(v)
+
+    def _zeige_text(self, v: Textvorbereitung, treffer: list[Fundstelle],
+                    verworfen: list[Fundstelle]) -> None:
+        """Text file: the text view in front, medical terms as spans when wanted."""
+        fach = v.fachbegriffe_spannen(self.seite) if self.fach_anzeigen.isChecked() else []
+        self.textansicht.zeige(v.text, treffer, self.gewaehlt, fach, verworfen)
+        self.stapel.setCurrentWidget(self.textansicht)
+
+    def _zeige_seite(self, v: Vorbereitung, treffer: list[Fundstelle],
+                     verworfen: list[Fundstelle]) -> None:
+        """Page document: the page image with every kind of mark, the page view in front."""
+        fach = v.fachbegriffe_rects(self.seite) if self.fach_anzeigen.isChecked() else []
+        auswahl = self._auswahl_rects(v)
+        self.ansicht.zeige(v.seitenbild(self.seite, VORSCHAU_DPI), treffer, self.gewaehlt,
+                           fach, verworfen, v.unsichere_rects(self.seite), auswahl)
+        self.stapel.setCurrentWidget(self.ansicht)
+
+    def _auswahl_rects(self, v: Vorbereitung) -> list[Box]:
+        """Boxes of the words the user picked on the page, one per line; empty without a
+        selection."""
+        if self.auswahl is None:
+            return []
+        return [tuple(r) for r in v.seiten[self.seite].textbasis.rects(*self.auswahl)]
+
+    def _knoepfe_anpassen(self, v: Vorbereitung | Textvorbereitung) -> None:
+        """The buttons follow the document: a take-up needs a selection on a page, masks
+        exist only on pages, and the discard button turns into restore for a discarded hit."""
         self.markieren.setEnabled(v.ist_text or self.auswahl is not None)
         self.maske_modus.setVisible(not v.ist_text)
         verworfen_gewaehlt = self.gewaehlt is not None and self.gewaehlt in v.verworfen
@@ -519,13 +677,21 @@ class PruefenSeite(QWidget):
                                else self.tr("Treffer verwerfen"))
 
     def zeichne(self) -> None:
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        """Redraw the page under review: the view, the table of hits and the hint line."""
+        v = self._vorbereitung()
+        if v is None:
             return
-        v = self.dokument.vorbereitung
-        self._zeige_ansicht(self.fundstellen())
+        treffer = self.fundstellen()
+        self._zeige_ansicht(treffer)
+        self._fuelle_tabelle(treffer)
+        self._zeige_hinweis(v)
+
+    def _fuelle_tabelle(self, treffer: list[Fundstelle]) -> None:
+        """One row per hit (page, rule, pseudonym, source); the selected hit's row is
+        selected without firing the selection signal."""
         self.tabelle.blockSignals(True)
         self.tabelle.setRowCount(0)
-        for f in self.fundstellen():
+        for f in treffer:
             zeile = self.tabelle.rowCount()
             self.tabelle.insertRow(zeile)
             for spalte, wert in enumerate((str(f.seite + 1), f.regel, f.pseudonym, f.quelle)):
@@ -533,6 +699,10 @@ class PruefenSeite(QWidget):
             if f is self.gewaehlt:
                 self.tabelle.selectRow(zeile)
         self.tabelle.blockSignals(False)
+
+    def _zeige_hinweis(self, v: Vorbereitung | Textvorbereitung) -> None:
+        """The hint line: how many medical terms are marked, and the first note about OCR,
+        the text layer or the fuzzy search."""
         warnungen = [w for w in v.warnungen + v.hinweise
                      if "OCR" in w or "Textebene" in w or w.startswith("Unscharfe Suche")]
         hinweis = self.tr("{n} Fachbegriffe markiert").format(n=v.fachbegriffe_anzahl)
@@ -540,10 +710,12 @@ class PruefenSeite(QWidget):
 
     # -- actions ---------------------------------------------------------------------------------
     def waehle(self, f: Fundstelle) -> None:
+        """Select a hit (a click in the view) and redraw."""
         self.gewaehlt = f
         self.zeichne()
 
     def _zeile_gewaehlt(self) -> None:
+        """A row of the table was selected: select that hit in the view."""
         zeilen = self.tabelle.selectionModel().selectedRows()
         if zeilen:
             treffer = self.fundstellen()
@@ -554,9 +726,9 @@ class PruefenSeite(QWidget):
 
     def verwerfe(self) -> None:
         """Discard the selected hit, or take a discarded one back."""
-        if self.gewaehlt is None or self.dokument is None or self.dokument.vorbereitung is None:
+        v = self._vorbereitung()
+        if self.gewaehlt is None or v is None:
             return
-        v = self.dokument.vorbereitung
         if self.gewaehlt in v.verworfen:
             v.wiederherstelle(self.gewaehlt)
         else:
@@ -565,18 +737,21 @@ class PruefenSeite(QWidget):
         self.zeichne()
 
     def _maske_umschalten(self, an: bool) -> None:
+        """The mask button: dragging on the page draws a mask now (or a box again)."""
         self.ansicht.masken_modus = an
 
     def _merken_uebernehmen(self, an: bool) -> None:
+        """The remember-discards option goes straight into the session's options."""
         self.sitzung.optionen.verworfene_merken = an
 
-    def kasten(self, rect: tuple[float, float, float, float], pseudonym: str | None = None) -> None:
+    def kasten(self, rect: Box, pseudonym: str | None = None) -> None:
         """A drawn rectangle: a black mask in mask mode, otherwise a box with the
         replacement text from the field (no dialog, so nothing can get lost behind
-        the window).  The new hit is selected; errors are shown in the hint line."""
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        the window).  The new hit is selected; errors are shown in the hint line.
+        Nothing happens for a text file, which has no page to draw on."""
+        v = self._seitenvorbereitung()
+        if v is None:
             return
-        v = self.dokument.vorbereitung
         try:
             if pseudonym is None and self.maske_modus.isChecked():
                 neue = v.maske(self.seite, rect)
@@ -594,10 +769,10 @@ class PruefenSeite(QWidget):
 
     def punkt(self, x: float, y: float, erweitern: bool = False) -> None:
         """A click on the page: select the word there, or extend the selection to it."""
-        if self.dokument is None or self.dokument.vorbereitung is None \
-                or self.dokument.vorbereitung.ist_text:
+        v = self._seitenvorbereitung()
+        if v is None:
             return
-        spanne = self.dokument.vorbereitung.wort_bei(self.seite, x, y)
+        spanne = v.wort_bei(self.seite, x, y)
         if spanne is None:
             self.auswahl = None
         elif erweitern and self.auswahl is not None:
@@ -617,9 +792,9 @@ class PruefenSeite(QWidget):
 
     def aufnehmen(self, pseudonym: str | None = None) -> None:
         """Take the picked words (page) or the selected text (text file) into the list."""
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        v = self._vorbereitung()
+        if v is None:
             return
-        v = self.dokument.vorbereitung
         spanne = self.textansicht.auswahl() if v.ist_text else self.auswahl
         if spanne is None:
             if self.synchron:
@@ -640,24 +815,24 @@ class PruefenSeite(QWidget):
     def markiere_auswahl(self, pseudonym: str | None = None) -> None:
         """Text files: the selected text becomes a manual hit with the given replacement
         (kept for scripts; the button calls :meth:`aufnehmen`)."""
-        if self.dokument is None or self.dokument.vorbereitung is None \
-                or not self.dokument.vorbereitung.ist_text:
+        v = self._vorbereitung()
+        if not isinstance(v, Textvorbereitung):
             return
         spanne = self.textansicht.auswahl()
         if spanne is None:
             if self.synchron:
                 raise ValueError("Keine Auswahl.")
             return
-        self.dokument.vorbereitung.markiere(self.seite, spanne[0], spanne[1],
-                                            pseudonym or self.tr("[geschwärzt]"))
+        v.markiere(self.seite, spanne[0], spanne[1], pseudonym or self.tr("[geschwärzt]"))
         self.gewaehlt = None
         self.zeichne()
 
     # -- working state -----------------------------------------------------------------------------
     def arbeitsstand_waehlen(self) -> None:
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        """Ask where to put the working state (next to the source by default) and save it."""
+        v = self._vorbereitung()
+        if v is None:
             return
-        v = self.dokument.vorbereitung
         vorschlag = v.quelle.with_name(v.quelle.stem + standmodul.ENDUNG)
         pfad, _ = QFileDialog.getSaveFileName(
             self, self.tr("Arbeitsstand speichern"), str(vorschlag),
@@ -667,10 +842,11 @@ class PruefenSeite(QWidget):
 
     def arbeitsstand_speichern(self, pfad: Path) -> tuple[Path, Path] | None:
         """Write document and configuration; returns the two paths."""
-        if self.dokument is None or self.dokument.vorbereitung is None:
+        v = self._vorbereitung()
+        if v is None:
             return None
         try:
-            dokument, konfiguration = standmodul.speichere(self.dokument.vorbereitung, pfad)
+            dokument, konfiguration = standmodul.speichere(v, pfad)
         except (standmodul.ArbeitsstandFehler, OSError) as e:
             if self.synchron:
                 raise

@@ -8,6 +8,8 @@ judged together, earlier released ones included."""
 
 from __future__ import annotations
 
+from functools import partial
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -23,16 +25,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.ablauf import Ergebnis
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.export_seite import AMPELFARBEN
 from pseudonymed.gui.sitzung import Dokument, Sitzung
-from pseudonymed.konfig import lade_einstellungen, speichere_einstellungen
+from pseudonymed.konfig import Einstellungen, lade_einstellungen, speichere_einstellungen
 from pseudonymed.pruefung import restrisiko as risikomodul
 from pseudonymed.pruefung.bericht import als_text
 
 
 class KontrolleSeite(QWidget):
+    """Step "8 Kontrolle": the re-check light, the residual-risk light, one table row per
+    re-checked document and, for the selected row, the counted features and the report."""
+
     def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
+        """Build the page region by region and start with both lights grey."""
         super().__init__(eltern)
         self.sitzung = sitzung
         self.synchron = False
@@ -42,33 +49,46 @@ class KontrolleSeite(QWidget):
         sitzung.optionen.referenzpopulation = e.referenzpopulation
         sitzung.optionen.eigene_orte = e.eigene_orte
         aussen = QVBoxLayout(self)
+        self._baue_pruefzeile(aussen)
+        self._baue_risikozeile(aussen)
+        self._baue_referenzzeile(aussen, e)
+        self._baue_tabellen(aussen)
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        aussen.addWidget(self.status)
+        self._ampel_setzen(self.ampel, "grau")
+        self._ampel_setzen(self.risiko_ampel, "grau")
 
-        # -- light 1: re-check --------------------------------------------------------------------
-        zeile1 = QHBoxLayout()
-        zeile1.addWidget(QLabel(self.tr(
+    # -- build -------------------------------------------------------------------------------------
+    def _baue_pruefzeile(self, aussen: QVBoxLayout) -> None:
+        """Light 1: the question, its answer text, the light and the re-check button."""
+        zeile = QHBoxLayout()
+        zeile.addWidget(QLabel(self.tr(
             "Erneute Prüfung: alle Angaben aus „1 Patientendaten“ entfernt?")))
         self.ampel_text = QLabel("")
         self.ampel_text.setWordWrap(True)
-        zeile1.addWidget(self.ampel_text, 1)
+        zeile.addWidget(self.ampel_text, 1)
         self.ampel = QLabel()
         self.ampel.setFixedSize(28, 28)
-        zeile1.addWidget(self.ampel)
+        zeile.addWidget(self.ampel)
         self.erneut = QPushButton(self.tr("Erneut prüfen"))
         self.erneut.clicked.connect(self.pruefen)
-        zeile1.addWidget(self.erneut)
-        aussen.addLayout(zeile1)
+        zeile.addWidget(self.erneut)
+        aussen.addLayout(zeile)
 
-        # -- light 2: residual risk ---------------------------------------------------------------
-        zeile2 = QHBoxLayout()
-        zeile2.addWidget(QLabel(self.tr("Restrisiko: wie viele Menschen teilen, was im Text"
-                                        " bleibt?")))
+    def _baue_risikozeile(self, aussen: QVBoxLayout) -> None:
+        """Light 2: the residual-risk question, its summary, the light and the explanation
+        of the estimate underneath."""
+        zeile = QHBoxLayout()
+        zeile.addWidget(QLabel(self.tr("Restrisiko: wie viele Menschen teilen, was im Text"
+                                       " bleibt?")))
         self.risiko_text = QLabel("")
         self.risiko_text.setWordWrap(True)
-        zeile2.addWidget(self.risiko_text, 1)
+        zeile.addWidget(self.risiko_text, 1)
         self.risiko_ampel = QLabel()
         self.risiko_ampel.setFixedSize(28, 28)
-        zeile2.addWidget(self.risiko_ampel)
-        aussen.addLayout(zeile2)
+        zeile.addWidget(self.risiko_ampel)
+        aussen.addLayout(zeile)
         hinweis = QLabel(self.tr(
             "Schätzung nach dem k-map-Prinzip (El Emam, EMA Policy 0070, Rocher et al.): Referenz"
             " ÷ Produkt der Häufigkeiten von Geschlecht, Geburtsjahr, kleinstem genanntem Ort"
@@ -77,23 +97,30 @@ class KontrolleSeite(QWidget):
             " Unabhängigkeitsannahme ist bei untypischen Kombinationen zu optimistisch."))
         hinweis.setWordWrap(True)
         aussen.addWidget(hinweis)
-        zeile3 = QHBoxLayout()
-        zeile3.addWidget(QLabel(self.tr("Referenzpopulation")))
+
+    def _baue_referenzzeile(self, aussen: QVBoxLayout, e: Einstellungen) -> None:
+        """The two parameters of the estimate (reference population, own places) and the
+        button that recalculates with them."""
+        zeile = QHBoxLayout()
+        zeile.addWidget(QLabel(self.tr("Referenzpopulation")))
         self.referenz = QLineEdit(str(e.referenzpopulation))
         self.referenz.setMaximumWidth(120)
         self.referenz.setToolTip(self.tr(
             "Aus wie vielen Menschen ein Angreifer wählt: Deutschland 83.600.000, oder das"
             " Einzugsgebiet der Sprechstunde, wenn der Absender bekannt ist"))
-        zeile3.addWidget(self.referenz)
-        zeile3.addWidget(QLabel(self.tr("Eigene Orte (nicht gezählt)")))
+        zeile.addWidget(self.referenz)
+        zeile.addWidget(QLabel(self.tr("Eigene Orte (nicht gezählt)")))
         self.eigene_orte = QLineEdit(e.eigene_orte)
         self.eigene_orte.setPlaceholderText(self.tr("Ort der Sprechstunde, Klinik … (Komma)"))
-        zeile3.addWidget(self.eigene_orte, 1)
+        zeile.addWidget(self.eigene_orte, 1)
         neu = QPushButton(self.tr("Neu berechnen"))
         neu.clicked.connect(self.neu_berechnen)
-        zeile3.addWidget(neu)
-        aussen.addLayout(zeile3)
+        zeile.addWidget(neu)
+        aussen.addLayout(zeile)
 
+    def _baue_tabellen(self, aussen: QVBoxLayout) -> None:
+        """The document table above, the feature table and the report text below, in a
+        vertical splitter."""
         teiler = QSplitter(Qt.Orientation.Vertical)
         self.tabelle = QTableWidget(0, 6)
         self.tabelle.setHorizontalHeaderLabels([
@@ -122,25 +149,22 @@ class KontrolleSeite(QWidget):
         teiler.addWidget(unten)
         aussen.addWidget(teiler, 1)
 
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        aussen.addWidget(self.status)
-        self._ampel_setzen(self.ampel, "grau")
-        self._ampel_setzen(self.risiko_ampel, "grau")
-
     # -- lights ------------------------------------------------------------------------------------
     @staticmethod
     def _ampel_setzen(label: QLabel, farbe: str) -> None:
+        """Paint the round light in the given colour and remember the colour on the label."""
         label.setStyleSheet(
             f"background: {AMPELFARBEN[farbe]}; border-radius: 14px; border: 1px solid #555;")
         label.setProperty("farbe", farbe)
 
     @property
     def farbe(self) -> str:
+        """Colour of the re-check light: grau, gruen, gelb or rot."""
         return self.ampel.property("farbe") or "grau"
 
     @property
     def risiko_farbe(self) -> str:
+        """Colour of the residual-risk light: grau, gruen, gelb or rot."""
         return self.risiko_ampel.property("farbe") or "grau"
 
     def aktualisiere(self) -> None:
@@ -172,6 +196,8 @@ class KontrolleSeite(QWidget):
         self.pruefen()
 
     def pruefen(self) -> None:
+        """Re-check every document that is ready for it, one after the other; a run that
+        is already under way is left alone."""
         if self._warteschlange:
             return
         self._warteschlange = [d for d in self.sitzung.dokumente if d.pruefbereit]
@@ -183,6 +209,8 @@ class KontrolleSeite(QWidget):
         self._naechstes()
 
     def _naechstes(self) -> None:
+        """Take the next document off the queue and re-check it, in a worker thread or,
+        in the synchronous test mode, right here; an empty queue ends the run."""
         if not self._warteschlange:
             self.erneut.setEnabled(True)
             self._darstellen()
@@ -197,70 +225,109 @@ class KontrolleSeite(QWidget):
                 d.fehler = str(e)
             self._naechstes()
             return
-        self._arbeiter = Arbeiter(lambda d=d: self.sitzung.pruefe(d), self)
+        self._arbeiter = Arbeiter(partial(self.sitzung.pruefe, d), self)
         self._arbeiter.fertig.connect(lambda _e: self._naechstes())
-        self._arbeiter.fehler.connect(lambda e, d=d: (setattr(d, "fehler", str(e)),
-                                                      self._naechstes()))
+        self._arbeiter.fehler.connect(partial(self._pruefung_fehlgeschlagen, d))
         self._arbeiter.start()
+
+    def _pruefung_fehlgeschlagen(self, d: Dokument, e: object) -> None:
+        """Record the worker's exception on the document and carry on with the queue."""
+        d.fehler = str(e)
+        self._naechstes()
 
     # -- display -----------------------------------------------------------------------------------
     def _darstellen(self) -> None:
+        """Fill both lights and the document table, then the details of the selected row."""
         farbe, text = self.sitzung.ampel()
         self._ampel_setzen(self.ampel, farbe)
         self.ampel_text.setText(self.tr(text))
-        gesamt, fruehere = self.sitzung.kontrolle()
-        if gesamt is None:
-            self._ampel_setzen(self.risiko_ampel, "grau")
-            self.risiko_text.setText(self.tr("Noch kein geprüftes Dokument."))
-        else:
-            self._ampel_setzen(self.risiko_ampel, gesamt.ampel)
-            dominant = gesamt.dominant
-            self.risiko_text.setText(
-                self.tr("Alle Dokumente dieses Patienten zusammen: {kurz}; {schwelle}.").format(
-                    kurz=gesamt.kurz(), schwelle=risikomodul.ampel_text(gesamt.ampel))
-                + (self.tr(" Größter Beitrag: {merkmal} ({bits:.1f} Bit).").format(
-                    merkmal=dominant.beschreibung, bits=dominant.bits) if dominant else "")
-                + (self.tr(" Einschließlich {n} früher freigegebener Dokument(e).").format(
-                    n=fruehere) if fruehere else ""))
-        dokumente = [d for d in self.sitzung.dokumente if d.vorpruefung is not None]
-        self.tabelle.setRowCount(len(dokumente))
-        for i, d in enumerate(dokumente):
-            e = d.vorpruefung
-            r = e.restrisiko
-            werte = [d.pfad.name,
-                     self.tr("bestanden") if e.freigegeben else self.tr("NICHT bestanden"),
-                     risikomodul._zahl(r.lam) if r else "–", f"{r.kappa:.2f}" if r else "–",
-                     r.ampel.upper() if r else "–",
-                     f"{r.dominant.beschreibung} ({r.dominant.bits:.1f} Bit)"
-                     if r and r.dominant else "–"]
-            for j, w in enumerate(werte):
-                eintrag = QTableWidgetItem(w)
-                eintrag.setData(Qt.ItemDataRole.UserRole, id(d))
-                self.tabelle.setItem(i, j, eintrag)
-        if dokumente and self.tabelle.currentRow() < 0:
+        self._zeige_restrisiko()
+        if self._fuelle_tabelle() and self.tabelle.currentRow() < 0:
             self.tabelle.selectRow(0)
         self._zeige_details()
         self.status.setText("")
 
+    def _zeige_restrisiko(self) -> None:
+        """Light 2: the joint estimate over all documents of the patient, grey without one."""
+        gesamt, fruehere = self.sitzung.kontrolle()
+        if gesamt is None:
+            self._ampel_setzen(self.risiko_ampel, "grau")
+            self.risiko_text.setText(self.tr("Noch kein geprüftes Dokument."))
+            return
+        self._ampel_setzen(self.risiko_ampel, gesamt.ampel)
+        self.risiko_text.setText(self._risikosatz(gesamt, fruehere))
+
+    def _risikosatz(self, gesamt: risikomodul.Restrisiko, fruehere: int) -> str:
+        """The summary sentence of the joint estimate: figures and threshold, the largest
+        contribution if there is one, the number of earlier released documents if any."""
+        dominant = gesamt.dominant
+        satz = self.tr("Alle Dokumente dieses Patienten zusammen: {kurz}; {schwelle}.").format(
+            kurz=gesamt.kurz(), schwelle=risikomodul.ampel_text(gesamt.ampel))
+        if dominant:
+            satz += self.tr(" Größter Beitrag: {merkmal} ({bits:.1f} Bit).").format(
+                merkmal=dominant.beschreibung, bits=dominant.bits)
+        if fruehere:
+            satz += self.tr(" Einschließlich {n} früher freigegebener Dokument(e).").format(
+                n=fruehere)
+        return satz
+
+    def _fuelle_tabelle(self) -> int:
+        """One row per re-checked document, every cell tagged with the document's id so
+        that the details can find it again.  Returns the number of rows."""
+        geprueft = [(d, d.vorpruefung) for d in self.sitzung.dokumente
+                    if d.vorpruefung is not None]
+        self.tabelle.setRowCount(len(geprueft))
+        for i, (d, e) in enumerate(geprueft):
+            for j, w in enumerate(self._tabellenzeile(d, e)):
+                eintrag = QTableWidgetItem(w)
+                eintrag.setData(Qt.ItemDataRole.UserRole, id(d))
+                self.tabelle.setItem(i, j, eintrag)
+        return len(geprueft)
+
+    def _tabellenzeile(self, d: Dokument, e: Ergebnis) -> list[str]:
+        """The six cells of a document's row: name, re-check verdict, λ, κ, the light and
+        the largest contribution; dashes where the result carries no estimate."""
+        verdikt = self.tr("bestanden") if e.freigegeben else self.tr("NICHT bestanden")
+        r = e.restrisiko
+        if r is None:
+            return [d.pfad.name, verdikt, "–", "–", "–", "–"]
+        beitrag = (f"{r.dominant.beschreibung} ({r.dominant.bits:.1f} Bit)"
+                   if r.dominant else "–")
+        return [d.pfad.name, verdikt, risikomodul._zahl(r.lam), f"{r.kappa:.2f}",
+                r.ampel.upper(), beitrag]
+
     def _zeige_details(self) -> None:
-        zeile = self.tabelle.currentRow()
-        eintrag = self.tabelle.item(zeile, 0) if zeile >= 0 else None
-        d = next((d for d in self.sitzung.dokumente
-                  if eintrag is not None and id(d) == eintrag.data(Qt.ItemDataRole.UserRole)), None)
+        """Details of the selected row: the counted features with their evidence and the
+        full report text; both empty without a selection."""
+        d = self._gewaehltes_dokument()
         if d is None or d.vorpruefung is None:
             self.merkmale.setRowCount(0)
             self.protokoll.clear()
             return
-        r = d.vorpruefung.restrisiko
-        zeilen = []
-        if r is not None:
-            for m in sorted(r.merkmale, key=lambda m: (-m.gezaehlt, -m.bits)):
-                zeilen.append((m.beschreibung + ("" if m.gezaehlt else self.tr(" (nicht gezählt)")),
-                               f"{m.bits:.1f}", m.beleg))
-            for mk in r.markierungen:
-                zeilen.append(("! " + mk.text, "", mk.beleg))
+        zeilen = self._merkmalzeilen(d.vorpruefung.restrisiko)
         self.merkmale.setRowCount(len(zeilen))
-        for i, (a, b, c) in enumerate(zeilen):
-            for j, w in enumerate((a, b, c)):
+        for i, zeile in enumerate(zeilen):
+            for j, w in enumerate(zeile):
                 self.merkmale.setItem(i, j, QTableWidgetItem(w))
         self.protokoll.setPlainText(als_text(d.vorpruefung.bericht))
+
+    def _gewaehltes_dokument(self) -> Dokument | None:
+        """The session document behind the selected table row, found by the id stored in
+        the row's first cell; None without a selection."""
+        zeile = self.tabelle.currentRow()
+        eintrag = self.tabelle.item(zeile, 0) if zeile >= 0 else None
+        if eintrag is None:
+            return None
+        kennung = eintrag.data(Qt.ItemDataRole.UserRole)
+        return next((d for d in self.sitzung.dokumente if id(d) == kennung), None)
+
+    def _merkmalzeilen(self, r: risikomodul.Restrisiko | None) -> list[tuple[str, str, str]]:
+        """Rows of the feature table: counted features first, each by bits, then the ones
+        only listed, then the markers prefixed with "!"; nothing without an estimate."""
+        if r is None:
+            return []
+        merkmale = [(m.beschreibung + ("" if m.gezaehlt else self.tr(" (nicht gezählt)")),
+                     f"{m.bits:.1f}", m.beleg)
+                    for m in sorted(r.merkmale, key=lambda m: (-m.gezaehlt, -m.bits))]
+        markierungen = [("! " + mk.text, "", mk.beleg) for mk in r.markierungen]
+        return merkmale + markierungen

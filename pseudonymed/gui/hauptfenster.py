@@ -23,7 +23,12 @@ from pseudonymed.konfig import lade_einstellungen, speichere_einstellungen
 
 
 class Hauptfenster(QMainWindow):
+    """The main window: the eleven steps as tabs around one session, a status line and
+    the language menu.  Finishing a step opens the next; a step that shows state other
+    steps change is refreshed whenever it is entered."""
+
     def __init__(self, sitzung: Sitzung | None = None) -> None:
+        """Build the eleven pages, wrap each in a scroll area and connect the steps."""
         super().__init__()
         self.sitzung = sitzung or Sitzung()
         self.setWindowTitle(WERKZEUG)
@@ -43,6 +48,11 @@ class Hauptfenster(QMainWindow):
         self.vokabular = VokabularSeite(self.sitzung)
         self.identifikatoren = IdentifikatorenSeite(self.sitzung)
         self.kontrolle = KontrolleSeite(self.sitzung)
+        # the steps that show state other steps change: refreshed each time they are entered
+        # (the patient, document and review steps keep their own state and are left alone)
+        self._beim_betreten = (self.rueckersetzen, self.datenbank, self.vokabular,
+                               self.identifikatoren, self.analysieren, self.texterkennung,
+                               self.export, self.kontrolle)
         self._seiten: list = []
         for seite, titel in ((self.patient, self.tr("1 Patientendaten")),
                              (self.identifikatoren, self.tr("2 Identifikatoren")),
@@ -77,6 +87,7 @@ class Hauptfenster(QMainWindow):
         self._sprachmenue()
 
     def _sprachmenue(self) -> None:
+        """The menu with one action per interface language."""
         menue = self.menuBar().addMenu(self.tr("Sprache"))
         for code, name in (("de", "Deutsch"), ("en", "English")):
             aktion = QAction(name, self)
@@ -84,6 +95,7 @@ class Hauptfenster(QMainWindow):
             menue.addAction(aktion)
 
     def sprache_waehlen(self, code: str) -> None:
+        """Store the chosen interface language; it applies from the next start."""
         e = lade_einstellungen()
         e.gui_sprache = code
         speichere_einstellungen(e)
@@ -103,6 +115,7 @@ class Hauptfenster(QMainWindow):
             self._nach_analyse()
 
     def _nach_analyse(self) -> None:
+        """The analysis finished: refresh the document list and the review, then show it."""
         self.dokumente.aktualisiere()
         self.pruefen.aktualisiere()
         self.zeige_seite(self.pruefen)
@@ -112,29 +125,19 @@ class Hauptfenster(QMainWindow):
         return self._seiten[index] if 0 <= index < len(self._seiten) else None
 
     def aktuelle_seite(self):
+        """The step widget of the current tab."""
         return self.seite(self.tabs.currentIndex())
 
     def zeige_seite(self, seite) -> None:
+        """Switch to the tab that holds the step widget."""
         self.tabs.setCurrentIndex(self._seiten.index(seite))
 
     def _tab_gewechselt(self, index: int) -> None:
+        """A step was entered: refresh it when it is one of those that show state other
+        steps change."""
         seite = self.seite(index)
-        if seite is self.rueckersetzen:
-            self.rueckersetzen.aktualisiere()
-        elif seite is self.datenbank:
-            self.datenbank.aktualisiere()
-        elif seite is self.vokabular:
-            self.vokabular.aktualisiere()
-        elif seite is self.identifikatoren:
-            self.identifikatoren.aktualisiere()
-        elif seite is self.analysieren:
-            self.analysieren.aktualisiere()
-        elif seite is self.texterkennung:
-            self.texterkennung.aktualisiere()
-        elif seite is self.export:
-            self.export.aktualisiere()
-        elif seite is self.kontrolle:
-            self.kontrolle.aktualisiere()
+        if seite is not None and seite in self._beim_betreten:
+            seite.aktualisiere()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self.sitzung.schliessen()

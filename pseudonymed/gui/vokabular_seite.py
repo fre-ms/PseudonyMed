@@ -8,28 +8,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableView,
     QVBoxLayout,
-    QWidget,
 )
 
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import vokabular as vokmodul
-from pseudonymed.gui.sitzung import Sitzung
+from pseudonymed.gui.listenseite import ListenModell, ListenSeite, Zellindex
 
 
-class VokabularModell(QAbstractTableModel):
+class VokabularModell(ListenModell):
+    """Rows of the vocabulary table: term, category and creation time, the first two
+    editable; an edit goes through the page to the database."""
+
     def __init__(self, seite: VokabularSeite) -> None:
         super().__init__(seite)
         self.seite = seite
@@ -37,60 +35,48 @@ class VokabularModell(QAbstractTableModel):
         self.titel = [self.tr("Begriff"), self.tr("Kategorie"), self.tr("Angelegt")]
 
     def lade(self, zeilen: list[tuple[str, str, str]]) -> None:
+        """Replace all rows."""
         self.beginResetModel()
         self.zeilen = [list(z) for z in zeilen]
         self.endResetModel()
 
-    def rowCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
+    def rowCount(self, parent: Zellindex | None = None) -> int:  # noqa: N802
         return 0 if parent is not None and parent.isValid() else len(self.zeilen)
 
-    def columnCount(self, parent: QModelIndex | None = None) -> int:  # noqa: N802
-        return 3
+    def _zelle(self, zeile: int, spalte: int) -> str:
+        """The cell text; the creation time cut to the minute, without the "T"."""
+        wert = self.zeilen[zeile][spalte]
+        return wert[:16].replace("T", " ") if spalte == 2 else wert
 
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            wert = self.zeilen[index.row()][index.column()]
-            return wert[:16].replace("T", " ") if index.column() == 2 else wert
-        return None
-
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):  # noqa: N802
-        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            return self.titel[section]
-        return None
-
-    def flags(self, index):
-        basis = super().flags(index)
-        if index.column() < 2:
-            return basis | Qt.ItemFlag.ItemIsEditable
-        return basis
-
-    def setData(self, index, wert, role=Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
-        if role != Qt.ItemDataRole.EditRole or not index.isValid():
+    def _uebernehme(self, zeile: int, spalte: int, wert: str) -> bool:
+        """Hand the edit to the page and, when it took, keep the text with its whitespace
+        collapsed, as the table stores it."""
+        if not self.seite.aendere(self.zeilen[zeile][0], spalte, wert):
             return False
-        if not self.seite.aendere(self.zeilen[index.row()][0], index.column(), str(wert)):
-            return False
-        self.zeilen[index.row()][index.column()] = " ".join(str(wert).split())
+        self.zeilen[zeile][spalte] = " ".join(wert.split())
+        index = self.index(zeile, spalte)
         self.dataChanged.emit(index, index)
         return True
 
 
-class VokabularSeite(QWidget):
-    def __init__(self, sitzung: Sitzung, eltern: QWidget | None = None) -> None:
-        super().__init__(eltern)
-        self.sitzung = sitzung
-        self.synchron = False
-        self._version = -1
-        aussen = QVBoxLayout(self)
+class VokabularSeite(ListenSeite):
+    """Step "3 Fachvokabular": the protected terms with category filter, cell editing,
+    add, delete, CSV exchange and the reload of the bundled lists."""
 
-        kopf = QLabel(self.tr(
+    FILTER_SPALTE = 0
+    SCHMALE_SPALTEN = (1,)
+    modell: VokabularModell
+
+    # -- regions of the page -----------------------------------------------------------------------
+    def _kopftext(self) -> str:
+        """What the step protects and how the table is used."""
+        return self.tr(
             "Begriffe, die NER und die unscharfe Suche nie schwärzen dürfen: Fachbegriffe,"
             " Körperteile, Befundwörter, Eponyme und Ihre eigenen. Spaltenkopf anklicken"
-            " sortiert; Doppelklick ändert Begriff oder Kategorie."))
-        kopf.setWordWrap(True)
-        aussen.addWidget(kopf)
+            " sortiert; Doppelklick ändert Begriff oder Kategorie.")
 
+    def _baue_filter(self, aussen: QVBoxLayout) -> None:
+        """Search field, category filter and the row count."""
         filter_ = QHBoxLayout()
         self.suche = QLineEdit()
         self.suche.setPlaceholderText(self.tr("Suchen …"))
@@ -104,24 +90,12 @@ class VokabularSeite(QWidget):
         filter_.addWidget(self.anzahl)
         aussen.addLayout(filter_)
 
-        self.modell = VokabularModell(self)
-        self.proxy = QSortFilterProxyModel(self)
-        self.proxy.setSourceModel(self.modell)
-        self.proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.proxy.setFilterKeyColumn(0)
-        self.proxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.ansicht = QTableView()
-        self.ansicht.setModel(self.proxy)
-        self.ansicht.setSortingEnabled(True)
-        self.ansicht.sortByColumn(0, Qt.SortOrder.AscendingOrder)
-        self.ansicht.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.ansicht.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.ansicht.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.ansicht.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents)
-        self.ansicht.verticalHeader().setVisible(False)
-        aussen.addWidget(self.ansicht, 1)
+    def _neues_modell(self) -> VokabularModell:
+        """The model over the vocabulary rows."""
+        return VokabularModell(self)
 
+    def _baue_neu(self, aussen: QVBoxLayout) -> None:
+        """Field for a new term, its category and the add button."""
         neu = QHBoxLayout()
         self.neuer_begriff = QLineEdit()
         self.neuer_begriff.setPlaceholderText(self.tr("Neuer Begriff (auch mehrere Wörter)"))
@@ -135,32 +109,29 @@ class VokabularSeite(QWidget):
         neu.addWidget(knopf_neu)
         aussen.addLayout(neu)
 
-        unten = QHBoxLayout()
-        loeschen = QPushButton(self.tr("Ausgewählte löschen"))
-        loeschen.clicked.connect(self.loeschen)
-        export = QPushButton(self.tr("CSV exportieren …"))
-        export.clicked.connect(self.exportiere_waehlen)
-        import_ = QPushButton(self.tr("CSV oder Liste importieren …"))
-        import_.setToolTip(self.tr(
+    def _import_hinweis(self) -> str:
+        """Tooltip of the import button: the accepted file shapes."""
+        return self.tr(
             "CSV (begriff,kategorie; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder"
             " eine Liste mit einem Begriff je Zeile, etwa die beim Export geschriebene"
-            " .vokabular.txt"))
-        import_.clicked.connect(self.importiere_waehlen)
+            " .vokabular.txt")
+
+    def _baue_eigenen_knopf(self) -> QPushButton:
+        """The button that loads the bundled lists again."""
         grund = QPushButton(self.tr("Mitgelieferte Listen erneut einspielen"))
         grund.setToolTip(self.tr("Fehlende Begriffe der mitgelieferten Listen wieder aufnehmen"))
         grund.clicked.connect(self.grundbestand_einspielen)
-        neu_laden = QPushButton(self.tr("Aktualisieren"))
-        neu_laden.clicked.connect(lambda: self.aktualisiere(True))
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        for w in (loeschen, export, import_, grund, neu_laden):
-            unten.addWidget(w)
-        unten.addWidget(self.status, 1)
-        aussen.addLayout(unten)
+        return grund
 
     # -- data ----------------------------------------------------------------------------------
     def _vokabular(self) -> vokmodul.Vokabular:
+        """A fresh handle on the vocabulary table, opened per operation."""
         return vokmodul.Vokabular()
+
+    def _cache_leeren(self) -> None:
+        """Forget the cached matcher so the next analysis is built from the edited rows.
+        ``standard`` attaches ``cache_clear`` at run time, unseen by the type checker."""
+        fachmodul.standard.cache_clear()
 
     def aktualisiere(self, erzwingen: bool = False) -> int:
         """Reload rows when the table changed (or when asked); returns the row count."""
@@ -181,6 +152,8 @@ class VokabularSeite(QWidget):
         return len(zeilen)
 
     def _kategorien_fuellen(self, kategorien: list[tuple[str, int]]) -> None:
+        """Refill the category filter (with counts) and the category box for new entries,
+        keeping what was chosen in each; the user's category is always offered."""
         gewaehlt = self.kategorie_filter.currentData() or ""
         self.kategorie_filter.blockSignals(True)
         self.kategorie_filter.clear()
@@ -199,30 +172,27 @@ class VokabularSeite(QWidget):
         self.neue_kategorie.setCurrentText(aktuell)
 
     def _filtern(self) -> None:
+        """Apply the search text to the proxy and show "n of total", reading the total
+        back from the label when a reload has written it."""
         self.proxy.setFilterFixedString(self.suche.text().strip())
         self.anzahl.setText(self.tr("{n} von {gesamt} Begriffen").format(
             n=self.proxy.rowCount(), gesamt=self.anzahl.text().split()[-2]
             if "von" in self.anzahl.text() else self.modell.rowCount()))
 
-    def _melde(self, titel: str, text: str) -> None:
-        if self.synchron:
-            raise RuntimeError(text)
-        QMessageBox.information(self, titel, text)
-
     def ausgewaehlte(self) -> list[str]:
-        gewaehlt = self.ansicht.selectionModel().selectedRows()
-        zeilen = {self.proxy.mapToSource(i).row() for i in gewaehlt}
-        return [self.modell.zeilen[r][0] for r in sorted(zeilen)]
+        """The selected terms in table order."""
+        return [self.modell.zeilen[r][0] for r in self._gewaehlte_zeilen()]
 
     # -- editing -----------------------------------------------------------------------------------
     def aendere(self, begriff: str, spalte: int, wert: str) -> bool:
+        """Rename a term (column 0) or set its category (column 1); True when it took."""
         with self._vokabular() as v:
             if spalte == 0:
                 ok = v.benenne_um(begriff, wert)
             else:
                 ok = v.setze_kategorie([begriff], wert) > 0
         if ok:
-            fachmodul.standard.cache_clear()
+            self._cache_leeren()
             self.status.setText(self.tr("Geändert: {begriff}").format(begriff=begriff))
         else:
             self.status.setText(self.tr(
@@ -230,6 +200,8 @@ class VokabularSeite(QWidget):
         return ok
 
     def hinzufuegen(self, begriff: str | None = None, kategorie: str | None = None) -> int:
+        """Add one term (from the arguments or the entry row) in the given category;
+        returns 1 when it was new, 0 when known or too short."""
         begriff = (begriff if begriff is not None else self.neuer_begriff.text()).strip()
         kategorie = (kategorie if kategorie is not None
                      else self.neue_kategorie.currentText()).strip()
@@ -238,7 +210,7 @@ class VokabularSeite(QWidget):
             return 0
         with self._vokabular() as v:
             neu = v.fuege_hinzu([begriff], kategorie or vokmodul.KATEGORIE_NUTZER)
-        fachmodul.standard.cache_clear()
+        self._cache_leeren()
         self.status.setText(self.tr("Hinzugefügt: {begriff}").format(begriff=begriff) if neu
                             else self.tr("Schon vorhanden: {begriff}").format(begriff=begriff))
         self.neuer_begriff.clear()
@@ -246,6 +218,8 @@ class VokabularSeite(QWidget):
         return neu
 
     def loeschen(self, begriffe: list[str] | None = None) -> int:
+        """Delete the given (or selected) terms after a confirmation; returns how many
+        went."""
         begriffe = begriffe if begriffe is not None else self.ausgewaehlte()
         if not begriffe:
             self.status.setText(self.tr("Nichts ausgewählt."))
@@ -257,19 +231,21 @@ class VokabularSeite(QWidget):
             return 0
         with self._vokabular() as v:
             n = v.entferne(begriffe)
-        fachmodul.standard.cache_clear()
+        self._cache_leeren()
         self.status.setText(self.tr("{n} Begriff(e) gelöscht.").format(n=n))
         self.aktualisiere(True)
         return n
 
     # -- CSV ---------------------------------------------------------------------------------------
     def exportiere_waehlen(self) -> None:
+        """Ask for a target and write the vocabulary as CSV."""
         pfad, _ = QFileDialog.getSaveFileName(self, self.tr("Vokabular als CSV"),
                                               "vokabular.csv", self.tr("CSV (*.csv)"))
         if pfad:
             self.exportiere_csv(Path(pfad))
 
     def exportiere_csv(self, pfad: Path) -> int:
+        """Write the rows of the current category filter to ``pfad``; returns the count."""
         kategorie = self.kategorie_filter.currentData() or ""
         with self._vokabular() as v:
             n = v.exportiere_csv(pfad, kategorie)
@@ -278,6 +254,7 @@ class VokabularSeite(QWidget):
         return n
 
     def importiere_waehlen(self) -> None:
+        """Ask for a CSV or list file and take its terms into the table."""
         pfad, _ = QFileDialog.getOpenFileName(
             self, self.tr("Vokabular importieren"), "",
             self.tr("CSV und Listen (*.csv *.txt);;Alle Dateien (*)"))
@@ -285,6 +262,8 @@ class VokabularSeite(QWidget):
             self.importiere_datei(Path(pfad))
 
     def importiere_datei(self, pfad: Path, kategorie: str | None = None) -> int:
+        """Take the terms of a CSV or list file into the table, rows without a category
+        into ``kategorie`` (default: the category box); returns how many were new."""
         kategorie = (kategorie if kategorie is not None
                      else self.neue_kategorie.currentText()).strip() or vokmodul.KATEGORIE_NUTZER
         try:
@@ -293,16 +272,18 @@ class VokabularSeite(QWidget):
         except OSError as e:
             self._melde(self.tr("Vokabular"), str(e))
             return 0
-        fachmodul.standard.cache_clear()
+        self._cache_leeren()
         self.status.setText(self.tr("{neu} neue von {gelesen} Begriffen aus {name} übernommen.")
                             .format(neu=neu, gelesen=gelesen, name=pfad.name))
         self.aktualisiere(True)
         return neu
 
     def grundbestand_einspielen(self) -> int:
+        """Load the bundled lists again, adding only what is missing; returns how many
+        terms came back."""
         with self._vokabular() as v:
             zaehlung = v.grundbestand()
-        fachmodul.standard.cache_clear()
+        self._cache_leeren()
         n = sum(zaehlung.values())
         self.status.setText(self.tr(
             "{n} fehlende Begriffe der mitgelieferten Listen aufgenommen.").format(n=n))
