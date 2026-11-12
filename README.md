@@ -188,6 +188,10 @@ The data files in `pseudonymed/daten/` are not covered by the AGPL; each carries
 
 Not bundled: the Austrian ministry of health's list of hospitals, whose reprint is permitted only for non-commercial purposes. On request (`pseudonymed datenbank zusatzdaten kliniken-at`, or *Fetch from the ministry* in step 11) PseudonyMed downloads the current workbook from the ministry into the user's own lexicon, under a source of its own that the reloading of the bundled data leaves alone; nothing is passed on.
 
+## Icon
+
+The app icon is a page in which one line is replaced by a pseudonym, on a petrol tile: `packaging/icon/pseudonymed.svg`, with the mark without the tile in `pseudonymed_marke.svg` (drawn in `currentColor` for web pages and documents). Both are plain SVG without text, gradients or filters; `packaging/icon/entwuerfe/` keeps the two other proposals. `python packaging/icon.py` renders the PNG sizes for the window, the `.ico` for Windows and the `.icns` for macOS; the rendered files are committed.
+
 ## Licence
 
 AGPL-3.0-or-later (PyMuPDF is AGPL). See `LICENSE`.

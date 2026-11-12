@@ -16,6 +16,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     from pseudonymed.gui import uebersetzung
     from pseudonymed.gui.hauptfenster import Hauptfenster
+    from pseudonymed.gui.icon import app_icon
 
     argumente = list(argv if argv is not None else sys.argv[1:])
     selbsttest = "--selbsttest" in argumente
@@ -25,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     argumente = uebersetzung.ohne_sprachargumente(argumente)
     app = QApplication.instance() or QApplication([sys.argv[0], *argumente])
     app.setApplicationName("PseudonyMed")
+    app.setWindowIcon(app_icon())
     app.setOrganizationName("PseudonyMed")
     app.uebersetzer = uebersetzung.installiere(app, sprache)  # keep a reference
     fenster = Hauptfenster()

@@ -22,6 +22,10 @@ for paket in ("rapidocr", "onnxruntime", "pymupdf"):
     binaries += b
     hiddenimports += h
 datas += [(str(wurzel / "pseudonymed" / "gui" / "uebersetzungen"), "pseudonymed/gui/uebersetzungen")]
+datas += [(str(wurzel / "pseudonymed" / "gui" / "icon"), "pseudonymed/gui/icon")]  # window icon
+ICON = {"darwin": wurzel / "packaging" / "icon" / "pseudonymed.icns",
+        "win32": wurzel / "packaging" / "icon" / "pseudonymed.ico"}.get(sys.platform)
+ICON = str(ICON) if ICON is not None and ICON.exists() else None
 datas += [(str(wurzel / "pseudonymed" / "daten"), "pseudonymed/daten")]  # medical vocabulary
 # NER travels only when the build environment has spaCy and a German model (extra "ner").
 for paket in ("spacy", "thinc", "de_core_news_lg", "de_core_news_md", "de_core_news_sm",
@@ -85,7 +89,7 @@ gui_exe = EXE(
     exclude_binaries=True, name="pseudonymed-gui", debug=False, bootloader_ignore_signals=False,
     strip=False, upx=False, console=False, disable_windowed_traceback=False,
     argv_emulation=sys.platform == "darwin", target_arch=None, codesign_identity=None,
-    entitlements_file=None,
+    entitlements_file=None, icon=ICON,
 )
 cli_pyz = PYZ(cli_a.pure, cli_a.zipped_data, cipher=block_cipher)
 cli_exe = EXE(
@@ -103,7 +107,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="PseudonyMed.app",
-        icon=None,
+        icon=ICON,
         bundle_identifier="de.pseudonymed.app",
         info_plist={
             "CFBundleDisplayName": "PseudonyMed",

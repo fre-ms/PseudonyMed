@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect x="232" y="130" width="520" height="720" rx="48" fill="none" stroke="currentColor" stroke-width="56"/>
+  <g fill="currentColor">
+    <rect x="320" y="270" width="300" height="34" rx="17"/><rect x="320" y="350" width="344" height="34" rx="17"/>
+    <rect x="320" y="424" width="344" height="54" rx="27"/>
+  </g>
+  <g transform="translate(520 700) rotate(-30)" fill="currentColor">
+    <path d="M0 -112 A112 112 0 1 0 0.1 -112 Z M0 -46 A46 46 0 1 1 -0.1 -46 Z" fill-rule="evenodd"/>
+    <rect x="96" y="-30" width="300" height="60" rx="30"/>
+    <rect x="280" y="0" width="52" height="74" rx="14"/><rect x="352" y="0" width="44" height="90" rx="14"/>
+  </g>
+</svg>

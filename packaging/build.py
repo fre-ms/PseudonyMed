@@ -84,6 +84,9 @@ def rauchtest() -> None:
         daten = plistlib.loads(plist.read_bytes())
         assert daten["CFBundleExecutable"] == "pseudonymed-gui"
         assert "LSBackgroundOnly" not in daten, "App wäre ein unsichtbarer Hintergrundprozess"
+        assert daten.get("CFBundleIconFile"), "App ohne Icon (packaging/icon.py laufen lassen)"
+        assert (plist.parent / "Resources" / daten["CFBundleIconFile"]).exists() or (
+            plist.parent / "Resources" / (daten["CFBundleIconFile"] + ".icns")).exists()
         subprocess.run(["codesign", "--verify", "--deep", "--strict",
                         str(WURZEL / "dist" / "PseudonyMed.app")], check=True)
     with tempfile.TemporaryDirectory() as ordner:

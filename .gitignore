@@ -29,6 +29,7 @@ ausgang/
 *.jpg
 *.jpeg
 *.png
+!pseudonymed/gui/icon/*.png
 *.heic
 *.tif
 *.tiff

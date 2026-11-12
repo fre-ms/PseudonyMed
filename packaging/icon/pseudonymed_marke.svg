@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- PseudonyMed mark without the tile: a page with one line replaced by a pseudonym.
+       Draws in currentColor, so it follows the text colour of a web page or document. -->
+  <rect x="252" y="152" width="520" height="720" rx="48" fill="none" stroke="currentColor" stroke-width="56"/>
+  <g fill="currentColor">
+    <rect x="340" y="300" width="300" height="34" rx="17"/>
+    <rect x="340" y="380" width="344" height="34" rx="17"/>
+    <rect x="340" y="620" width="330" height="34" rx="17"/>
+    <rect x="340" y="700" width="220" height="34" rx="17"/>
+    <rect x="340" y="478" width="344" height="90" rx="45"/>
+  </g>
+</svg>

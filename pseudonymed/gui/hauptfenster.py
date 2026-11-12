@@ -10,6 +10,7 @@ from pseudonymed.gui.analysieren_seite import AnalysierenSeite
 from pseudonymed.gui.datenbank_seite import DatenbankSeite
 from pseudonymed.gui.dokumente_seite import DokumenteSeite
 from pseudonymed.gui.export_seite import ExportSeite
+from pseudonymed.gui.icon import app_icon
 from pseudonymed.gui.identifikatoren_seite import IdentifikatorenSeite
 from pseudonymed.gui.kontrolle_seite import KontrolleSeite
 from pseudonymed.gui.patient_seite import PatientSeite
@@ -26,6 +27,7 @@ class Hauptfenster(QMainWindow):
         super().__init__()
         self.sitzung = sitzung or Sitzung()
         self.setWindowTitle(WERKZEUG)
+        self.setWindowIcon(app_icon())
         self.resize(1200, 820)
         self.tabs = QTabWidget()
         self.patient = PatientSeite(self.sitzung)
