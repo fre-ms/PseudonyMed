@@ -30,7 +30,7 @@ from pseudonymed.erkennung import codes as codemodul
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung.deterministisch import finde
 from pseudonymed.erkennung.unscharf import finde_unscharf
-from pseudonymed.kern.modell import Fundstelle, Gegenprobe, Patient
+from pseudonymed.kern.modell import Fundstelle, Gegenprobe, Laufprotokoll, Patient
 from pseudonymed.pruefung.bericht import erstelle_bericht
 from pseudonymed.pruefung.gegenprobe import (
     in_pseudonym,
@@ -231,11 +231,11 @@ def _abschliesse_pdf(v: Vorbereitung, endgueltig: bool) -> Ergebnis:
     else:
         ziel.unlink(missing_ok=True)
         warnungen.append("Nicht freigegeben: Ausgabe verworfen.")
-    ergebnis.bericht = erstelle_bericht(
-        quelle, ergebnis.ziel_pdf, seitenzahl, not v.ocr_seiten and not v.ohne_text,
-        fundstellen, gegenprobe, _berichtsoptionen(v), warnungen, hinweise,
-        ergebnis.restrisiko.als_dict(),
-    )
+    protokoll = Laufprotokoll(_berichtsoptionen(v), warnungen, hinweise,
+                              ergebnis.restrisiko.als_dict())
+    ergebnis.bericht = erstelle_bericht(quelle, ergebnis.ziel_pdf, seitenzahl,
+                                        not v.ocr_seiten and not v.ohne_text, fundstellen,
+                                        gegenprobe, protokoll)
     bericht_schreiben(ergebnis, opt)
     return ergebnis
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pseudonymed.kern.modell import Gegenprobe, Pruefbericht
+from pseudonymed.kern.modell import Gegenprobe, Laufprotokoll, Pruefbericht
 from pseudonymed.pruefung import bericht as bm
 
 ERWARTET = (
@@ -107,6 +107,7 @@ def test_restrisiko_nur_wenn_berechnet() -> None:
 
 def test_erstelle_bericht_kopiert_die_listen(tmp_path: Path) -> None:
     warnungen = ["eins"]
-    b = bm.erstelle_bericht(tmp_path / "q.pdf", None, 1, True, [], None, warnungen=warnungen)
+    b = bm.erstelle_bericht(tmp_path / "q.pdf", None, 1, True, [], None,
+                            Laufprotokoll(warnungen=warnungen))
     warnungen.append("zwei")
     assert b.warnungen == ["eins"] and b.ziel == "" and b.quelle == "q.pdf"

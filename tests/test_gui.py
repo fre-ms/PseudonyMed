@@ -495,7 +495,7 @@ def test_export_gesperrt_bei_roter_ampel(qapp: QApplication, tmp_path: Path, bef
         g = Gegenprobe(resttreffer=[{"seite": 1, "art": "name", "regel": "name.nachname",
                                      "pseudonym": "x", "rects": [], "quelle": "test"}])
         erg.ziel_pdf = erg.ziel_txt = erg.ziel_md = None
-        erg.bericht = erstelle_bericht(v.quelle, None, 2, True, erg.fundstellen, g, {}, [])
+        erg.bericht = erstelle_bericht(v.quelle, None, 2, True, erg.fundstellen, g)
         return erg
 
     monkeypatch.setattr(sitzungsmodul, "abschliessen", durchgefallen)

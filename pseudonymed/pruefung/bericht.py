@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
 
 from pseudonymed import WERKZEUG
-from pseudonymed.kern.modell import Fundstelle, Gegenprobe, Pruefbericht
+from pseudonymed.kern.modell import Fundstelle, Gegenprobe, Laufprotokoll, Pruefbericht
 
 RESTTREFFER_IM_TEXT = 20  # residual hits listed in the text; a longer list is cut here
 
@@ -20,16 +19,14 @@ def erstelle_bericht(
     textebene: bool,
     fundstellen: list[Fundstelle],
     gegenprobe: Gegenprobe | None,
-    optionen: dict[str, Any] | None = None,
-    warnungen: list[str] | None = None,
-    hinweise: list[str] | None = None,
-    restrisiko: dict[str, Any] | None = None,
+    protokoll: Laufprotokoll | None = None,
 ) -> Pruefbericht:
     """Build the report of one run without any clear text: the hits keep page, rule and
     pseudonym only, the pseudonyms are listed once in sorted order, and ``ziel`` stays empty
-    when the output was not released.  The lists are copied so later changes by the caller
-    do not reach the report."""
+    when the output was not released.  The protocol's lists are copied so later changes by
+    the caller do not reach the report."""
     pseudonyme = sorted({f.pseudonym for f in fundstellen})
+    protokoll = protokoll or Laufprotokoll()
     return Pruefbericht(
         quelle=quelle.name,
         ziel=ziel.name if ziel else "",
@@ -40,10 +37,10 @@ def erstelle_bericht(
         fundstellen=[f.ohne_klartext() for f in fundstellen],
         pseudonyme=pseudonyme,
         gegenprobe=gegenprobe,
-        optionen=optionen or {},
-        warnungen=list(warnungen or []),
-        hinweise=list(hinweise or []),
-        restrisiko=restrisiko,
+        optionen=protokoll.optionen,
+        warnungen=list(protokoll.warnungen),
+        hinweise=list(protokoll.hinweise),
+        restrisiko=protokoll.restrisiko,
     )
 
 

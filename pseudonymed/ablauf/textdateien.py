@@ -25,7 +25,7 @@ from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import zahlwoerter
 from pseudonymed.erkennung.deterministisch import Regel, finde
 from pseudonymed.erkennung.unscharf import Ziel, finde_unscharf
-from pseudonymed.kern.modell import Art, Fundstelle, Gegenprobe, Patient
+from pseudonymed.kern.modell import Art, Fundstelle, Gegenprobe, Laufprotokoll, Patient
 from pseudonymed.pruefung.bericht import erstelle_bericht
 from pseudonymed.pruefung.gegenprobe import (
     geprueft_aus,
@@ -237,8 +237,8 @@ def abschliesse_text(v: Textvorbereitung, endgueltig: bool = True) -> Ergebnis:
         _schreibe_textausgabe(v, ergebnis, ausgabe, hinweise)
     else:
         warnungen.append("Nicht freigegeben: keine Ausgabe geschrieben.")
+    protokoll = Laufprotokoll(opt.als_dict(), warnungen, hinweise, ergebnis.restrisiko.als_dict())
     ergebnis.bericht = erstelle_bericht(quelle, ergebnis.ziel_txt, 1, True, fundstellen,
-                                        gegenprobe, opt.als_dict(), warnungen, hinweise,
-                                        ergebnis.restrisiko.als_dict())
+                                        gegenprobe, protokoll)
     bericht_schreiben(ergebnis, opt)
     return ergebnis

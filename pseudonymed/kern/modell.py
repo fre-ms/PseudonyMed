@@ -275,6 +275,18 @@ class Gegenprobe:
         return not self.resttreffer and self.metadaten_leer and self.struktur_sauber
 
 
+@dataclass(frozen=True)
+class Laufprotokoll:
+    """What a run has to say about itself besides the hits: the options it ran with,
+    the warnings that need attention, the hints of what was done, and the residual-risk
+    estimate of the text."""
+
+    optionen: dict[str, Any] = field(default_factory=dict)
+    warnungen: list[str] = field(default_factory=list)
+    hinweise: list[str] = field(default_factory=list)
+    restrisiko: dict[str, Any] | None = None
+
+
 @dataclass
 class Pruefbericht:
     """Audit report for one pseudonymised document.  Contains no clear data."""

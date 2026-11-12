@@ -389,15 +389,17 @@ def test_vokabular_nur_aus_rate_treffern() -> None:
 
 
 def test_bericht_trennt_hinweise_von_warnungen(tmp_path: Path) -> None:
+    from pseudonymed.kern.modell import Laufprotokoll
     from pseudonymed.pruefung.bericht import erstelle_bericht
 
+    protokoll = Laufprotokoll(warnungen=["OCR-Seiten: Handschrift wird nicht erkannt."],
+                              hinweise=["Seite 1 vor der OCR aufbereitet: begradigt (1,5°)."])
     b = erstelle_bericht(tmp_path / "q.pdf", tmp_path / "q_pseudonym.pdf", 1, False, [], None,
-                         warnungen=["OCR-Seiten: Handschrift wird nicht erkannt."],
-                         hinweise=["Seite 1 vor der OCR aufbereitet: begradigt (1,5°)."])
+                         protokoll)
     text = als_text(b)
     assert "Hinweise (durchgeführte Schritte):" in text and "Warnungen:" in text
     assert text.index("aufbereitet") < text.index("Warnungen:")
     assert text.index("Hinweise") < text.index("aufbereitet")
     ohne = erstelle_bericht(tmp_path / "q.pdf", None, 1, True, [], None,
-                            hinweise=["Ausgabe gerastert."])
+                            Laufprotokoll(hinweise=["Ausgabe gerastert."]))
     assert "Warnungen:" not in als_text(ohne) and "gerastert" in als_text(ohne)
