@@ -10,10 +10,12 @@ from PySide6.QtWidgets import QApplication
 from typer.testing import CliRunner
 
 from pseudonymed import arbeitsstand as standmodul
-from pseudonymed.ablauf import Ablaufoptionen, abschliessen, analysiere, vorbereiten
+from pseudonymed.ablauf import Ablaufoptionen, Seite, abschliessen, analysiere, vorbereiten
+from pseudonymed.ablauf.vorbereitung import Vorbereitungsbasis
 from pseudonymed.cli import app
 from pseudonymed.dokument import ocr as ocrmodul
-from pseudonymed.kern.modell import Patient
+from pseudonymed.dokument.textebene import Seitentext
+from pseudonymed.kern.modell import Art, Fundstelle, Patient
 from pseudonymed.pruefung.bericht import als_text
 from pseudonymed.pseudonyme.rueckersetzung import rueckersetzen
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher, einmalspeicher
@@ -255,3 +257,66 @@ def test_kommandozeile(tmp_path: Path, befund: Path, patient: Patient) -> None:
                             "--neu-analysieren"])
     assert r.exit_code == 0, r.output
     assert "[Alter " in (tmp_path / "variante" / "befund_pseudonym.txt").read_text("utf-8")
+
+
+# -- carrying decisions over to a fresh analysis ---------------------------------------------------
+class _Neuanalyse(Vorbereitungsbasis):
+    """The least a fresh preparation needs here: pages, discards, hints."""
+
+    def __init__(self, seiten: list[Seite]) -> None:
+        self.seiten, self.verworfen, self.wiederhergestellt, self.version = seiten, [], set(), 0
+        self.hinweise: list[str] = []
+
+    @property
+    def fundstellen(self) -> list[Fundstelle]:
+        return [f for s in self.seiten for f in s.fundstellen]
+
+
+def _treffer(start: int, ende: int, regel: str = "patient.nachname", quelle: str = "text",
+             text: str | None = None,
+             rects: list[tuple[float, float, float, float]] | None = None) -> Fundstelle:
+    """A synthetic hit on page 0; the text is filler unless given."""
+    return Fundstelle(seite=0, start=start, ende=ende, text=text or "x" * (ende - start),
+                      art=Art.NACHNAME, regel=regel, pseudonym="[P]", rects=rects or [],
+                      quelle=quelle)
+
+
+def _seite(*fundstellen: Fundstelle) -> Seite:
+    seite = Seite(0, Seitentext(0, 100.0, 100.0, text="a" * 60))
+    seite.fundstellen = list(fundstellen)
+    return seite
+
+
+def test_markiere_erneut_verdraengt_nur_analysetreffer_darunter() -> None:
+    seite = _seite(_treffer(0, 10), _treffer(20, 30), _treffer(40, 50, quelle="manuell"))
+    marke = _treffer(25, 45, regel="aufnahme", quelle="manuell")
+    standmodul._markiere_erneut(seite, marke)
+    assert [(f.start, f.ende) for f in seite.fundstellen] == [(0, 10), (40, 50), (25, 45)]
+    kasten = _treffer(0, 0, regel="manuell", quelle="manuell", rects=[(1.0, 2.0, 3.0, 4.0)])
+    standmodul._markiere_erneut(seite, kasten)  # a box without a span replaces nothing
+    assert len(seite.fundstellen) == 4
+    assert standmodul._schon_markiert(kasten, seite.fundstellen)
+    anderer = _treffer(0, 0, regel="manuell", quelle="manuell", rects=[(1.0, 2.0, 3.0, 5.0)])
+    assert not standmodul._schon_markiert(anderer, seite.fundstellen)
+
+
+def test_uebernehme_entscheidungen_zaehlt_und_ueberspringt_fehlende_seiten() -> None:
+    seite = _seite(_treffer(0, 7, text="Treffer"), _treffer(22, 28))
+    neu = _Neuanalyse([seite])
+    alt = standmodul.Arbeitsstand(daten={
+        "seiten": [
+            {"nummer": 0, "fundstellen": [
+                _treffer(20, 30, regel="aufnahme", quelle="manuell").als_dict(),
+                _treffer(50, 55).als_dict(),  # an analysis hit is never carried over
+            ]},
+            {"nummer": 3, "fundstellen": [_treffer(0, 5, quelle="manuell").als_dict()]},
+        ],
+        "verworfen": [{"regel": "patient.nachname", "text": " treffer"},  # normalised match
+                      {"regel": "patient.vorname", "text": ""}],  # no text: nothing to match
+    }, dokument=b"")
+    assert standmodul.uebernehme_entscheidungen(alt, neu) == 2  # the mark and the discard
+    assert [(f.start, f.ende) for f in seite.fundstellen] == [(20, 30)]  # (22, 28) lay underneath
+    assert [(f.start, f.ende) for f in neu.verworfen] == [(0, 7)]
+    assert neu.hinweise == ["2 Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
+                            " Markierungen, verworfene Treffer)."]
+    assert standmodul.uebernehme_entscheidungen(alt, neu) == 0  # idempotent

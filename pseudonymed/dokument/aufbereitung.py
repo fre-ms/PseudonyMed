@@ -11,6 +11,7 @@ masks are available.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +22,7 @@ Rechteck = tuple[float, float, float, float]
 
 
 def verfuegbar() -> bool:
+    """True when OpenCV and NumPy can be imported (they come with the ``ocr`` extra)."""
     try:
         import cv2  # noqa: F401
         import numpy  # noqa: F401
@@ -58,12 +60,13 @@ class Aufbereitung:
 
     @property
     def aktiv(self) -> bool:
-        return bool(self.drehung or self.begradigen or self.entzerren or self.hochskalieren > 1
-                    or self.textmodus or self.raender or self.farbe_entfernen or self.entrauschen
-                    or self.kontrast or self.schaerfen or self.hintergrund
-                    or self.linien_entfernen or self.schwarzweiss or self.masken)
+        """True when at least one step would run, so that the page would change."""
+        # the factor's resting value 1 is truthy but changes nothing
+        return self.hochskalieren > 1 or any(
+            getattr(self, feld) for feld, _ in _SCHRITTE if feld != "hochskalieren")
 
     def als_dict(self) -> dict[str, Any]:
+        """The plan for the report: every switch and strength, the masks only counted."""
         return {"drehung": self.drehung, "begradigen": self.begradigen,
                 "winkel": round(self.winkel, 2), "entzerren": self.entzerren,
                 "hochskalieren": self.hochskalieren, "textmodus": self.textmodus,
@@ -84,6 +87,7 @@ class Aufbereitung:
 
     @classmethod
     def aus_dict(cls, d: dict[str, Any]) -> Aufbereitung:
+        """The plan from a :meth:`vollstaendig` dictionary; keys that are no field are ignored."""
         felder = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         if felder.get("ecken") is not None:
             felder["ecken"] = [tuple(e) for e in felder["ecken"]]
@@ -302,39 +306,67 @@ def vorschlag(bild: Any, foto: bool = False, skala: float = 1.0,
     return a
 
 
+def _phrase_entzerrt(a: Aufbereitung) -> str | None:
+    """Unwarping counts only with corners to unwarp by."""
+    return "entzerrt" if a.ecken else None
+
+
+def _phrase_begradigt(a: Aufbereitung) -> str | None:
+    """The tilt with its sign and a decimal comma; None below the 0.05° that is applied."""
+    return f"begradigt ({a.winkel:+.1f}°)".replace(".", ",") if abs(a.winkel) >= 0.05 else None
+
+
+def _phrase_hochskaliert(a: Aufbereitung) -> str | None:
+    """The factor, with the letter mode in brackets; nothing at factor 1."""
+    if a.hochskalieren <= 1:
+        return None
+    return f"{a.hochskalieren}× hochskaliert" + (" (Buchstabenmodus)" if a.textmodus else "")
+
+
+def _phrase_buchstabenmodus(a: Aufbereitung) -> str | None:
+    """The letter mode on its own, unless the upscaling phrase has mentioned it already."""
+    return "Buchstabenmodus" if a.hochskalieren <= 1 else None
+
+
+def _phrase_masken(a: Aufbereitung) -> str:
+    """The number of regions and whether they are erased or redacted."""
+    art = "gelöscht" if a.maskenfarbe == "weiss" else "geschwärzt"
+    return f"{len(a.masken)} Bereich(e) {art}"
+
+
+Phrase = str | Callable[[Aufbereitung], str | None]
+
+# one row per step, in the order the description lists them: the field that switches the
+# step on, and its phrase (placeholders are fields of the plan; a function where needed)
+_PHRASEN: tuple[tuple[str, Phrase], ...] = (
+    ("drehung", "um {drehung}° gedreht"),
+    ("entzerren", _phrase_entzerrt),
+    ("begradigen", _phrase_begradigt),
+    ("hochskalieren", _phrase_hochskaliert),
+    ("textmodus", _phrase_buchstabenmodus),
+    ("raender", "Ränder gesäubert"),
+    ("farbe_entfernen", "farbige Tinte entfernt"),
+    ("entrauschen", "entrauscht"),
+    ("kontrast", "Kontrast angehoben"),
+    ("schaerfen", "geschärft"),
+    ("hintergrund", "Hintergrund geglättet"),
+    ("linien_entfernen", "Linien entfernt"),
+    ("schwarzweiss", "Schwarz-Weiß"),
+    ("masken", _phrase_masken),
+)
+
+
+def _phrase(a: Aufbereitung, feld: str, phrase: Phrase) -> str | None:
+    """The wording of one row for ``a``: None while its switch is off, else the string with
+    the plan's values filled in, or what the function makes of the plan."""
+    if not getattr(a, feld):
+        return None
+    return phrase(a) if callable(phrase) else phrase.format(**vars(a))
+
+
 def beschreibung(a: Aufbereitung) -> str:
     """What a page clean-up does, for reports and the interface."""
-    teile = []
-    if a.drehung:
-        teile.append(f"um {a.drehung}° gedreht")
-    if a.entzerren and a.ecken:
-        teile.append("entzerrt")
-    if a.begradigen and abs(a.winkel) >= 0.05:
-        teile.append(f"begradigt ({a.winkel:+.1f}°)".replace(".", ","))
-    if a.hochskalieren > 1:
-        teile.append(f"{a.hochskalieren}× hochskaliert" + (" (Buchstabenmodus)" if a.textmodus
-                                                            else ""))
-    elif a.textmodus:
-        teile.append("Buchstabenmodus")
-    if a.raender:
-        teile.append("Ränder gesäubert")
-    if a.farbe_entfernen:
-        teile.append("farbige Tinte entfernt")
-    if a.entrauschen:
-        teile.append("entrauscht")
-    if a.kontrast:
-        teile.append("Kontrast angehoben")
-    if a.schaerfen:
-        teile.append("geschärft")
-    if a.hintergrund:
-        teile.append("Hintergrund geglättet")
-    if a.linien_entfernen:
-        teile.append("Linien entfernt")
-    if a.schwarzweiss:
-        teile.append("Schwarz-Weiß")
-    if a.masken:
-        teile.append(f"{len(a.masken)} Bereich(e) "
-                     + ("gelöscht" if a.maskenfarbe == "weiss" else "geschwärzt"))
+    teile = [t for t in (_phrase(a, feld, phrase) for feld, phrase in _PHRASEN) if t]
     return ", ".join(teile) if teile else "unverändert"
 
 
@@ -546,59 +578,118 @@ def _hintergrund(bild: Any) -> Any:
     return np.clip(norm, 0, 255).astype(np.uint8)
 
 
+Schritt = Callable[[Any, Aufbereitung, float], Any]
+
+
+def _nur_bild(op: Callable[[Any], Any]) -> Schritt:
+    """An operation that needs only the image, in the signature of a step."""
+    return lambda bild, a, skala: op(bild)
+
+
+def _mit_staerke(op: Callable[[Any, int], Any], feld: str) -> Schritt:
+    """An operation on the image at the strength the plan holds in ``feld``."""
+    return lambda bild, a, skala: op(bild, getattr(a, feld))
+
+
+def _schritt_drehung(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Quarter turns clockwise, first of all, so that every later step sees an upright page."""
+    import cv2
+
+    codes = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+    return cv2.rotate(bild, codes[a.drehung]) if a.drehung in codes else bild
+
+
+def _schritt_entzerren(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Perspective correction with the four corners (given in points, hence ``skala``)."""
+    return _entzerre(bild, a.ecken, skala) if a.ecken and len(a.ecken) == 4 else bild
+
+
+def _schritt_begradigen(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Counter-clockwise by the tilt (from 0.05° on); a border tilted with the page is now
+    straight and is cleaned once more."""
+    if abs(a.winkel) >= 0.05:
+        bild = _drehe(bild, a.winkel)
+        return _raender_saeubern(bild) if a.raender else bild
+    return bild
+
+
+def _schritt_hochskalieren(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Enlarge by the factor, letter-aware in letter mode; factor 1 changes nothing."""
+    return _hochskaliere(bild, a.hochskalieren, a.textmodus) if a.hochskalieren > 1 else bild
+
+
+def _schritt_textmodus(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """The letter-mode finish without enlargement, unless the upscaling applied it already."""
+    return textverfeinerung(bild, 1) if a.hochskalieren <= 1 else bild
+
+
+def _schritt_schaerfen(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Unsharp mask, unless the letter mode has sharpened already."""
+    return bild if a.textmodus else _schaerfe(bild, a.schaerfen_staerke)
+
+
+def _schritt_hintergrund(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Even out the illumination; not in letter mode, which keeps its grey as it is."""
+    return bild if a.textmodus else _hintergrund(bild)
+
+
+def _schritt_schwarzweiss(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Adaptive threshold to pure black and white; never in letter mode (measured: worse OCR)."""
+    import cv2
+
+    return bild if a.textmodus else cv2.adaptiveThreshold(
+        _grau(bild), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15)
+
+
+def _schritt_masken(bild: Any, a: Aufbereitung, skala: float) -> Any:
+    """Fill the mask rectangles (result-page points times ``skala``) white or black, on a
+    BGR copy so that the fill colour is well defined."""
+    import cv2
+
+    aus = cv2.cvtColor(bild, cv2.COLOR_GRAY2BGR) if bild.ndim == 2 else bild.copy()
+    farbe = (255, 255, 255) if a.maskenfarbe == "weiss" else (0, 0, 0)
+    for x0, y0, x1, y1 in a.masken:
+        cv2.rectangle(aus, (int(x0 * skala), int(y0 * skala)),
+                      (int(x1 * skala), int(y1 * skala)), farbe, thickness=-1)
+    return aus
+
+
+# the steps in their fixed order: the field of the plan that switches a step on, and what
+# then runs on the image; ``wende_an`` is nothing but this sequence
+_SCHRITTE: tuple[tuple[str, Schritt], ...] = (
+    ("drehung", _schritt_drehung),
+    ("raender", _nur_bild(_raender_saeubern)),
+    ("entzerren", _schritt_entzerren),
+    ("begradigen", _schritt_begradigen),
+    ("farbe_entfernen", _nur_bild(_farbe_entfernen)),
+    ("entrauschen", _mit_staerke(_entrausche, "entrauschen_staerke")),
+    ("kontrast", _mit_staerke(_kontrast, "kontrast_staerke")),
+    ("hochskalieren", _schritt_hochskalieren),
+    ("textmodus", _schritt_textmodus),
+    ("schaerfen", _schritt_schaerfen),
+    ("hintergrund", _schritt_hintergrund),
+    ("linien_entfernen", _nur_bild(_linien_entfernen)),
+    ("schwarzweiss", _schritt_schwarzweiss),
+    ("masken", _schritt_masken),
+)
+
+
 def wende_an(bild: Any, a: Aufbereitung, skala: float = 1.0) -> Any:
     """Apply the steps in their fixed order: rotate, clean borders, unwarp, straighten,
     drop colour, denoise, contrast, upscale (letter mode), sharpen, background, lines,
     black-and-white, masks.  ``skala`` is pixels per point of ``bild`` (corners) and
     of the result (masks)."""
-    import cv2
     import numpy as np
 
     aus = bild
-    if a.drehung in (90, 180, 270):
-        aus = cv2.rotate(aus, {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
-                               270: cv2.ROTATE_90_COUNTERCLOCKWISE}[a.drehung])
-    if a.raender:  # before straightening: the scanner border is still a straight strip
-        aus = _raender_saeubern(aus)
-    if a.entzerren and a.ecken and len(a.ecken) == 4:
-        aus = _entzerre(aus, a.ecken, skala)
-    if a.begradigen and abs(a.winkel) >= 0.05:
-        aus = _drehe(aus, a.winkel)  # counter-clockwise by the tilt
-        if a.raender:  # a border that was tilted is straight now
-            aus = _raender_saeubern(aus)
-    if a.farbe_entfernen:
-        aus = _farbe_entfernen(aus)
-    if a.entrauschen:
-        aus = _entrausche(aus, a.entrauschen_staerke)
-    if a.kontrast:
-        aus = _kontrast(aus, a.kontrast_staerke)
-    if a.hochskalieren > 1:
-        aus = _hochskaliere(aus, a.hochskalieren, a.textmodus)
-    elif a.textmodus:
-        aus = textverfeinerung(aus, 1)
-    if a.schaerfen and not a.textmodus:
-        aus = _schaerfe(aus, a.schaerfen_staerke)
-    if a.hintergrund and not a.textmodus:
-        aus = _hintergrund(aus)
-    if a.linien_entfernen:
-        aus = _linien_entfernen(aus)
-    if a.schwarzweiss and not a.textmodus:
-        grau = _grau(aus)
-        aus = cv2.adaptiveThreshold(grau, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                    cv2.THRESH_BINARY, 31, 15)
-    if a.masken:
-        if aus.ndim == 2:
-            aus = cv2.cvtColor(aus, cv2.COLOR_GRAY2BGR)
-        else:
-            aus = aus.copy()
-        farbe = (255, 255, 255) if a.maskenfarbe == "weiss" else (0, 0, 0)
-        for x0, y0, x1, y1 in a.masken:
-            cv2.rectangle(aus, (int(x0 * skala), int(y0 * skala)), (int(x1 * skala),
-                          int(y1 * skala)), farbe, thickness=-1)
+    for feld, schritt in _SCHRITTE:
+        if getattr(a, feld):
+            aus = schritt(aus, a, skala)
     return np.ascontiguousarray(aus)
 
 
 def als_png(bild: Any) -> bytes:
+    """The image PNG-encoded (lossless, so the processed page is kept exactly)."""
     import cv2
 
     ok, puffer = cv2.imencode(".png", bild)
@@ -640,6 +731,7 @@ def seiten_ersetzen(docs: list[pymupdf.Document], nummer: int, a: Aufbereitung,
 
 
 def seite_ersetzen(doc: pymupdf.Document, nummer: int, a: Aufbereitung, dpi: int = 300) -> float:
+    """:func:`seiten_ersetzen` for a single document."""
     return seiten_ersetzen([doc], nummer, a, dpi)
 
 
@@ -667,6 +759,7 @@ def _np_zu_pixmap(bild: Any) -> pymupdf.Pixmap:
 
 
 def np_contig(bild: Any) -> Any:
+    """The image as a C-contiguous array, which MuPDF's pixmap constructor requires."""
     import numpy as np
 
     return np.ascontiguousarray(bild)

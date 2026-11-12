@@ -14,13 +14,13 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import gzip
-import io
 import os
 import sqlite3
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from pseudonymed import umgebung
+from pseudonymed.erkennung import listenimport
 
 DATEN = Path(__file__).resolve().parent.parent / "daten"
 KATEGORIE_MEDIZIN = "Medizin (Wikidata)"
@@ -49,6 +49,7 @@ MIN_LAENGE = 3
 
 
 def standardpfad() -> Path:
+    """The pseudonym database that holds the table (the store decides where it lives)."""
     from pseudonymed.pseudonyme.speicher import standardpfad as _pfad
 
     return _pfad()
@@ -60,6 +61,7 @@ def legacy_ordner() -> Path:
 
 
 def _zeilen(pfad: Path) -> Iterator[str]:
+    """The non-empty, non-comment lines of a plain or gzipped list, stripped."""
     oeffnen = gzip.open if pfad.suffix == ".gz" else open
     with oeffnen(pfad, "rt", encoding="utf-8", errors="replace") as f:
         for zeile in f:
@@ -69,6 +71,8 @@ def _zeilen(pfad: Path) -> Iterator[str]:
 
 
 def _sauber(begriffe: Iterable[str]) -> list[str]:
+    """Terms with their spaces collapsed, long enough, no comments, first spelling of
+    each (case-insensitively), in the given order."""
     aus: list[str] = []
     gesehen: set[str] = set()
     for b in begriffe:
@@ -78,6 +82,29 @@ def _sauber(begriffe: Iterable[str]) -> list[str]:
         gesehen.add(b.casefold())
         aus.append(b)
     return aus
+
+
+def _legacy_dateien() -> list[Path]:
+    """The list files of the former per-file folder in name order; none without it."""
+    ordner = legacy_ordner()
+    if not ordner.is_dir():
+        return []
+    return [d for d in sorted(ordner.iterdir()) if d.is_file() and d.suffix in (".txt", ".gz")]
+
+
+def _legacy_kategorie(datei: Path) -> str:
+    """The category a former list file goes to: the user's for ``nutzervokabular*``,
+    else the file's stem."""
+    return KATEGORIE_NUTZER if datei.stem.lower().startswith("nutzervokabular") else datei.stem
+
+
+def _markiere_uebernommen(datei: Path) -> None:
+    """Rename a taken-over list to ``*.uebernommen`` so that it is not read twice; a file
+    that cannot be renamed stays (its terms are in the table already)."""
+    try:
+        datei.rename(datei.with_name(datei.name + ".uebernommen"))
+    except OSError:
+        pass
 
 
 class Vokabular:
@@ -103,6 +130,7 @@ class Vokabular:
             lexikon.sicherstellen(self.verbindung)
 
     def close(self) -> None:
+        """Close the database connection."""
         self.verbindung.close()
 
     def __enter__(self) -> Vokabular:
@@ -113,19 +141,24 @@ class Vokabular:
 
     # -- reading -----------------------------------------------------------------------------------
     def version(self) -> int:
+        """Counter that every change raises; the matcher rebuilds when it moved."""
         r = self.verbindung.execute(
             "SELECT wert FROM vokabular_meta WHERE schluessel = 'version'").fetchone()
         return int(r[0]) if r else 0
 
     def anzahl(self) -> int:
-        return self.verbindung.execute("SELECT COUNT(*) FROM vokabular").fetchone()[0]
+        """How many terms the table holds."""
+        return int(self.verbindung.execute("SELECT COUNT(*) FROM vokabular").fetchone()[0])
 
     def kategorien(self) -> list[tuple[str, int]]:
+        """Every category with its number of terms, the largest first."""
         return [(k, n) for k, n in self.verbindung.execute(
             "SELECT kategorie, COUNT(*) FROM vokabular GROUP BY kategorie"
             " ORDER BY COUNT(*) DESC, kategorie")]
 
     def alle(self, suche: str = "", kategorie: str = "") -> list[tuple[str, str, str]]:
+        """Rows (term, category, added) in alphabetical order, narrowed to terms that
+        contain ``suche`` and to one category when given."""
         sql, werte = "SELECT begriff, kategorie, angelegt FROM vokabular", []
         bedingungen = []
         if suche:
@@ -151,6 +184,7 @@ class Vokabular:
             k: v for k, v in sorted(gruppen.items()) if k not in reihenfolge}
 
     def enthaelt(self, begriff: str) -> bool:
+        """Whether the term is in the table (case-insensitively)."""
         return self.verbindung.execute("SELECT 1 FROM vokabular WHERE begriff = ?",
                                        (begriff.strip(),)).fetchone() is not None
 
@@ -177,6 +211,7 @@ class Vokabular:
         return neu
 
     def entferne(self, begriffe: Iterable[str]) -> int:
+        """Delete the given terms; returns how many rows went."""
         vorher = self.verbindung.total_changes
         self.verbindung.executemany("DELETE FROM vokabular WHERE begriff = ?",
                                     [(b.strip(),) for b in begriffe if b.strip()])
@@ -187,6 +222,8 @@ class Vokabular:
         return n
 
     def benenne_um(self, alt: str, neu: str) -> bool:
+        """Rename one term; False when the new spelling is too short or taken by another
+        term (a change of case only is allowed)."""
         neu = " ".join(neu.split())
         if len(neu) < MIN_LAENGE or (neu.casefold() != alt.casefold() and self.enthaelt(neu)):
             return False
@@ -196,6 +233,8 @@ class Vokabular:
         return True
 
     def setze_kategorie(self, begriffe: Iterable[str], kategorie: str) -> int:
+        """Move the given terms to a category (the user's when empty); returns how many
+        rows changed."""
         kategorie = kategorie.strip() or KATEGORIE_NUTZER
         vorher = self.verbindung.total_changes
         self.verbindung.executemany("UPDATE vokabular SET kategorie = ? WHERE begriff = ?",
@@ -220,35 +259,9 @@ class Vokabular:
         """Read a CSV (``begriff[,kategorie]``, header optional, comma, semicolon or tab) or a
         plain list (one term per line); returns (new, read).  A category column in the
         file wins over ``kategorie``."""
-        from pseudonymed.dokument.textdatei import lese_textdatei
-
-        text = lese_textdatei(pfad)
-        zeilen = [z for z in text.splitlines() if z.strip() and not z.lstrip().startswith("#")]
-        if not zeilen:
-            return 0, 0
-        trenner = next((t for t in (",", ";", "\t") if t in zeilen[0]), None)
-        eintraege: dict[str, list[str]] = {}
-        gelesen = 0
-        if trenner is None:
-            for z in zeilen:
-                eintraege.setdefault(kategorie, []).append(z.strip())
-                gelesen += 1
-        else:
-            leser = csv.reader(io.StringIO("\n".join(zeilen)), delimiter=trenner)
-            kopf = None
-            for i, felder in enumerate(leser):
-                if not felder or not felder[0].strip():
-                    continue
-                if i == 0 and felder[0].strip().casefold() in ("begriff", "term", "wort"):
-                    kopf = [f.strip().casefold() for f in felder]
-                    continue
-                spalte_kat = kopf.index("kategorie") if kopf and "kategorie" in kopf else 1
-                begriff = felder[0].strip()
-                kat = felder[spalte_kat].strip() if len(felder) > spalte_kat else ""
-                eintraege.setdefault(kat or kategorie, []).append(begriff)
-                gelesen += 1
-        neu = sum(self.fuege_hinzu(begriffe, kat) for kat, begriffe in eintraege.items())
-        return neu, gelesen
+        gelesen = listenimport.lies_liste(pfad, "kategorie", kategorie)
+        neu = sum(self.fuege_hinzu(begriffe, kat) for kat, begriffe in gelesen.gruppen.items())
+        return neu, gelesen.zeilen
 
     # -- bundled lists ---------------------------------------------------------------------------
     def grundbestand(self) -> dict[str, int]:
@@ -261,19 +274,11 @@ class Vokabular:
                 zaehlung[kategorie] = self.fuege_hinzu(_zeilen(pfad), kategorie)
         zaehlung[KATEGORIE_EPONYME] = self.fuege_hinzu((e for e in EPONYME if len(e) >= 4),
                                                        KATEGORIE_EPONYME)
-        ordner = legacy_ordner()
-        if ordner.is_dir():
-            for datei in sorted(ordner.iterdir()):
-                if not datei.is_file() or datei.suffix not in (".txt", ".gz"):
-                    continue
-                kategorie = KATEGORIE_NUTZER if datei.stem.lower().startswith("nutzervokabular") \
-                    else datei.stem
-                zaehlung[kategorie] = zaehlung.get(kategorie, 0) + \
-                    self.fuege_hinzu(_zeilen(datei), kategorie)
-                try:
-                    datei.rename(datei.with_name(datei.name + ".uebernommen"))
-                except OSError:
-                    pass
+        for datei in _legacy_dateien():
+            kategorie = _legacy_kategorie(datei)
+            zaehlung[kategorie] = zaehlung.get(kategorie, 0) + \
+                self.fuege_hinzu(_zeilen(datei), kategorie)
+            _markiere_uebernommen(datei)
         self.verbindung.execute(
             "INSERT OR REPLACE INTO vokabular_meta (schluessel, wert) VALUES ('grundbestand', ?)",
             (dt.datetime.now().isoformat(timespec="seconds"),))

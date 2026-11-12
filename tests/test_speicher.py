@@ -9,7 +9,13 @@ import pytest
 
 from pseudonymed.kern.modell import Patient
 from pseudonymed.pseudonyme.kennung import kennung_gueltig
-from pseudonymed.pseudonyme.speicher import Pseudonymspeicher, buchstabe, schluesselpfad_zu
+from pseudonymed.pseudonyme.speicher import (
+    Pseudonymspeicher,
+    buchstabe,
+    schluesselpfad_zu,
+    standard_schluesselpfad,
+    standardpfad,
+)
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
 KENNUNG = re.compile(r"^[A-Z2-9]{6}$")
@@ -84,3 +90,44 @@ def test_zuordnung_und_datei(tmp_path: Path, patient: Patient) -> None:
 def test_unbekanntes_schema() -> None:
     with pytest.raises(ValueError):
         Pseudonymspeicher(":memory:", schema="zufall")
+
+
+def test_gleich_entscheidung_ohne_aehnlichkeit(
+    speicher: Pseudonymspeicher, patient: Patient, patientin: Patient
+) -> None:
+    """``gleich:<KENNUNG>`` links even a person the linkage never proposed: the
+    identifier is looked up in the store and the alias carries score 0."""
+    k = speicher.kennung_fuer(patient).kennung
+    erg = speicher.kennung_fuer(patientin, entscheidung=f"gleich: {k.lower()}")
+    assert erg.kennung == k and erg.verknuepft and not erg.neu
+    assert erg.abgleich is not None and erg.abgleich.score == 0.0
+    assert erg.abgleich.schluessel == patient.schluessel()
+    aliasse = speicher.aliasse(patient.schluessel())
+    assert [a["alias_schluessel"] for a in aliasse] == [patientin.schluessel()]
+    assert aliasse[0]["score"] == 0.0 and aliasse[0]["nachname"] == patientin.nachname
+    wieder = speicher.kennung_fuer(patientin)  # the alias is now known exactly
+    assert wieder.kennung == k and not wieder.verknuepft and not wieder.neu
+    assert speicher.kennungen() == [k]
+
+
+def test_schluesselwahl(tmp_path: Path) -> None:
+    """Where the HMAC key comes from: the key file named, the one next to an explicitly
+    chosen database, the configured default, or (in memory) a key that is never written."""
+    datei = tmp_path / "schluessel" / "eigener.txt"
+    with Pseudonymspeicher(":memory:", schluesselpfad=datei) as s:
+        assert s.schluesselpfad == datei and len(s.geheimnis) == 32
+        geheimnis = s.geheimnis
+    assert re.fullmatch(r"[0-9a-f]{64}\n", datei.read_text())
+    with Pseudonymspeicher(":memory:", schluesselpfad=str(datei)) as s:
+        assert s.geheimnis == geheimnis  # the same file yields the same key again
+    db = tmp_path / "eigene" / "pseudonyme.sqlite"
+    with Pseudonymspeicher(db) as s:
+        assert s.pfad == db and s.schluesselpfad == schluesselpfad_zu(db)
+        assert schluesselpfad_zu(db).exists()
+    with Pseudonymspeicher() as s:  # the default store of the (isolated) data folder
+        assert s.pfad == standardpfad() and s.schluesselpfad == standard_schluesselpfad(s.pfad)
+    with Pseudonymspeicher(":memory:") as a, Pseudonymspeicher(":memory:") as b:
+        assert a.schluesselpfad is None and b.schluesselpfad is None
+        assert len(a.geheimnis) == 32 and a.geheimnis != b.geheimnis  # ephemeral, random
+    with Pseudonymspeicher(":memory:", geheimnis=bytes(32)) as s:
+        assert s.geheimnis == bytes(32) and s.schluesselpfad is None and s.ist_einmal

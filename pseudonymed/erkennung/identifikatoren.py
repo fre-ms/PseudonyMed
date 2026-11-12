@@ -31,16 +31,15 @@ part of the final re-check.
 from __future__ import annotations
 
 import csv
-import io
 import json
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from pseudonymed.dokument.textebene import Seitentext
-from pseudonymed.erkennung import lexikon
+from pseudonymed.erkennung import lexikon, listenimport
 from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
@@ -143,6 +142,7 @@ _PERSONENARTEN = (Art.NAME, Art.VORNAME, Art.NACHNAME, Art.GEBURTSNAME)
 
 
 def _norm(token: str) -> str:
+    """Case-folded token with the umlauts transliterated, the key of the index."""
     return token.casefold().translate(_TRANS)
 
 
@@ -152,6 +152,8 @@ def regelname(klasse: str) -> str:
 
 
 def praefix(klasse: str) -> str:
+    """The word in the pseudonym of a class: ``[Klinik <code>]``, ``[Identifikator <code>]``
+    for the user's own class."""
     return PRAEFIX.get(klasse, klasse.strip() or PRAEFIX[KLASSE_NUTZER])
 
 
@@ -176,9 +178,45 @@ def klinik_formen(name: str) -> set[str]:
             and (len(_TOKEN.findall(f)) > 1 or _HAUSWORT.search(f))}
 
 
+def _titel_formen(begriff: str) -> set[str]:
+    """A title as entered; nothing for a nobiliary particle ("zur", "von")."""
+    if len(begriff) < 2 or (begriff.islower() and len(begriff) <= 4):
+        return set()
+    return {begriff}
+
+
+def _studien_formen(begriff: str) -> set[str]:
+    """A study acronym as registered; nothing for a plain word ("Dekan", "Radix")."""
+    if len(begriff) < MIN_LAENGE or not _AKRONYM.match(begriff):
+        return set()
+    return {begriff}
+
+
+def _wort_formen(begriff: str, exakt: bool | None) -> set[str]:
+    """Any other entry as entered; one matched only in its exact spelling may be short ("Hb")."""
+    return {begriff} if len(begriff) >= (2 if exakt else MIN_LAENGE) else set()
+
+
+def _formen_fuer(begriff: str, klasse: str, exakt: bool | None) -> set[str]:
+    """The forms under which an entry of a class goes into the index: hospitals with their
+    short forms, professions without words that rarely name the patient's own."""
+    if klasse == KLASSE_TITEL:
+        return _titel_formen(begriff)
+    if klasse == KLASSE_STUDIE:
+        return _studien_formen(begriff)
+    if klasse == KLASSE_KLINIK:
+        return klinik_formen(begriff)
+    formen = _wort_formen(begriff, exakt)
+    if klasse == KLASSE_BERUF:
+        return {f for f in formen if _norm(f) not in _KEIN_BERUF}
+    return formen
+
+
 # -- matching -------------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class _Muster:
+    """One indexed form of an entry: its tokens as typed and normalised."""
+
     normal: tuple[str, ...]
     original: tuple[str, ...]
     klasse: str
@@ -188,6 +226,8 @@ class _Muster:
 
 @dataclass(frozen=True)
 class Kandidat:
+    """A span of the text that an entry of the class matched."""
+
     start: int
     ende: int
     klasse: str
@@ -204,28 +244,14 @@ class Erkenner:
 
     @property
     def anzahl(self) -> int:
+        """How many rows the matcher took on, over all classes."""
         return sum(self.je_klasse.values())
 
     def fuege_hinzu(self, begriff: str, klasse: str, exakt: bool | None = None) -> int:
         """Add one row (hospitals with their short forms); returns how many forms.
         ``exakt`` asks for the registered spelling (default: titles and studies only)."""
         begriff = " ".join(begriff.split())
-        if klasse == KLASSE_TITEL:
-            if len(begriff) < 2 or (begriff.islower() and len(begriff) <= 4):
-                return 0  # nobiliary particles: "zur", "von"
-            formen = {begriff}
-        elif klasse == KLASSE_STUDIE:
-            if len(begriff) < MIN_LAENGE or not _AKRONYM.match(begriff):
-                return 0  # plain words ("Dekan", "Radix") are no acronyms
-            formen = {begriff}
-        elif klasse == KLASSE_KLINIK:
-            formen = klinik_formen(begriff)
-        else:
-            # an entry matched only in its exact spelling may be short ("Hb")
-            formen = {begriff} if len(begriff) >= (2 if exakt else MIN_LAENGE) else set()
-        if klasse == KLASSE_BERUF:
-            formen = {f for f in formen if _norm(f) not in _KEIN_BERUF}
-        neu = sum(self._form(form, klasse, exakt) for form in formen)
+        neu = sum(self._form(form, klasse, exakt) for form in _formen_fuer(begriff, klasse, exakt))
         if neu:
             self.je_klasse[klasse] = self.je_klasse.get(klasse, 0) + 1
         return neu
@@ -238,6 +264,7 @@ class Erkenner:
                    for o in orte if len(o) >= 3 for w in _HAUSWOERTER)
 
     def _form(self, form: str, klasse: str, exakt: bool | None = None) -> int:
+        """Index one form (1) unless it is empty, too long or known already (0)."""
         original = tuple(_TOKEN.findall(form))
         if not original or len(original) > MAX_WOERTER:
             return 0
@@ -253,6 +280,8 @@ class Erkenner:
 
     @staticmethod
     def _passt(muster_original: str, muster_normal: str, token: str, exakt: bool) -> bool:
+        """Whether a token is one word of an entry: exactly, or normalised with an
+        inflection ending, keeping a capital where the entry has one."""
         if exakt:
             return token == muster_original
         if muster_original[:1].isupper() and not token[:1].isupper():
@@ -270,24 +299,27 @@ class Erkenner:
         treffer: list[tuple[int, _Muster]] = []
         for key in schluessel:
             for m in self.index.get(key, ()):
-                if i + len(m.normal) > len(tokens):
-                    continue
-                ok = True
-                for k, (orig, norm) in enumerate(zip(m.original, m.normal, strict=True)):
-                    t = tokens[i + k]
-                    if k and (_FUGE.fullmatch(text[tokens[i + k - 1].end():t.start()]) is None
-                              or "\n\n" in text[tokens[i + k - 1].end():t.start()]):
-                        ok = False
-                        break
-                    if not self._passt(orig, norm, t.group(), m.exakt):
-                        ok = False
-                        break
-                if ok:
-                    ende = tokens[i + len(m.normal) - 1].end()
-                    if m.schluss and text[ende:ende + 1] == m.schluss:
-                        ende += 1
+                ende = self._ende_von(text, tokens, i, m)
+                if ende is not None:
                     treffer.append((ende, m))
         return treffer
+
+    def _ende_von(self, text: str, tokens: list[re.Match[str]], i: int,
+                  m: _Muster) -> int | None:
+        """End offset of entry ``m`` when its words match the tokens from ``i`` on, each
+        joined to the previous one; None otherwise."""
+        if i + len(m.normal) > len(tokens):
+            return None
+        for k, (orig, norm) in enumerate(zip(m.original, m.normal, strict=True)):
+            t = tokens[i + k]
+            if k and not _verbunden(text, tokens[i + k - 1], t):
+                return None
+            if not self._passt(orig, norm, t.group(), m.exakt):
+                return None
+        ende = tokens[i + len(m.normal) - 1].end()
+        if m.schluss and text[ende:ende + 1] == m.schluss:
+            ende += 1
+        return ende
 
     def kandidaten(self, text: str, titel: bool = False) -> list[Kandidat]:
         """Non-overlapping hits in reading order that pass their class's context rule;
@@ -297,17 +329,7 @@ class Erkenner:
         beruf_ende = 0
         i = 0
         while i < len(tokens):
-            a = tokens[i].start()
-            gewaehlt: Kandidat | None = None
-            for ende, m in sorted(self._an(text, tokens, i), key=lambda t: -(t[0] - a)):
-                if (m.klasse == KLASSE_TITEL) != titel:
-                    continue
-                if m.klasse == KLASSE_BERUF and not _beruf_im_kontext(text, a, ende, beruf_ende):
-                    continue
-                if m.klasse == KLASSE_STUDIE and not _studie_im_kontext(text, a, ende):
-                    continue
-                gewaehlt = Kandidat(a, ende, m.klasse)
-                break
+            gewaehlt = self._treffer_bei(text, tokens, i, titel, beruf_ende)
             if gewaehlt is None:
                 i += 1
                 continue
@@ -321,8 +343,38 @@ class Erkenner:
             aus.sort(key=lambda k: k.start)
         return aus
 
+    def _treffer_bei(self, text: str, tokens: list[re.Match[str]], i: int, titel: bool,
+                     beruf_ende: int) -> Kandidat | None:
+        """The longest entry at token ``i`` of the wanted kind (titles or the rest) that
+        passes its class's context rule; None when none does."""
+        a = tokens[i].start()
+        for ende, m in sorted(self._an(text, tokens, i), key=lambda t: -(t[0] - a)):
+            if (m.klasse == KLASSE_TITEL) == titel and _im_kontext(m.klasse, text, a, ende,
+                                                                   beruf_ende):
+                return Kandidat(a, ende, m.klasse)
+        return None
+
+
+def _verbunden(text: str, vorher: re.Match[str], token: re.Match[str]) -> bool:
+    """Whether two neighbouring tokens belong to one entry: at most six characters of
+    punctuation or space between them and no paragraph break."""
+    zwischen = text[vorher.end():token.start()]
+    return _FUGE.fullmatch(zwischen) is not None and "\n\n" not in zwischen
+
+
+def _im_kontext(klasse: str, text: str, a: int, b: int, beruf_ende: int) -> bool:
+    """Whether a hit passes the context rule of its class: a profession needs a cue, a study
+    acronym a study word nearby; every other class matches wherever it stands."""
+    if klasse == KLASSE_BERUF:
+        return _beruf_im_kontext(text, a, b, beruf_ende)
+    if klasse == KLASSE_STUDIE:
+        return _studie_im_kontext(text, a, b)
+    return True
+
 
 def _satzanfang(text: str, a: int, grenze: int) -> int:
+    """Offset where the sentence around ``a`` begins: after the last sentence end within
+    80 characters, never before ``grenze``."""
     anfang = max(0, a - 80, grenze)
     letzte = None
     for m in _SATZENDE.finditer(text, anfang, a):
@@ -331,6 +383,8 @@ def _satzanfang(text: str, a: int, grenze: int) -> int:
 
 
 def _beruf_im_kontext(text: str, a: int, b: int, beruf_ende: int) -> bool:
+    """Whether a profession at ``a:b`` has a cue right before or after it, or stands in a
+    social-history paragraph; a salutation before it makes it a name."""
     vorher = text[_satzanfang(text, a, beruf_ende):a]
     if _ANREDE.search(vorher):
         return False  # "Herr Bauer": a name
@@ -347,12 +401,14 @@ def _beruf_im_kontext(text: str, a: int, b: int, beruf_ende: int) -> bool:
 
 
 def _studie_im_kontext(text: str, a: int, b: int) -> bool:
+    """Whether a study word stands within 40 characters on the same line."""
     vorher = text[max(0, a - 40):a].rsplit("\n", 1)[-1]
     nachher = text[b:b + 40].split("\n", 1)[0]
     return bool(_STUDIE.search(vorher) or _STUDIE.search(nachher))
 
 
 def _studien_nummern(text: str, belegt: list[Kandidat]) -> list[Kandidat]:
+    """Registry numbers (NCT, DRKS, ISRCTN, EU CT, labelled EudraCT) outside the hits."""
     spannen = [(m.start(), m.end()) for m in _STUDIEN_ID.finditer(text)]
     spannen += [(m.start(1), m.end(1)) for m in _EUDRACT.finditer(text)]
     return [Kandidat(x, y, KLASSE_STUDIE) for x, y in spannen
@@ -362,6 +418,7 @@ def _studien_nummern(text: str, belegt: list[Kandidat]) -> list[Kandidat]:
 # -- hits -----------------------------------------------------------------------------------------
 def _fundstelle(seite: Seitentext, a: int, b: int, klasse: str, vergabe: Pseudonymvergabe,
                 quelle: str) -> Fundstelle:
+    """The hit for ``a:b`` with its pseudonym, rectangles and font size."""
     text = seite.text[a:b]
     return Fundstelle(
         seite=seite.nummer, start=a, ende=b, text=text, art=Art.IDENTIFIKATOR,
@@ -371,6 +428,7 @@ def _fundstelle(seite: Seitentext, a: int, b: int, klasse: str, vergabe: Pseudon
 
 
 def _frei(a: int, b: int, belegt: list[Fundstelle]) -> bool:
+    """Whether no existing hit overlaps ``a:b``."""
     return not any(f.ende > f.start and a < f.ende and b > f.start for f in belegt)
 
 
@@ -394,32 +452,46 @@ def finde_titel(seite: Seitentext, erkenner: Erkenner, vergabe: Pseudonymvergabe
     if not personen:
         return []
     kandidaten = erkenner.kandidaten(seite.text, titel=True)
-    text = seite.text
-    treffer: list[Fundstelle] = []
+    treffer = [
+        _fundstelle(seite, kette[0].start, kette[-1].ende, KLASSE_TITEL, vergabe, quelle)
+        for p in personen
+        for kette in (_titel_vor(seite.text, kandidaten, p.start),
+                      _titel_nach(seite.text, kandidaten, p.ende))
+        if kette]
+    return _ohne_ueberlappung(treffer, vorhandene)
 
-    def angrenzend(zwischen: str) -> bool:
-        return re.fullmatch(r"[ \t]*,?[ \t]*\n?[ \t]*", zwischen) is not None
 
-    for p in personen:
-        kette: list[Kandidat] = []
-        grenze = p.start
-        for k in reversed([k for k in kandidaten if k.ende <= p.start]):
-            if not angrenzend(text[k.ende:grenze]):
-                break
-            kette.insert(0, k)
-            grenze = k.start
-        if kette:
-            treffer.append(_fundstelle(seite, kette[0].start, kette[-1].ende, KLASSE_TITEL,
-                                       vergabe, quelle))
-        kette, grenze = [], p.ende
-        for k in [k for k in kandidaten if k.start >= p.ende]:
-            if not angrenzend(text[grenze:k.start]):
-                break
-            kette.append(k)
-            grenze = k.ende
-        if kette:
-            treffer.append(_fundstelle(seite, kette[0].start, kette[-1].ende, KLASSE_TITEL,
-                                       vergabe, quelle))
+def _angrenzend(zwischen: str) -> bool:
+    """Whether a title and its neighbour are separated by spaces, one comma and at most
+    one line break only."""
+    return re.fullmatch(r"[ \t]*,?[ \t]*\n?[ \t]*", zwischen) is not None
+
+
+def _titel_vor(text: str, kandidaten: list[Kandidat], grenze: int) -> list[Kandidat]:
+    """The unbroken chain of titles that ends right before ``grenze``, a person's start."""
+    kette: list[Kandidat] = []
+    for k in reversed([k for k in kandidaten if k.ende <= grenze]):
+        if not _angrenzend(text[k.ende:grenze]):
+            break
+        kette.insert(0, k)
+        grenze = k.start
+    return kette
+
+
+def _titel_nach(text: str, kandidaten: list[Kandidat], grenze: int) -> list[Kandidat]:
+    """The unbroken chain of titles that starts right after ``grenze``, a person's end."""
+    kette: list[Kandidat] = []
+    for k in [k for k in kandidaten if k.start >= grenze]:
+        if not _angrenzend(text[grenze:k.start]):
+            break
+        kette.append(k)
+        grenze = k.ende
+    return kette
+
+
+def _ohne_ueberlappung(treffer: list[Fundstelle], vorhandene: list[Fundstelle]) -> list[Fundstelle]:
+    """The hits in reading order, the longer first at the same start, each one only where
+    neither an existing hit nor an accepted one lies."""
     eindeutig: list[Fundstelle] = []
     for f in sorted(treffer, key=lambda f: (f.start, -f.ende)):
         if _frei(f.start, f.ende, vorhandene + eindeutig):
@@ -430,6 +502,9 @@ def finde_titel(seite: Seitentext, erkenner: Erkenner, vergabe: Pseudonymvergabe
 # -- the table behind the identifiers step ------------------------------------------------------
 @dataclass(frozen=True)
 class Eintrag:
+    """One visible row of the lexicon: the identifier, its class, where it came from, the
+    source's id and the JSON addition of the reference data."""
+
     begriff: str
     klasse: str
     quelle: str
@@ -438,28 +513,54 @@ class Eintrag:
 
     @property
     def schluessel(self) -> tuple[str, str, str]:
+        """What identifies the row: (term, class, id)."""
         return self.begriff, self.klasse, self.kennung
 
     @property
     def eigen(self) -> bool:
+        """Whether the user entered or changed the row (bundled rows leave a trace when
+        deleted, the user's own do not)."""
         return self.quelle == lexikon.NUTZER
 
     @property
     def angaben(self) -> str:
         """Short description from the reference data (place, registry number, meaning)."""
-        if self.klasse == KLASSE_KLINIK and self.zusatz:
-            try:
-                z = json.loads(self.zusatz)
-            except ValueError:
-                return ""
-            return f"{z.get('ort', '')} ({z.get('land', '')})".replace(" ()", "").strip()
-        if self.klasse == KLASSE_STUDIE and ":" in self.kennung:
-            return self.kennung.split(":", 1)[1]
-        if self.klasse == KLASSE_TITEL and "|" in self.kennung:
-            return " · ".join(t for t in self.kennung.split("|") if t and t != "alle")
-        if self.klasse == KLASSE_BERUF and self.kennung.isdigit():
-            return f"KldB {self.kennung}"
+        beschreibung = _ANGABEN.get(self.klasse)
+        return beschreibung(self) if beschreibung else ""
+
+
+def _klinik_angaben(e: Eintrag) -> str:
+    """Town and country from a hospital's JSON addition; empty without one."""
+    if not e.zusatz:
         return ""
+    try:
+        z = json.loads(e.zusatz)
+    except ValueError:
+        return ""
+    return f"{z.get('ort', '')} ({z.get('land', '')})".replace(" ()", "").strip()
+
+
+def _studien_angaben(e: Eintrag) -> str:
+    """The registry number behind the registry's name ("ClinicalTrials.gov:NCT…")."""
+    return e.kennung.split(":", 1)[1] if ":" in e.kennung else ""
+
+
+def _titel_angaben(e: Eintrag) -> str:
+    """The fields of a title from its ``|``-separated id, "alle" (every field) left out."""
+    if "|" not in e.kennung:
+        return ""
+    return " · ".join(t for t in e.kennung.split("|") if t and t != "alle")
+
+
+def _beruf_angaben(e: Eintrag) -> str:
+    """The KldB 2010 code of a profession when the id is one."""
+    return f"KldB {e.kennung}" if e.kennung.isdigit() else ""
+
+
+_ANGABEN: dict[str, Callable[[Eintrag], str]] = {
+    KLASSE_KLINIK: _klinik_angaben, KLASSE_STUDIE: _studien_angaben,
+    KLASSE_TITEL: _titel_angaben, KLASSE_BERUF: _beruf_angaben,
+}
 
 
 class Identifikatoren:
@@ -476,6 +577,7 @@ class Identifikatoren:
         self.verbindung.executescript(lexikon.SCHEMA)
 
     def close(self) -> None:
+        """Close the database connection."""
         self._vokabular.close()
 
     def __enter__(self) -> Identifikatoren:
@@ -486,18 +588,22 @@ class Identifikatoren:
 
     # -- reading -------------------------------------------------------------------------------
     def version(self) -> int:
+        """Counter that every change raises; the matcher rebuilds when it moved."""
         return lexikon.version(self.verbindung)
 
     def anzahl(self) -> int:
-        return self.verbindung.execute(
-            f"SELECT COUNT(*) FROM lexikon WHERE {_SICHTBAR}").fetchone()[0]
+        """How many rows the step shows."""
+        return int(self.verbindung.execute(
+            f"SELECT COUNT(*) FROM lexikon WHERE {_SICHTBAR}").fetchone()[0])
 
     def klassen(self) -> list[tuple[str, int]]:
+        """Every class of the visible rows with its number of rows, the largest first."""
         return [(k, n) for k, n in self.verbindung.execute(
             f"SELECT klasse, COUNT(*) FROM lexikon WHERE {_SICHTBAR} GROUP BY klasse"
             " ORDER BY COUNT(*) DESC, klasse")]
 
     def alle(self, klasse: str = "") -> list[Eintrag]:
+        """The visible rows in alphabetical order, of one class when given."""
         sql = f"SELECT begriff, klasse, quelle, kennung, zusatz FROM lexikon WHERE {_SICHTBAR}"
         werte: list[str] = []
         if klasse:
@@ -507,7 +613,9 @@ class Identifikatoren:
             sql + " ORDER BY begriff COLLATE NOCASE", werte)]
 
     def geloescht(self) -> int:
-        return self.verbindung.execute("SELECT COUNT(*) FROM lexikon_geloescht").fetchone()[0]
+        """How many bundled rows the user deleted or changed (kept from coming back)."""
+        return int(self.verbindung.execute(
+            "SELECT COUNT(*) FROM lexikon_geloescht").fetchone()[0])
 
     def schluessel_fuer(self, begriff: str, klasse: str = "") -> list[tuple[str, str, str]]:
         """Keys of the visible rows with this term (case-insensitive), in one class or all."""
@@ -519,6 +627,7 @@ class Identifikatoren:
         return [tuple(r) for r in self.verbindung.execute(sql, werte)]
 
     def _zeile(self, schluessel: tuple[str, str, str]) -> Eintrag | None:
+        """The row with this key, visible or not; None when there is none."""
         r = self.verbindung.execute(
             "SELECT begriff, klasse, quelle, kennung, zusatz FROM lexikon"
             " WHERE begriff = ? AND klasse = ? AND kennung = ?", schluessel).fetchone()
@@ -526,6 +635,7 @@ class Identifikatoren:
 
     # -- writing -------------------------------------------------------------------------------
     def _fertig(self, n: int) -> int:
+        """Commit; raise the version when ``n`` rows changed; return ``n``."""
         if n:
             lexikon.erhoehe_version(self.verbindung)
         self.verbindung.commit()
@@ -544,6 +654,7 @@ class Identifikatoren:
         return self._fertig(self.verbindung.total_changes - vorher)
 
     def _loesche(self, e: Eintrag) -> int:
+        """Delete one row, recording the deletion of a bundled one; returns 1 or 0."""
         if not e.eigen:
             self.verbindung.execute(
                 "INSERT OR IGNORE INTO lexikon_geloescht (begriff, klasse, kennung)"
@@ -554,6 +665,7 @@ class Identifikatoren:
         return self.verbindung.total_changes - vorher
 
     def entferne(self, schluessel: Iterable[tuple[str, str, str]]) -> int:
+        """Delete the rows with these keys; returns how many went."""
         n = 0
         for s in schluessel:
             e = self._zeile(s)
@@ -607,32 +719,8 @@ class Identifikatoren:
         """Read a CSV (``begriff[,klasse]``, header optional, comma, semicolon or tab) or a
         plain list (one term per line); returns (new, read).  A class column in the file
         wins over ``klasse``."""
-        from pseudonymed.dokument.textdatei import lese_textdatei
-
-        zeilen = [z for z in lese_textdatei(pfad).splitlines()
-                  if z.strip() and not z.lstrip().startswith("#")]
-        if not zeilen:
-            return 0, 0
-        trenner = next((t for t in (",", ";", "\t") if t in zeilen[0]), None)
-        gruppen: dict[str, list[str]] = {}
-        gelesen = 0
-        if trenner is None:
-            gruppen[klasse] = [z.strip() for z in zeilen]
-            gelesen = len(zeilen)
-        else:
-            kopf: list[str] | None = None
-            for i, felder in enumerate(csv.reader(io.StringIO("\n".join(zeilen)),
-                                                  delimiter=trenner)):
-                if not felder or not felder[0].strip():
-                    continue
-                if i == 0 and felder[0].strip().casefold() in ("begriff", "term", "wort"):
-                    kopf = [f.strip().casefold() for f in felder]
-                    continue
-                spalte = kopf.index("klasse") if kopf and "klasse" in kopf else 1
-                k = felder[spalte].strip() if len(felder) > spalte else ""
-                gruppen.setdefault(k or klasse, []).append(felder[0].strip())
-                gelesen += 1
-        return sum(self.fuege_hinzu(b, k) for k, b in gruppen.items()), gelesen
+        gelesen = listenimport.lies_liste(pfad, "klasse", klasse)
+        return sum(self.fuege_hinzu(b, k) for k, b in gelesen.gruppen.items()), gelesen.zeilen
 
 
 # -- the matcher used by the analysis ------------------------------------------------------------
@@ -648,18 +736,7 @@ def standard() -> Erkenner:
             version = ident.version()
             if _cache is not None and _cache[0] == ident.pfad and _cache[1] == version:
                 return _cache[2]
-            erkenner = Erkenner()
-            orte: set[str] = set()
-            for begriff, klasse, zusatz in ident.verbindung.execute(
-                    f"SELECT begriff, klasse, zusatz FROM lexikon WHERE {_SICHTBAR}"):
-                erkenner.fuege_hinzu(begriff, klasse)
-                if klasse == KLASSE_KLINIK and zusatz.startswith("{"):
-                    try:
-                        orte.add(str(json.loads(zusatz).get("ort") or ""))
-                    except ValueError:
-                        pass
-            for ort in sorted(orte - {""}):
-                erkenner.fuege_ort_hinzu(ort)
+            erkenner = _erkenner_aus(ident.verbindung)
             pfad = ident.pfad
     except (sqlite3.Error, OSError):
         return Erkenner()
@@ -667,7 +744,33 @@ def standard() -> Erkenner:
     return erkenner
 
 
+def _erkenner_aus(verbindung: sqlite3.Connection) -> Erkenner:
+    """The matcher over the visible rows, with short hospital names for every town that
+    has a listed hospital."""
+    erkenner = Erkenner()
+    orte: set[str] = set()
+    for begriff, klasse, zusatz in verbindung.execute(
+            f"SELECT begriff, klasse, zusatz FROM lexikon WHERE {_SICHTBAR}"):
+        erkenner.fuege_hinzu(begriff, klasse)
+        if klasse == KLASSE_KLINIK:
+            orte.add(_ort_aus(zusatz))
+    for ort in sorted(orte - {""}):
+        erkenner.fuege_ort_hinzu(ort)
+    return erkenner
+
+
+def _ort_aus(zusatz: str) -> str:
+    """The town in a hospital row's JSON addition; empty without one or when unreadable."""
+    if not zusatz.startswith("{"):
+        return ""
+    try:
+        return str(json.loads(zusatz).get("ort") or "")
+    except ValueError:
+        return ""
+
+
 def _cache_clear() -> None:
+    """Forget the cached matcher (tests and the step after edits)."""
     global _cache
     _cache = None
 

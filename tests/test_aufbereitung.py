@@ -203,3 +203,29 @@ def test_winkel_trotz_dunklem_rand(befund: Path) -> None:
     assert auf.raender_dunkel(schief)
     gerade = auf.wende_an(schief, auf.Aufbereitung(begradigen=True, winkel=2.5, raender=True))
     assert gerade[h // 2 - 100:h // 2 + 100, :12].min() == 255  # the wedge is gone
+
+
+def test_beschreibung_und_aktiv() -> None:
+    """Every step has its phrase, in the listed order; a plan is active once a step would run."""
+    A = auf.Aufbereitung
+    assert not A().aktiv and not A(hochskalieren=1).aktiv
+    for plan in (A(drehung=90), A(hochskalieren=2), A(masken=[(0, 0, 1, 1)]), A(begradigen=True),
+                 A(entzerren=True), A(textmodus=True), A(raender=True), A(farbe_entfernen=True),
+                 A(entrauschen=True), A(kontrast=True), A(schaerfen=True), A(hintergrund=True),
+                 A(linien_entfernen=True), A(schwarzweiss=True)):
+        assert plan.aktiv, plan
+    assert auf.beschreibung(A(drehung=90)) == "um 90° gedreht"
+    assert auf.beschreibung(A(begradigen=True, winkel=2.04)) == "begradigt (+2,0°)"
+    assert auf.beschreibung(A(begradigen=True, winkel=0.01)) == "unverändert"
+    assert auf.beschreibung(A(entzerren=True)) == "unverändert"  # no corners, nothing to unwarp
+    hoch = A(hochskalieren=3, textmodus=True)
+    assert auf.beschreibung(hoch) == "3× hochskaliert (Buchstabenmodus)"
+    schwarz = A(masken=[(0, 0, 1, 1)], maskenfarbe="schwarz")
+    assert auf.beschreibung(schwarz) == "1 Bereich(e) geschwärzt"
+    alles = A(drehung=180, begradigen=True, winkel=-1.5, raender=True, farbe_entfernen=True,
+              entrauschen=True, kontrast=True, schaerfen=True, hintergrund=True,
+              linien_entfernen=True, schwarzweiss=True, masken=[(0, 0, 1, 1), (2, 2, 3, 3)])
+    assert auf.beschreibung(alles) == (
+        "um 180° gedreht, begradigt (-1,5°), Ränder gesäubert, farbige Tinte entfernt, entrauscht, "
+        "Kontrast angehoben, geschärft, Hintergrund geglättet, Linien entfernt, Schwarz-Weiß, "
+        "2 Bereich(e) gelöscht")

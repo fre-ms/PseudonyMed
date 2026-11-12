@@ -169,6 +169,36 @@ def test_erwerbsstatus_und_studiennummern_unsichtbar(frisch: Path) -> None:
         assert [(e.begriff, e.angaben) for e in ident.alle()] == [("ALPHA", "NCT01234567")]
 
 
+def test_angaben_je_klasse() -> None:
+    def e(klasse: str, kennung: str = "", zusatz: str = "") -> identmodul.Eintrag:
+        return identmodul.Eintrag("Begriff", klasse, "Quelle", kennung, zusatz)
+
+    assert e("Klinik", zusatz='{"ort": "Musterstadt", "land": "DE"}').angaben == "Musterstadt (DE)"
+    assert e("Klinik", zusatz='{"ort": "Musterstadt"}').angaben == "Musterstadt"
+    assert e("Klinik", zusatz='{"land": "DE"}').angaben == "(DE)"
+    assert e("Klinik", zusatz="{").angaben == "" and e("Klinik").angaben == ""
+    assert e("Studie", "ClinicalTrials.gov:NCT01234567").angaben == "NCT01234567"
+    assert e("Studie", "NCT01234567").angaben == ""
+    assert e("Titel", "alle|Medizin|").angaben == "Medizin" and e("Titel", "Dr.").angaben == ""
+    assert e("Beruf", "12345").angaben == "KldB 12345" and e("Beruf", "abc").angaben == ""
+    assert e("Sonstiges", "12345", '{"ort": "x"}').angaben == ""
+
+
+def test_standard_kennt_die_orte_der_kliniken(frisch: Path) -> None:
+    with identmodul.Identifikatoren() as ident:
+        ident.verbindung.executemany(
+            "INSERT INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
+            " VALUES (?, 'Klinik', 'merkmal', 'Kliniken', ?, ?)",
+            [("Musterklinik Musterstadt", "K1", '{"ort": "Musterstadt", "land": "DE"}'),
+             ("Beispielklinik", "K2", "kein JSON"), ("Fachklinik Nord", "K3", "")])
+        ident.verbindung.commit()
+    e = identmodul.standard()
+    assert e.je_klasse == {"Klinik": 3}
+    text = "Verlegt ins Krankenhaus Musterstadt, danach in die Musterklinik Musterstadt."
+    assert _gefunden(e, text) == [("Krankenhaus Musterstadt", "Klinik"),
+                                  ("Musterklinik Musterstadt", "Klinik")]
+
+
 # -- the pipeline ----------------------------------------------------------------------------------
 def test_textdatei_schwaerzt_identifikatoren(frisch: Path, tmp_path: Path, patient: Patient,
                                              speicher: Pseudonymspeicher) -> None:

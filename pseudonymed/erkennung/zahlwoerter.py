@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 _EINER = {"eins": 1, "ein": 1, "zwei": 2, "zwo": 2, "drei": 3, "vier": 4, "fünf": 5, "fuenf": 5,
           "sechs": 6, "sieben": 7, "acht": 8, "neun": 9}
@@ -84,9 +85,9 @@ def kardinal(wort: str) -> int | None:
 def ordinal(wort: str) -> int | None:
     """Value of an ordinal number word ("einundzwanzigsten" -> 21), or None."""
     w = wort.casefold()
-    for stamm, wert in _ORDINAL_UNREGELMAESSIG.items():
+    for stamm, fest in _ORDINAL_UNREGELMAESSIG.items():
         if re.fullmatch(stamm + r"e[rsnm]?", w):
-            return wert
+            return fest
     m = re.fullmatch(r"(.+?)(?:ste|te)[rsnm]?", w)
     if m:
         wert = kardinal(m.group(1))  # "zweite", "einundzwanzigsten", "hundertste"
@@ -102,6 +103,9 @@ def ordinal(wort: str) -> int | None:
 
 @dataclass
 class Normalisiert:
+    """A copy of a text with the same length in which number words stand as digits, and
+    the regions that were rewritten, so that a hit on the digits can be widened back to
+    the words it stands for."""
     text: str
     spannen: list[tuple[int, int]] = field(default_factory=list)  # rewritten regions
 
@@ -143,92 +147,162 @@ def _tokens(text: str) -> list[_Token]:
     return tokens
 
 
-def _nur_leerraum(text: str, a: int, b: int) -> bool:
-    return text[a:b].strip(" \t") == ""
+class _Zahlengruppe(NamedTuple):
+    """Consecutive tokens that are rewritten together, and the digits replacing them."""
+    anzahl: int
+    ziffern: str
 
 
-def _datum(tokens: list[_Token], i: int, text: str) -> tuple[int, str] | None:
+def _schliesst_an(text: str, a: _Token, b: _Token) -> bool:
+    """Whether only spaces or tabs separate token ``a`` from token ``b``; a line break
+    ends every group."""
+    return text[a.ende:b.start].strip(" \t") == ""
+
+
+def _einstellig(t: _Token) -> bool:
+    """Whether the token is a single-digit number word ("null" to "neun")."""
+    return t.kardinal is not None and 0 <= t.kardinal <= 9
+
+
+def _jahrespaar(j: _Token, k: _Token | None, text: str) -> _Zahlengruppe | None:
+    """A year spoken in two words ("neunzehn neunundfünfzig" -> 1959): a word from 10 to
+    20 directly followed by a word from 10 to 99.  None otherwise."""
+    if k is None or j.kardinal is None or k.kardinal is None:
+        return None
+    if 10 <= j.kardinal <= 20 and 10 <= k.kardinal <= 99 and _schliesst_an(text, j, k):
+        return _Zahlengruppe(2, f"{j.kardinal}{k.kardinal:02d}")
+    return None
+
+
+def _ziffernlauf(tokens: list[_Token], i: int, text: str) -> _Zahlengruppe | None:
+    """A run of at least two single-digit words from token i ("acht zwei vier" -> 824),
+    as postcodes and telephone numbers are spoken.  None otherwise."""
+    if not _einstellig(tokens[i]):
+        return None
+    n = 1
+    while (i + n < len(tokens) and _einstellig(tokens[i + n])
+           and _schliesst_an(text, tokens[i + n - 1], tokens[i + n])):
+        n += 1
+    if n == 1:
+        return None
+    return _Zahlengruppe(n, "".join(str(t.kardinal) for t in tokens[i:i + n]))
+
+
+def _datumstag(t: _Token) -> int | None:
+    """The day of a date: an ordinal from 1 to 31, else None."""
+    if t.ordinal is not None and 1 <= t.ordinal <= 31:
+        return t.ordinal
+    return None
+
+
+def _datumsmonat(t: _Token, text: str) -> str | None:
+    """The month of a date as it will be written: the name as it stands in the text, or
+    "7." for an ordinal from 1 to 12.  None otherwise."""
+    if t.monat is not None:
+        return text[t.start:t.ende]
+    if t.ordinal is not None and 1 <= t.ordinal <= 12:
+        return f"{t.ordinal}."
+    return None
+
+
+def _jahresziffern(t: _Token) -> _Zahlengruppe | None:
+    """A year written in digits: exactly two or four of them, else None."""
+    if t.ziffern and len(t.wort) in (2, 4):
+        return _Zahlengruppe(1, t.wort)
+    return None
+
+
+def _jahreswort(t: _Token) -> _Zahlengruppe | None:
+    """A year as one number word: 0 to 99 ("neunundfünfzig") or 1000 to 2999, else None."""
+    if t.kardinal is not None and (0 <= t.kardinal <= 99 or 1000 <= t.kardinal <= 2999):
+        return _Zahlengruppe(1, str(t.kardinal))
+    return None
+
+
+def _datumsjahr(tokens: list[_Token], i: int, text: str) -> _Zahlengruppe | None:
+    """The year of a date at token i, directly after the month at token i - 1: digits, a
+    pair of words or one word, in that order of preference.  None when there is none."""
+    if i >= len(tokens) or not _schliesst_an(text, tokens[i - 1], tokens[i]):
+        return None
+    j = tokens[i]
+    k = tokens[i + 1] if i + 1 < len(tokens) else None
+    return _jahresziffern(j) or _jahrespaar(j, k, text) or _jahreswort(j)
+
+
+def _datumstext(tag: int, monat: str, jahr: str, monatsname: bool) -> str:
+    """"21. Juli 1959" when the month is a name, "21.7.1959" when it is an ordinal."""
+    if monatsname:
+        return f"{tag}. {monat}" + (f" {jahr}" if jahr else "")
+    return f"{tag}.{monat}{jahr}"
+
+
+def _datum(tokens: list[_Token], i: int, text: str) -> _Zahlengruppe | None:
     """A date starting at token i: ordinal day, month (name or ordinal), optional year
-    (word or digits).  Returns (number of tokens, digits) or None."""
-    tag = tokens[i]
-    if tag.ordinal is None or not 1 <= tag.ordinal <= 31 or i + 1 >= len(tokens):
+    (word or digits).  None when the tokens do not form one."""
+    if i + 1 >= len(tokens):
         return None
-    monat = tokens[i + 1]
-    if not _nur_leerraum(text, tag.ende, monat.start):
+    tag, monat = tokens[i], tokens[i + 1]
+    tag_wert = _datumstag(tag)
+    if tag_wert is None or not _schliesst_an(text, tag, monat):
         return None
-    if monat.monat is not None:
-        m_text = text[monat.start:monat.ende]
-    elif monat.ordinal is not None and 1 <= monat.ordinal <= 12:
-        m_text = f"{monat.ordinal}."
-    else:
+    monat_text = _datumsmonat(monat, text)
+    if monat_text is None:
         return None
-    n = 2
-    jahr = ""
-    if i + 2 < len(tokens):
-        j = tokens[i + 2]
-        if _nur_leerraum(text, monat.ende, j.start):
-            k = tokens[i + 3] if i + 3 < len(tokens) else None
-            if j.ziffern and len(j.wort) in (2, 4):
-                jahr, n = j.wort, 3
-            elif (j.kardinal is not None and 10 <= j.kardinal <= 20 and k is not None
-                  and k.kardinal is not None and 10 <= k.kardinal <= 99
-                  and _nur_leerraum(text, j.ende, k.start)):
-                jahr, n = f"{j.kardinal}{k.kardinal:02d}", 4  # "neunzehn neunundfünfzig"
-            elif j.kardinal is not None and (1000 <= j.kardinal <= 2999 or 0 <= j.kardinal <= 99):
-                jahr, n = str(j.kardinal), 3
-    if monat.monat is not None:
-        ersatz = f"{tag.ordinal}. {m_text}" + (f" {jahr}" if jahr else "")
-    else:
-        ersatz = f"{tag.ordinal}.{m_text}" + jahr
-    return n, ersatz
+    jahr = _datumsjahr(tokens, i + 2, text) or _Zahlengruppe(0, "")
+    ersatz = _datumstext(tag_wert, monat_text, jahr.ziffern, monatsname=monat.monat is not None)
+    return _Zahlengruppe(2 + jahr.anzahl, ersatz)
+
+
+def _zahlengruppe(tokens: list[_Token], i: int, text: str) -> _Zahlengruppe | None:
+    """The number group that starts at token i, or None when that token is no number.
+    The longest reading wins: a date, then a run of single digits, then a year in two
+    words, then the word alone."""
+    t = tokens[i]
+    datum = _datum(tokens, i, text)
+    if datum is not None:
+        return datum
+    if t.kardinal is None:
+        return _Zahlengruppe(1, f"{t.ordinal}.") if t.ordinal is not None else None
+    naechstes = tokens[i + 1] if i + 1 < len(tokens) else None
+    return (_ziffernlauf(tokens, i, text) or _jahrespaar(t, naechstes, text)
+            or _Zahlengruppe(1, str(t.kardinal)))
+
+
+class _Kopie:
+    """The length-preserving copy of a text while number words are being rewritten into
+    it, together with the regions rewritten so far."""
+
+    def __init__(self, original: str) -> None:
+        self.original = original
+        self.zeichen = list(original)
+        self.spannen: list[tuple[int, int]] = []
+
+    def schreibe(self, a: int, b: int, ersatz: str) -> None:
+        """Put ``ersatz`` at ``a``, blank the rest of ``[a, b)`` (line breaks stay) and
+        record the region.  A replacement longer than the region is dropped: that cannot
+        happen for German number words, and the offsets must never be corrupted."""
+        if len(ersatz) > b - a:
+            return
+        for k in range(a, b):
+            self.zeichen[k] = "\n" if self.original[k] == "\n" else " "
+        self.zeichen[a:a + len(ersatz)] = ersatz
+        self.spannen.append((a, b))
+
+    def ergebnis(self) -> Normalisiert:
+        """The rewritten text with its rewritten regions."""
+        return Normalisiert("".join(self.zeichen), self.spannen)
 
 
 def normalisiere(text: str) -> Normalisiert:
     """Rewrite number words as digits, keeping the length of ``text``."""
-    zeichen = list(text)
-    spannen: list[tuple[int, int]] = []
-
-    def schreibe(a: int, b: int, ersatz: str) -> None:
-        if len(ersatz) > b - a:
-            return  # cannot happen for German number words, but never corrupt offsets
-        for k in range(a, b):
-            zeichen[k] = " " if text[k] != "\n" else "\n"
-        for k, c in enumerate(ersatz):
-            zeichen[a + k] = c
-        spannen.append((a, b))
-
+    kopie = _Kopie(text)
     tokens = _tokens(text)
     i = 0
     while i < len(tokens):
-        t = tokens[i]
-        datum = _datum(tokens, i, text)
-        if datum is not None:
-            n, ersatz = datum
-            schreibe(t.start, tokens[i + n - 1].ende, ersatz)
-            i += n
+        gruppe = _zahlengruppe(tokens, i, text)
+        if gruppe is None:
+            i += 1
             continue
-        if t.kardinal is not None:
-            # a run of single digits -> one number ("acht zwei vier sechs zwei")
-            j = i
-            while (j + 1 < len(tokens) and tokens[j + 1].kardinal is not None
-                   and 0 <= tokens[j + 1].kardinal <= 9 and 0 <= tokens[i].kardinal <= 9
-                   and _nur_leerraum(text, tokens[j].ende, tokens[j + 1].start)):
-                j += 1
-            if j > i:
-                ersatz = "".join(str(tokens[k].kardinal) for k in range(i, j + 1))
-                schreibe(t.start, tokens[j].ende, ersatz)
-                i = j + 1
-                continue
-            # a year in two parts ("neunzehn neunundfünfzig")
-            if (10 <= t.kardinal <= 20 and i + 1 < len(tokens)
-                    and tokens[i + 1].kardinal is not None and 0 <= tokens[i + 1].kardinal <= 99
-                    and not (0 <= tokens[i + 1].kardinal <= 9)
-                    and _nur_leerraum(text, t.ende, tokens[i + 1].start)):
-                schreibe(t.start, tokens[i + 1].ende, f"{t.kardinal}{tokens[i + 1].kardinal:02d}")
-                i += 2
-                continue
-            schreibe(t.start, t.ende, str(t.kardinal))
-        elif t.ordinal is not None:
-            schreibe(t.start, t.ende, f"{t.ordinal}.")
-        i += 1
-    return Normalisiert("".join(zeichen), spannen)
+        kopie.schreibe(tokens[i].start, tokens[i + gruppe.anzahl - 1].ende, gruppe.ziffern)
+        i += gruppe.anzahl
+    return kopie.ergebnis()

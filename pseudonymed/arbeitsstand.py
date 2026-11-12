@@ -35,6 +35,7 @@ from pseudonymed import WERKZEUG
 from pseudonymed.ablauf import (
     Ablaufoptionen,
     Lesung,
+    Ruestzeug,
     Seite,
     Textvorbereitung,
     Vorbereitung,
@@ -44,9 +45,13 @@ from pseudonymed.ablauf import (
 from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import gliederung as gliedmodul
 from pseudonymed.dokument.textebene import Seitentext
+from pseudonymed.erkennung import fachbegriffe as fachmodul
+from pseudonymed.erkennung.deterministisch import Regel
+from pseudonymed.erkennung.unscharf import Ziel
 from pseudonymed.kern.modell import Fundstelle, Patient
 from pseudonymed.pruefung.gegenprobe import toleranzschluessel
 from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
+from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 from pseudonymed.schwaerzen.pdf import Schwaerzoptionen
 
 MARKE = "pseudonymed_arbeitsstand"
@@ -57,7 +62,7 @@ _OPTIONEN_AUSSEN = ("aufbereitung", "empfaenger", "empfaenger_fingerabdruck", "a
 
 
 class ArbeitsstandFehler(Exception):
-    pass
+    """A state cannot be captured, read or restored; the message says why."""
 
 
 @dataclass
@@ -71,18 +76,22 @@ class Arbeitsstand:
 
     @property
     def ist_text(self) -> bool:
+        """True for a text file (transcript, note, subtitles), False for a PDF."""
         return bool(self.daten["dokument"]["ist_text"])
 
     @property
     def patient(self) -> Patient:
+        """The patient the state was saved for."""
         return Patient.aus_dict(self.daten["patient"])
 
     @property
     def kennung(self) -> str:
+        """The identifier the pseudonyms were issued under; empty when the state has none."""
         return str(self.daten.get("kennung", ""))
 
     @property
     def optionen(self) -> Ablaufoptionen:
+        """The pipeline options as they were saved."""
         return _optionen_aus(self.daten["optionen"])
 
     @property
@@ -94,6 +103,7 @@ class Arbeitsstand:
 
     @property
     def dokumentpfad(self) -> Path | None:
+        """The prepared document next to the JSON file; None for an in-memory capture."""
         if self.pfad is None:
             return None
         return self.pfad.parent / str(self.daten["dokument"]["datei"])
@@ -121,6 +131,8 @@ def ist_arbeitsstand(pfad: str | Path) -> Path | None:
 
 # -- capturing -------------------------------------------------------------------------------------
 def _optionen_als_dict(opt: Ablaufoptionen) -> dict[str, Any]:
+    """The options as JSON data: the target folder as a string, the redaction options
+    nested, the recipient and matching fields left out (they are not restored)."""
     d = {k: v for k, v in opt.__dict__.items() if k not in _OPTIONEN_AUSSEN}
     d["ziel_ordner"] = str(opt.ziel_ordner) if opt.ziel_ordner else None
     d["schwaerzen"] = dataclasses.asdict(opt.schwaerzen)
@@ -128,6 +140,8 @@ def _optionen_als_dict(opt: Ablaufoptionen) -> dict[str, Any]:
 
 
 def _optionen_aus(d: dict[str, Any]) -> Ablaufoptionen:
+    """The options read back: unknown keys and the outer fields are ignored, the
+    colours become tuples again."""
     felder = {k: v for k, v in d.items() if k in Ablaufoptionen.__dataclass_fields__
               and k not in _OPTIONEN_AUSSEN}
     felder["ziel_ordner"] = Path(d["ziel_ordner"]) if d.get("ziel_ordner") else None
@@ -141,6 +155,7 @@ def _optionen_aus(d: dict[str, Any]) -> Ablaufoptionen:
 
 
 def _seite_als_dict(s: Seite) -> dict[str, Any]:
+    """A page as JSON data: text layer, OCR reading, correction, resolution and hits."""
     return {
         "nummer": s.nummer, "text": s.text.als_dict(),
         "ocr": s.ocr.als_dict() if s.ocr is not None else None,
@@ -158,7 +173,7 @@ def erfasse(v: Vorbereitung | Textvorbereitung) -> Arbeitsstand:
             " die Codes wären beim Wiederaufnehmen nicht mehr dieselben.")
     if v.abgeschlossen:
         raise ArbeitsstandFehler("Diese Vorbereitung ist schon abgeschlossen.")
-    if v.ist_text:
+    if isinstance(v, Textvorbereitung):
         dokument = v.text.encode("utf-8")
         endung = v.ausgabe_endung
     else:
@@ -243,6 +258,9 @@ def lies(pfad: str | Path) -> Arbeitsstand:
 
 def _seite_aus(d: dict[str, Any], plan: aufmodul.Aufbereitung | None,
                page: pymupdf.Page | None) -> Seite:
+    """A page as it was read, without its hits: text layer, OCR reading, correction and
+    resolution.  The letter-aware finish follows the clean-up plan; the layout roles are
+    rebuilt from the PDF page when there is an OCR reading to place them on."""
     s = Seite(int(d["nummer"]), Seitentext.aus_dict(d["text"]))
     s.ocr = Seitentext.aus_dict(d["ocr"]) if d.get("ocr") else None
     s.korrektur = d.get("korrektur")
@@ -257,8 +275,24 @@ def _seite_aus(d: dict[str, Any], plan: aufmodul.Aufbereitung | None,
 
 
 def _plan_aus(daten: dict[str, Any]) -> dict[int, aufmodul.Aufbereitung]:
+    """The clean-up plan read back, keyed by page number."""
     return {int(n): aufmodul.Aufbereitung.aus_dict(a)
             for n, a in daten.get("aufbereitung", {}).items()}
+
+
+def _pdfseiten_aus(seiten: list[dict[str, Any]], plan: dict[int, aufmodul.Aufbereitung],
+                   doc: pymupdf.Document) -> list[Seite]:
+    """The saved pages of a PDF, each rebuilt against its page in the opened document."""
+    return [_seite_aus(d, plan.get(int(d["nummer"])), doc[int(d["nummer"])]) for d in seiten]
+
+
+def _meldungen_der_lesung(a: Arbeitsstand) -> tuple[list[str], list[str]]:
+    """The warnings and hints a rebuilt reading keeps: those about the text layer, the OCR
+    and the clean-up, plus where the state came from."""
+    warnungen = [w for w in a.daten.get("warnungen", []) if "Textebene" in w]
+    hinweise = [h for h in a.daten.get("hinweise", []) if "OCR" in h or "aufbereitet" in h]
+    hinweise.append(_ladehinweis(a))
+    return warnungen, hinweise
 
 
 def lesung_aus(a: Arbeitsstand, opt: Ablaufoptionen | None = None) -> Lesung:
@@ -271,24 +305,122 @@ def lesung_aus(a: Arbeitsstand, opt: Ablaufoptionen | None = None) -> Lesung:
     doc = pymupdf.open("pdf", a.dokument)
     original = pymupdf.open("pdf", a.dokument)
     try:
-        seiten = [_seite_aus(d, plan.get(int(d["nummer"])), doc[int(d["nummer"])])
-                  for d in a.daten["seiten"]]
+        seiten = _pdfseiten_aus(a.daten["seiten"], plan, doc)
     except Exception:
         doc.close()
         original.close()
         raise
-    warnungen = [w for w in a.daten.get("warnungen", []) if "Textebene" in w]
-    hinweise = [h for h in a.daten.get("hinweise", []) if "OCR" in h or "aufbereitet" in h]
-    hinweise.append(_ladehinweis(a))
+    warnungen, hinweise = _meldungen_der_lesung(a)
     return Lesung(quelle=a.quelle, opt=opt, doc=doc, original=original, backend=None,
                   seiten=seiten, ohne_text=[int(n) for n in a.daten.get("ohne_text", [])],
                   plan=plan, warnungen=warnungen, hinweise=hinweise)
 
 
 def _ladehinweis(a: Arbeitsstand) -> str:
+    """The hint naming the state and when, and by which tool version, it was saved."""
     name = a.pfad.name if a.pfad is not None else "dem Speicher"
     return (f"Arbeitsstand aus {name} übernommen (gespeichert {a.daten.get('erstellt', '?')},"
             f" {a.daten.get('werkzeug', '?')}).")
+
+
+@dataclass(frozen=True)
+class _Gemeinsam:
+    """The keyword fields both preparations take from a state: whose document, with which
+    options, store and gear, and what the review had decided (discards, restores, version,
+    clean-up plan)."""
+
+    quelle: Path
+    patient: Patient
+    opt: Ablaufoptionen
+    speicher: Pseudonymspeicher
+    eigener_speicher: bool
+    kennung: str
+    vergabe: Pseudonymvergabe
+    regeln: list[Regel]
+    ziele: list[Ziel]
+    warnungen: list[str]
+    hinweise: list[str]
+    verworfen: list[Fundstelle]
+    version: int
+    wiederhergestellt: set[tuple[str, str]]
+    aufbereitet: dict[int, aufmodul.Aufbereitung]
+
+
+def _meldungen_der_vorbereitung(a: Arbeitsstand, r: Ruestzeug) -> tuple[list[str], list[str]]:
+    """The saved warnings and hints without an earlier load hint, the current one added, and
+    a warning when this database issues another identifier than the state was saved under."""
+    warnungen = [w for w in a.daten.get("warnungen", []) if "Arbeitsstand" not in w]
+    hinweise = [h for h in a.daten.get("hinweise", []) if "Arbeitsstand" not in h]
+    hinweise.append(_ladehinweis(a))
+    if a.kennung and r.kennung != a.kennung:
+        warnungen.append(
+            f"Der Arbeitsstand wurde mit der Kennung {a.kennung} angelegt, diese Datenbank"
+            f" vergibt {r.kennung} (anderer Schlüssel oder andere Datenbank): gespeicherte"
+            " Pseudonyme bleiben und werden der Zuordnung hinzugefügt, neue Treffer"
+            " bekommen Codes dieser Datenbank.")
+    return warnungen, hinweise
+
+
+def _gemeinsam_aus(a: Arbeitsstand, r: Ruestzeug, patient: Patient, opt: Ablaufoptionen,
+                   speicher: Pseudonymspeicher, eigener_speicher: bool) -> _Gemeinsam:
+    """The common fields of a restored preparation: the gear's identifier and lists, the
+    messages, and the review's decisions read back from the state."""
+    warnungen, hinweise = _meldungen_der_vorbereitung(a, r)
+    return _Gemeinsam(
+        quelle=a.quelle, patient=patient, opt=opt, speicher=speicher,
+        eigener_speicher=eigener_speicher, kennung=r.kennung, vergabe=r.vergabe,
+        regeln=r.regeln, ziele=r.ziele, warnungen=warnungen, hinweise=hinweise,
+        verworfen=[Fundstelle.aus_dict(f) for f in a.daten.get("verworfen", [])],
+        version=int(a.daten.get("version", 0)),
+        wiederhergestellt={(str(k[0]), str(k[1]))
+                           for k in a.daten.get("wiederhergestellt", [])},
+        aufbereitet=_plan_aus(a.daten),
+    )
+
+
+def _textvorbereitung_aus(a: Arbeitsstand, g: _Gemeinsam) -> Textvorbereitung:
+    """The text variant: the saved clear text, its output extension, and pages that have no
+    PDF page behind them."""
+    return Textvorbereitung(
+        quelle=g.quelle, patient=g.patient, opt=g.opt, speicher=g.speicher,
+        eigener_speicher=g.eigener_speicher, kennung=g.kennung, vergabe=g.vergabe,
+        regeln=g.regeln, ziele=g.ziele, warnungen=g.warnungen, hinweise=g.hinweise,
+        verworfen=g.verworfen, version=g.version, wiederhergestellt=g.wiederhergestellt,
+        aufbereitet=g.aufbereitet,
+        text=a.dokument.decode("utf-8"),
+        seiten=[_seite_aus(d, None, None) for d in a.daten["seiten"]],
+        ausgabe_endung=str(a.daten["dokument"].get("ausgabe_endung", ".txt")))
+
+
+def _pdfvorbereitung_aus(a: Arbeitsstand, g: _Gemeinsam) -> Vorbereitung:
+    """The PDF variant: pages and documents come from a rebuilt reading, which is thereby
+    used up."""
+    lesung = lesung_aus(a, g.opt)
+    lesung.verbraucht = True
+    return Vorbereitung(
+        quelle=g.quelle, patient=g.patient, opt=g.opt, speicher=g.speicher,
+        eigener_speicher=g.eigener_speicher, kennung=g.kennung, vergabe=g.vergabe,
+        regeln=g.regeln, ziele=g.ziele, warnungen=g.warnungen, hinweise=g.hinweise,
+        verworfen=g.verworfen, version=g.version, wiederhergestellt=g.wiederhergestellt,
+        aufbereitet=g.aufbereitet,
+        backend=None, doc=lesung.doc, original=lesung.original, seiten=lesung.seiten,
+        ohne_text=lesung.ohne_text)
+
+
+def _seite_wiederherstellen(s: Seite, d: dict[str, Any], ist_text: bool,
+                            fachbegriffe: fachmodul.Fachbegriffe | None) -> None:
+    """Put the saved hits and correction hits back on a restored page and mark the medical
+    terms afresh: on the text layer where the page has one (always for a text file) and on
+    the OCR reading."""
+    s.fundstellen = [Fundstelle.aus_dict(f) for f in d.get("fundstellen", [])]
+    s.korrektur_treffer = [Fundstelle.aus_dict(f) for f in d.get("korrektur_treffer", [])]
+    s.fachrects, s.fachspannen, s.fachanzahl = [], [], 0
+    if fachbegriffe is None:
+        return
+    if ist_text or s.text.hat_textebene:
+        merke_fachbegriffe(s, s.text, fachbegriffe)
+    if s.ocr is not None:
+        merke_fachbegriffe(s, s.ocr, fachbegriffe)
 
 
 def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
@@ -302,46 +434,12 @@ def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
     speicher = speicher or Pseudonymspeicher()
     try:
         r = ruestzeug(patient, opt, speicher)
-        warnungen = [w for w in a.daten.get("warnungen", []) if "Arbeitsstand" not in w]
-        hinweise = [h for h in a.daten.get("hinweise", []) if "Arbeitsstand" not in h]
-        hinweise.append(_ladehinweis(a))
-        if a.kennung and r.kennung != a.kennung:
-            warnungen.append(
-                f"Der Arbeitsstand wurde mit der Kennung {a.kennung} angelegt, diese Datenbank"
-                f" vergibt {r.kennung} (anderer Schlüssel oder andere Datenbank): gespeicherte"
-                " Pseudonyme bleiben und werden der Zuordnung hinzugefügt, neue Treffer"
-                " bekommen Codes dieser Datenbank.")
-        gemeinsam = dict(
-            quelle=a.quelle, patient=patient, opt=opt, speicher=speicher,
-            eigener_speicher=eigener_speicher, kennung=r.kennung, vergabe=r.vergabe,
-            regeln=r.regeln, ziele=r.ziele, warnungen=warnungen, hinweise=hinweise,
-            verworfen=[Fundstelle.aus_dict(f) for f in a.daten.get("verworfen", [])],
-            version=int(a.daten.get("version", 0)),
-            wiederhergestellt={(str(k[0]), str(k[1]))
-                               for k in a.daten.get("wiederhergestellt", [])},
-            aufbereitet=_plan_aus(a.daten),
-        )
-        if a.ist_text:
-            text = a.dokument.decode("utf-8")
-            endung = str(a.daten["dokument"].get("ausgabe_endung", ".txt"))
-            seiten = [_seite_aus(d, None, None) for d in a.daten["seiten"]]
-            v: Vorbereitung | Textvorbereitung = Textvorbereitung(
-                **gemeinsam, text=text, seiten=seiten, ausgabe_endung=endung)
-        else:
-            lesung = lesung_aus(a, opt)
-            lesung.verbraucht = True
-            v = Vorbereitung(**gemeinsam, backend=None, doc=lesung.doc,
-                             original=lesung.original, seiten=lesung.seiten,
-                             ohne_text=lesung.ohne_text)
+        gemeinsam = _gemeinsam_aus(a, r, patient, opt, speicher, eigener_speicher)
+        v: Vorbereitung | Textvorbereitung = (
+            _textvorbereitung_aus(a, gemeinsam) if a.ist_text
+            else _pdfvorbereitung_aus(a, gemeinsam))
         for s, d in zip(v.seiten, a.daten["seiten"], strict=True):
-            s.fundstellen = [Fundstelle.aus_dict(f) for f in d.get("fundstellen", [])]
-            s.korrektur_treffer = [Fundstelle.aus_dict(f) for f in d.get("korrektur_treffer", [])]
-            s.fachrects, s.fachspannen, s.fachanzahl = [], [], 0
-            if r.fachbegriffe is not None:
-                if v.ist_text or s.text.hat_textebene:
-                    merke_fachbegriffe(s, s.text, r.fachbegriffe)
-                if s.ocr is not None:
-                    merke_fachbegriffe(s, s.ocr, r.fachbegriffe)
+            _seite_wiederherstellen(s, d, v.ist_text, r.fachbegriffe)
     except Exception:
         if eigener_speicher:
             speicher.close()
@@ -350,34 +448,60 @@ def vorbereitung_aus(a: Arbeitsstand, speicher: Pseudonymspeicher | None = None,
 
 
 # -- a new analysis that keeps the decisions -------------------------------------------------------
+def _spannen_ueberlappen(f: Fundstelle, g: Fundstelle) -> bool:
+    """True when the two hits share at least one character of the page text."""
+    return f.start < g.ende and f.ende > g.start
+
+
+def _schon_markiert(f: Fundstelle, fundstellen: list[Fundstelle]) -> bool:
+    """True when the same manual hit (same boxes and span) is already among the hits."""
+    return any(g.quelle == "manuell" and g.rects == f.rects and g.start == f.start
+               and g.ende == f.ende for g in fundstellen)
+
+
+def _markiere_erneut(seite: Seite, f: Fundstelle) -> None:
+    """Add a saved manual hit to the page.  A mark with a span replaces what the analysis
+    found underneath it; the other manual hits stay."""
+    if f.ende > f.start:
+        seite.fundstellen = [g for g in seite.fundstellen
+                             if g.quelle == "manuell" or not _spannen_ueberlappen(f, g)]
+    seite.fundstellen.append(f)
+
+
+def _manuelle_treffer_uebernehmen(d: dict[str, Any], neu: Vorbereitung | Textvorbereitung) -> int:
+    """Re-add the manual hits (boxes, masks, take-ups) of one saved page to the same page
+    of the new preparation; returns how many were not there yet.  A page the new
+    preparation does not have is skipped."""
+    nummer = int(d["nummer"])
+    if nummer >= len(neu.seiten):
+        return 0
+    seite = neu.seiten[nummer]
+    n = 0
+    for f in (Fundstelle.aus_dict(x) for x in d.get("fundstellen", [])):
+        if f.quelle != "manuell" or _schon_markiert(f, seite.fundstellen):
+            continue
+        _markiere_erneut(seite, f)
+        n += 1
+    return n
+
+
+def _erneut_verwerfen(alt: Arbeitsstand, neu: Vorbereitung | Textvorbereitung) -> int:
+    """Discard again every hit of the new preparation whose rule and text the saved state
+    had discarded; returns how many."""
+    verworfen = {toleranzschluessel(str(f["regel"]), str(f.get("text", "")))
+                 for f in alt.daten.get("verworfen", []) if f.get("text")}
+    treffer = [f for f in neu.fundstellen if toleranzschluessel(f.regel, f.text) in verworfen]
+    for f in treffer:
+        neu.verwerfe(f)
+    return len(treffer)
+
+
 def uebernehme_entscheidungen(alt: Arbeitsstand, neu: Vorbereitung | Textvorbereitung) -> int:
     """After a new analysis: put the manual boxes, masks and marks of the saved state
     back and discard again what was discarded (same rule and text).  Returns how many
     hits were taken over or discarded."""
-    n = 0
-    for d in alt.daten["seiten"]:
-        nummer = int(d["nummer"])
-        if nummer >= len(neu.seiten):
-            continue
-        seite = neu.seiten[nummer]
-        for f in (Fundstelle.aus_dict(x) for x in d.get("fundstellen", [])):
-            if f.quelle != "manuell":
-                continue
-            if any(g.quelle == "manuell" and g.rects == f.rects and g.start == f.start
-                   and g.ende == f.ende for g in seite.fundstellen):
-                continue
-            if f.ende > f.start:  # a mark replaces what the analysis found underneath
-                seite.fundstellen = [g for g in seite.fundstellen
-                                     if g.quelle == "manuell" or not (f.start < g.ende
-                                                                       and f.ende > g.start)]
-            seite.fundstellen.append(f)
-            n += 1
-    verworfen = {toleranzschluessel(str(f["regel"]), str(f.get("text", "")))
-                 for f in alt.daten.get("verworfen", []) if f.get("text")}
-    for f in list(neu.fundstellen):
-        if toleranzschluessel(f.regel, f.text) in verworfen:
-            neu.verwerfe(f)
-            n += 1
+    n = sum(_manuelle_treffer_uebernehmen(d, neu) for d in alt.daten["seiten"])
+    n += _erneut_verwerfen(alt, neu)
     neu.hinweise.append(f"{n} Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
                         " Markierungen, verworfene Treffer).")
     return n

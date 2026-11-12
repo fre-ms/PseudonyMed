@@ -107,6 +107,10 @@ class UnsichererAbgleich(Exception):
 
 @dataclass
 class Kennungsergebnis:
+    """What asking for a patient's identifier yielded: the code, and whether it was minted
+    just now (``neu``) or reached through record linkage (``verknuepft``, the match in
+    ``abgleich``); neither for an identifier already stored under the patient's key."""
+
     kennung: str
     neu: bool = False
     verknuepft: bool = False
@@ -155,6 +159,27 @@ def _jetzt() -> str:
     return dt.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def _geburtsdatum(patient: Patient) -> str:
+    """The date of birth as the store keeps it: ISO text, empty when unknown."""
+    return patient.geburtsdatum.isoformat() if patient.geburtsdatum else ""
+
+
+def _datenbankpfad(pfad: str | Path | None) -> Path | None:
+    """The database file: the one given, else the configured default; None for ``:memory:``."""
+    if pfad is None:
+        pfad = standardpfad()
+    return Path(pfad) if str(pfad) != ":memory:" else None
+
+
+def _schuetze(pfad: Path, modus: int) -> None:
+    """Restricts a file or folder to its owner; file systems without POSIX modes are
+    tolerated, the store works there all the same."""
+    try:
+        os.chmod(pfad, modus)
+    except OSError:
+        pass
+
+
 def einmalspeicher(schema: str = "hash") -> Pseudonymspeicher:
     """An in-memory store with a fresh random key: pseudonyms for a recipient's capsule.
     Nothing is written locally and the codes bear no relation to the local ones."""
@@ -175,42 +200,59 @@ class Pseudonymspeicher:
             raise ValueError(f"Unbekanntes Pseudonymschema: {schema!r}")
         self.schema = schema
         explizit = pfad is not None
-        if pfad is None:
-            pfad = standardpfad()
-        self.pfad = Path(pfad) if str(pfad) != ":memory:" else None
+        self.pfad = _datenbankpfad(pfad)
+        self.verbindung = self._oeffne()
+        self._schema_anlegen()
+        self.schluesselpfad: Path | None = None
+        self._schluessel_laden(geheimnis, schluesselpfad, explizit)
+
+    def _oeffne(self) -> sqlite3.Connection:
+        """Opens the database file inside a folder only its owner may enter, or an
+        in-memory database for a store without a file."""
         if self.pfad is not None:
             self.pfad.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.chmod(self.pfad.parent, 0o700)
-            except OSError:
-                pass
+            _schuetze(self.pfad.parent, 0o700)
         # The desktop opens the store in one worker thread (analysis) and uses it in
         # another (export); access is sequential, so the same-thread check can go.
-        self.verbindung = sqlite3.connect(str(self.pfad) if self.pfad else ":memory:",
-                                          check_same_thread=False)
-        self.verbindung.row_factory = sqlite3.Row
+        verbindung = sqlite3.connect(str(self.pfad) if self.pfad else ":memory:",
+                                     check_same_thread=False)
+        verbindung.row_factory = sqlite3.Row
+        return verbindung
+
+    def _schema_anlegen(self) -> None:
+        """Creates whatever tables and indexes are missing (every statement is
+        ``IF NOT EXISTS``, so an older database is migrated in place) and keeps the
+        file private."""
         self.verbindung.executescript(_SCHEMA)
         if self.pfad is not None:
-            try:
-                os.chmod(self.pfad, 0o600)
-            except OSError:
-                pass
-        self.schluesselpfad: Path | None = None
+            _schuetze(self.pfad, 0o600)
+
+    def _schluesseldatei(self, schluesselpfad: str | Path | None, explizit: bool) -> Path | None:
+        """The key file to load: the one named, else the one next to an explicitly
+        chosen database, else the configured default; None for an in-memory store."""
+        if schluesselpfad:
+            return Path(schluesselpfad)
+        if self.pfad is None:
+            return None
+        return schluesselpfad_zu(self.pfad) if explizit else standard_schluesselpfad(self.pfad)
+
+    def _schluessel_laden(
+        self, geheimnis: bytes | None, schluesselpfad: str | Path | None, explizit: bool
+    ) -> None:
+        """Sets the HMAC key: the one handed in, else the one in the key file (created
+        on first use), else a fresh random key that dies with an in-memory store."""
         if geheimnis is not None:
             self.geheimnis = geheimnis
-        elif self.pfad is not None or schluesselpfad is not None:
-            if schluesselpfad:
-                self.schluesselpfad = Path(schluesselpfad)
-            elif explizit:
-                self.schluesselpfad = schluesselpfad_zu(self.pfad)
-            else:
-                self.schluesselpfad = standard_schluesselpfad(self.pfad)
-            self.schluesselpfad.parent.mkdir(parents=True, exist_ok=True)
-            self.geheimnis = geheimnis_laden(self.schluesselpfad)
-        else:
+            return
+        self.schluesselpfad = self._schluesseldatei(schluesselpfad, explizit)
+        if self.schluesselpfad is None:
             self.geheimnis = secrets.token_bytes(32)  # in-memory store: ephemeral key
+            return
+        self.schluesselpfad.parent.mkdir(parents=True, exist_ok=True)
+        self.geheimnis = geheimnis_laden(self.schluesselpfad)
 
     def close(self) -> None:
+        """Closes the database connection."""
         self.verbindung.close()
 
     def __enter__(self) -> Pseudonymspeicher:
@@ -245,19 +287,22 @@ class Pseudonymspeicher:
         )
         return [dict(z) for z in zeilen]
 
-    def _verknuepfe(self, patient: Patient, ziel: Vergleich) -> None:
+    def _verknuepfe(self, patient: Patient, ziel: Vergleich) -> Kennungsergebnis:
+        """Records the patient's key as an alias of the stored person and reports the link."""
         self.verbindung.execute(
             "INSERT OR IGNORE INTO aliasse (alias_schluessel, schluessel, identitaet, nachname,"
             " vorname, geburtsname, geburtsdatum, score, angelegt)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (patient.schluessel(), ziel.schluessel, kanonische_identitaet(patient),
-             patient.nachname, patient.vorname, patient.geburtsname,
-             patient.geburtsdatum.isoformat() if patient.geburtsdatum else "", ziel.score,
-             _jetzt()),
+             patient.nachname, patient.vorname, patient.geburtsname, _geburtsdatum(patient),
+             ziel.score, _jetzt()),
         )
         self.verbindung.commit()
+        return Kennungsergebnis(ziel.kennung, verknuepft=True, abgleich=ziel)
 
     def _neue_kennung(self, patient: Patient) -> str:
+        """An identifier nobody holds yet: the next free letter, or the keyed hash of the
+        canonical identity (a variant of it when another person already holds the code)."""
         vergeben = {z["kennung"] for z in self.verbindung.execute("SELECT kennung FROM patienten")}
         if self.schema == "buchstabe":
             i = 0
@@ -272,46 +317,8 @@ class Pseudonymspeicher:
                 return code
             variante += 1  # two different people with the same canonical identity
 
-    def kennung_fuer(self, patient: Patient, entscheidung: str | None = None) -> Kennungsergebnis:
-        """Identifier of this patient: the stored one, the one of a matching person,
-        or a new one.  ``entscheidung`` resolves an uncertain match: ``"neu"`` or
-        ``"gleich:<KENNUNG>"``; without it an uncertain match raises
-        :class:`UnsichererAbgleich`."""
-        schluessel = self._kanonischer_schluessel(patient.schluessel())
-        zeile = self.verbindung.execute(
-            "SELECT kennung FROM patienten WHERE schluessel = ?", (schluessel,)
-        ).fetchone()
-        if zeile:
-            return Kennungsergebnis(zeile["kennung"])
-
-        kandidaten = self._kandidaten()
-        treffer = abgleichen(patient, kandidaten)
-        if entscheidung != "neu":
-            # Same canonical identity (phonetic names + date of birth): the hash scheme would
-            # mint the same code anyway, so treat it as the same person without asking.
-            identitaet = kanonische_identitaet(patient)
-            gleiche = [k for k in kandidaten if k["identitaet"] == identitaet]
-            if gleiche:
-                ziel = next((t for t in treffer if t.schluessel == gleiche[0]["schluessel"]),
-                            vergleiche(patient, gleiche[0]))
-                self._verknuepfe(patient, ziel)
-                return Kennungsergebnis(ziel.kennung, verknuepft=True, abgleich=ziel)
-        if entscheidung and entscheidung.startswith("gleich:"):
-            gewuenscht = entscheidung.split(":", 1)[1].strip().upper()
-            ziel = next((t for t in treffer if t.kennung == gewuenscht), None)
-            if ziel is None:
-                info = self.finde(kennung_=gewuenscht)
-                if not info:
-                    raise ValueError(f"Kennung {gewuenscht} ist nicht vergeben.")
-                ziel = Vergleich(kennung=gewuenscht, schluessel=info[0]["schluessel"], score=0.0)
-            self._verknuepfe(patient, ziel)
-            return Kennungsergebnis(ziel.kennung, verknuepft=True, abgleich=ziel)
-        if treffer and treffer[0].gleich:
-            self._verknuepfe(patient, treffer[0])
-            return Kennungsergebnis(treffer[0].kennung, verknuepft=True, abgleich=treffer[0])
-        if treffer and treffer[0].unsicher and entscheidung != "neu":
-            raise UnsichererAbgleich([t for t in treffer if t.unsicher or t.gleich])
-
+    def _lege_an(self, schluessel: str, patient: Patient) -> Kennungsergebnis:
+        """Mints a new identifier and stores the patient under it."""
         neu = self._neue_kennung(patient)
         self.verbindung.execute(
             "INSERT INTO patienten (schluessel, kennung, schema, identitaet, nachname, vorname,"
@@ -319,10 +326,88 @@ class Pseudonymspeicher:
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (schluessel, neu, self.schema, kanonische_identitaet(patient), patient.nachname,
              patient.vorname, patient.geburtsname, patient.geschlecht, patient.titel,
-             patient.geburtsdatum.isoformat() if patient.geburtsdatum else "", _jetzt()),
+             _geburtsdatum(patient), _jetzt()),
         )
         self.verbindung.commit()
         return Kennungsergebnis(neu, neu=True)
+
+    def _gespeicherte_kennung(self, schluessel: str) -> str | None:
+        """The identifier stored under a canonical key, else None."""
+        zeile = self.verbindung.execute(
+            "SELECT kennung FROM patienten WHERE schluessel = ?", (schluessel,)
+        ).fetchone()
+        return zeile["kennung"] if zeile else None
+
+    def _gleiche_identitaet(
+        self, patient: Patient, kandidaten: list[dict[str, Any]], treffer: list[Vergleich]
+    ) -> Vergleich | None:
+        """A stored person with the same canonical identity (phonetic names + date of
+        birth), carrying the score the linkage gave it.  The hash scheme would mint the
+        same code anyway, so such a person counts as the same one without asking."""
+        identitaet = kanonische_identitaet(patient)
+        gleiche = [k for k in kandidaten if k["identitaet"] == identitaet]
+        if not gleiche:
+            return None
+        return next((t for t in treffer if t.schluessel == gleiche[0]["schluessel"]),
+                    vergleiche(patient, gleiche[0]))
+
+    def _gewuenschtes_ziel(self, entscheidung: str, treffer: list[Vergleich]) -> Vergleich:
+        """The stored person a ``gleich:<KENNUNG>`` decision names: its match from the
+        linkage, else a bare link with score 0; an identifier nobody holds raises
+        ValueError."""
+        gewuenscht = entscheidung.split(":", 1)[1].strip().upper()
+        ziel = next((t for t in treffer if t.kennung == gewuenscht), None)
+        if ziel is not None:
+            return ziel
+        info = self.finde(kennung_=gewuenscht)
+        if not info:
+            raise ValueError(f"Kennung {gewuenscht} ist nicht vergeben.")
+        return Vergleich(kennung=gewuenscht, schluessel=info[0]["schluessel"], score=0.0)
+
+    @staticmethod
+    def _sicherer_treffer(treffer: list[Vergleich], entscheidung: str | None) -> Vergleich | None:
+        """The best match when it is sure, else None.  An uncertain best match without
+        the decision ``"neu"`` raises :class:`UnsichererAbgleich` listing every
+        uncertain or sure match."""
+        if not treffer:
+            return None
+        bester = treffer[0]
+        if bester.gleich:
+            return bester
+        if bester.unsicher and entscheidung != "neu":
+            raise UnsichererAbgleich([t for t in treffer if t.unsicher or t.gleich])
+        return None
+
+    def _ziel_fuer(
+        self, patient: Patient, kandidaten: list[dict[str, Any]], treffer: list[Vergleich],
+        entscheidung: str | None,
+    ) -> Vergleich | None:
+        """The stored person the patient is linked to, or None when a new identifier is
+        due.  Same canonical identity wins, then the caller's decision, then a sure
+        match; ``"neu"`` skips the identity shortcut and the uncertain-match question."""
+        if entscheidung != "neu":
+            ziel = self._gleiche_identitaet(patient, kandidaten, treffer)
+            if ziel is not None:
+                return ziel
+        if entscheidung and entscheidung.startswith("gleich:"):
+            return self._gewuenschtes_ziel(entscheidung, treffer)
+        return self._sicherer_treffer(treffer, entscheidung)
+
+    def kennung_fuer(self, patient: Patient, entscheidung: str | None = None) -> Kennungsergebnis:
+        """Identifier of this patient: the stored one, the one of a matching person,
+        or a new one.  ``entscheidung`` resolves an uncertain match: ``"neu"`` or
+        ``"gleich:<KENNUNG>"``; without it an uncertain match raises
+        :class:`UnsichererAbgleich`."""
+        schluessel = self._kanonischer_schluessel(patient.schluessel())
+        gespeichert = self._gespeicherte_kennung(schluessel)
+        if gespeichert is not None:
+            return Kennungsergebnis(gespeichert)
+        kandidaten = self._kandidaten()
+        treffer = abgleichen(patient, kandidaten)
+        ziel = self._ziel_fuer(patient, kandidaten, treffer, entscheidung)
+        if ziel is not None:
+            return self._verknuepfe(patient, ziel)
+        return self._lege_an(schluessel, patient)
 
     def buchstabe_fuer(self, patient: Patient) -> str:
         """Compatibility wrapper: the identifier only."""
@@ -338,6 +423,8 @@ class Pseudonymspeicher:
         return {(z["regel"], z["text"]) for z in zeilen}
 
     def merke_verworfen(self, patient: Patient, eintraege: Iterable[tuple[str, str]]) -> None:
+        """Remembers (rule, normalised text) pairs the user discarded for this patient;
+        a pair already known only gets a fresh timestamp."""
         schluessel = self._kanonischer_schluessel(patient.schluessel())
         jetzt = _jetzt()
         for regel, text in eintraege:
@@ -349,6 +436,7 @@ class Pseudonymspeicher:
         self.verbindung.commit()
 
     def vergiss_verworfen(self, patient: Patient, eintraege: Iterable[tuple[str, str]]) -> None:
+        """Forgets discarded pairs again, e.g. after the user restored such a hit."""
         schluessel = self._kanonischer_schluessel(patient.schluessel())
         for regel, text in eintraege:
             self.verbindung.execute(
@@ -357,6 +445,8 @@ class Pseudonymspeicher:
         self.verbindung.commit()
 
     def merke(self, patient: Patient, vergabe: Pseudonymvergabe) -> None:
+        """Stores the pseudonym -> clear text mapping of an assignment for later
+        re-identification; a pseudonym already known gets the newer clear text."""
         schluessel = self._kanonischer_schluessel(patient.schluessel())
         jetzt = _jetzt()
         for pseudonym, klartext in vergabe.zuordnung.items():
@@ -402,6 +492,7 @@ class Pseudonymspeicher:
         return merkmale, n
 
     def zuordnung(self, schluessel: str) -> dict[str, str]:
+        """Pseudonym -> clear text of a patient (an alias key resolves to the stored person)."""
         schluessel = self._kanonischer_schluessel(schluessel)
         return {
             r["pseudonym"]: r["klartext"]
@@ -411,6 +502,7 @@ class Pseudonymspeicher:
         }
 
     def patient_info(self, schluessel: str) -> dict[str, Any] | None:
+        """The stored row of a patient (an alias key resolves to the stored person), else None."""
         schluessel = self._kanonischer_schluessel(schluessel)
         r = self.verbindung.execute(
             "SELECT * FROM patienten WHERE schluessel = ?", (schluessel,)
@@ -418,9 +510,11 @@ class Pseudonymspeicher:
         return dict(r) if r else None
 
     def kennungen(self) -> list[str]:
+        """Every identifier in the store."""
         return [r["kennung"] for r in self.verbindung.execute("SELECT kennung FROM patienten")]
 
     def aliasse(self, schluessel: str) -> list[dict[str, Any]]:
+        """The alias rows (other spellings) linked to a stored person's key, oldest first."""
         return [dict(r) for r in self.verbindung.execute(
             "SELECT * FROM aliasse WHERE schluessel = ? ORDER BY angelegt", (schluessel,))]
 
