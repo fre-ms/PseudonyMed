@@ -6,7 +6,7 @@ import pymupdf
 
 from pseudonymed.dokument import gliederung as gl
 from pseudonymed.dokument.ocr import OCRWort, seitentext_aus_woerter
-from pseudonymed.dokument.textebene import lese_seite
+from pseudonymed.dokument.textebene import Seitentext, lese_seite
 
 
 def _zeile(text: str, x: float, y: float, h: float = 10.0, zeichen: float = 5.0,
@@ -106,3 +106,113 @@ def test_fette_zeilen_am_bild() -> None:
     md = gl.gliedere_seite(p, seite).rendere(seite.text)
     assert "#### Diagnosen und Befunde" in md
     doc.close()
+
+
+def _z(text: str, x0: float = 60.0, y0: float = 100.0, breite: float = 200.0,
+       hoehe: float = 10.0) -> gl.Zeile:
+    """A line with a box, for the rules that look at geometry only."""
+    return gl.Zeile(0, len(text), text, x0, y0, x0 + breite, y0 + hoehe, hoehe)
+
+
+MASS = gl._Seitenmass(hoehe=10.0, links=60.0, rechts=500.0, breite=440.0, luecke=4.0)
+
+
+def test_tabellen_nur_ab_drei_zellen_oder_zwei_zeilen() -> None:
+    """A lone line with two cells is a label with its value, not a table."""
+    zeilen = [_z("Name:\tWert"), _z("Text"), _z("a\tb\tc"), _z("Text"), _z("a\tb"), _z("c\td")]
+    rollen = [gl.Rolle() for _ in zeilen]
+    gl._markiere_tabellen(zeilen, rollen)
+    assert [r.art for r in rollen] == ["absatz", "absatz", "tabelle", "absatz", "tabelle",
+                                       "tabelle"]
+    assert [r.tabelle for r in rollen] == [-1, -1, 0, -1, 1, 1]
+
+
+def test_zeilenart_nach_schrift_und_form() -> None:
+    """Large face, bullets, capitals and bold decide the kind of a line."""
+    assert gl._zeilenart(_z("Befund", hoehe=17.0), False, MASS) == ("ueberschrift", 3)
+    assert gl._zeilenart(_z("Befund", hoehe=14.0), False, MASS) == ("ueberschrift", 4)
+    assert gl._zeilenart(_z("- Punkt eins"), False, MASS) == ("liste", 0)
+    assert gl._zeilenart(_z("ANAMNESE"), False, MASS) == ("ueberschrift", 4)
+    assert gl._zeilenart(_z("Anamnese"), True, MASS) == ("ueberschrift", 4)
+    assert gl._zeilenart(_z("Anamnese."), True, MASS) == ("absatz", 0)  # ends a sentence
+    assert gl._zeilenart(_z("Anamnese", breite=400.0), True, MASS) == ("absatz", 0)  # long
+    assert gl._zeilenart(_z("Anamnese"), False, MASS) == ("absatz", 0)
+
+
+def test_trenner_der_bloecke() -> None:
+    """Tables, headings and list items settle the separator without geometry."""
+    tab0, tab1 = gl.Rolle("tabelle", tabelle=0), gl.Rolle("tabelle", tabelle=1)
+    kopf, liste, text = gl.Rolle("ueberschrift", 4), gl.Rolle("liste"), gl.Rolle()
+    assert gl._trenner_der_bloecke(tab0, tab0) == "zeile"
+    assert gl._trenner_der_bloecke(tab1, tab0) == "absatz"
+    assert gl._trenner_der_bloecke(text, tab0) == "absatz"
+    assert gl._trenner_der_bloecke(kopf, text) == gl._trenner_der_bloecke(text, kopf) == "absatz"
+    assert gl._trenner_der_bloecke(liste, liste) == "zeile"
+    assert gl._trenner_der_bloecke(liste, text) == "absatz"
+    assert gl._trenner_der_bloecke(text, liste) is None  # the geometry decides
+    assert gl._trenner_der_bloecke(text, text) is None
+
+
+def test_absatztrenner_nach_geometrie() -> None:
+    """Gap, indent, a full predecessor, a label and a colon line decide the join."""
+    voll = _z("Die Beschwerden bestehen seit drei Wochen und", y0=100.0, breite=440.0)
+    kurz = _z("seit drei Wochen.", y0=100.0, breite=100.0)
+    assert gl._absatztrenner(_z("weiter", y0=130.0), voll, MASS) == "absatz"  # tall gap
+    assert gl._absatztrenner(_z("weiter", x0=80.0, y0=114.0), kurz, MASS) == "absatz"  # indent
+    assert gl._absatztrenner(_z("weiter", y0=114.0), voll, MASS) == "wort"
+    assert gl._absatztrenner(_z("Diagnosen: keine", y0=114.0), voll, MASS) == "absatz"
+    assert gl._absatztrenner(_z("weiter", y0=114.0), kurz, MASS) == "zeile"
+    doppelpunkt = _z("Beurteilung:", y0=100.0, breite=100.0)
+    assert gl._absatztrenner(_z("lange Zeile", y0=114.0, breite=400.0), doppelpunkt,
+                             MASS) == "absatz"
+    assert gl._absatztrenner(_z("kurz", y0=114.0, breite=100.0), doppelpunkt, MASS) == "zeile"
+    getrennt = _z("ein Blut-", y0=100.0, breite=440.0)
+    assert gl._absatztrenner(_z("druck", y0=114.0), getrennt, MASS) == "silbe"
+    assert gl._absatztrenner(_z("Druck", y0=114.0), getrennt, MASS) == "wort"
+
+
+def test_fortsetzung_unter_listenpunkt() -> None:
+    """A line close under a bullet and indented past it continues the item."""
+    punkt = _z("- Kopfschmerz seit", y0=100.0)
+    assert gl._haengt_unter_listenpunkt(_z("drei Wochen", x0=70.0, y0=114.0), punkt, MASS)
+    assert not gl._haengt_unter_listenpunkt(_z("drei Wochen", x0=60.0, y0=114.0), punkt, MASS)
+    assert not gl._haengt_unter_listenpunkt(_z("drei Wochen", x0=70.0, y0=130.0), punkt, MASS)
+
+
+def test_absatz_fettlaeufe() -> None:
+    """Bold runs stay open across a space, close at a newline, and join across a hyphen."""
+    a = gl._Absatz()
+    a.fuege_an("Eins", True, "absatz")
+    a.fuege_an("zwei", True, "wort")
+    a.fuege_an("drei", False, "wort")
+    assert a.schliesse() == "**Eins zwei** drei" and a.schliesse() == ""
+    a.fuege_an("Eins", True, "absatz")
+    a.fuege_an("zwei", True, "zeile")
+    assert a.schliesse() == "**Eins**\n**zwei**"
+    a.fuege_an("Blut-", False, "absatz")
+    a.fuege_an("druck", False, "silbe")
+    a.fuege_an("hoch", False, "silbe")  # no hyphen before it: joined without a gap
+    assert a.schliesse() == "Blutdruckhoch"
+
+
+def test_zeilen_ohne_boxen() -> None:
+    """Lines without character boxes keep the zero box and count as empty."""
+    text = "ab\n\ncd\n"
+    boxen = [(10.0, 20.0, 15.0, 30.0), None, None, None, None, None]
+    seite = Seitentext(0, 595, 842, text=text, boxen=boxen)
+    zeilen = gl.zeilen_aus(seite)
+    assert [z.text for z in zeilen] == ["ab", "", "cd"]
+    assert (zeilen[0].x0, zeilen[0].y0, zeilen[0].x1, zeilen[0].y1) == (10.0, 20.0, 15.0, 30.0)
+    assert zeilen[0].hoehe == 10.0 and not zeilen[0].leer
+    assert zeilen[1].leer and zeilen[2].leer and zeilen[2].breite == 0.0
+    assert gl.gliedere(seite).rendere(text) == "ab\n\ncd\n"
+
+
+def test_seitenmass_mit_rueckfall() -> None:
+    """Without measured heights or usual gaps the measures fall back to defaults."""
+    eine = gl._Seitenmass.aus([gl.Zeile(0, 4, "Text", 60.0, 100.0, 260.0, 110.0, 0.0)])
+    assert (eine.hoehe, eine.links, eine.rechts, eine.breite, eine.luecke) == (10.0, 60.0, 260.0,
+                                                                                200.0, 3.0)
+    assert eine.absatzabstand == 8.0
+    zwei = gl._Seitenmass.aus([_z("a", y0=100.0), _z("b", y0=114.0, breite=400.0)])
+    assert (zwei.hoehe, zwei.breite, zwei.luecke) == (10.0, 400.0, 4.0)

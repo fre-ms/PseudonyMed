@@ -179,3 +179,75 @@ def test_fenster_kontrolle(qapp: QApplication, tmp_path: Path, befund: Path,  # 
     assert sitzung2.kontrolle()[1] == 1 and "früher" in fenster2.kontrolle.risiko_text.text()
     fenster2.close()
     fenster.close()
+
+
+def test_orte_ohne_fachbegriffe_und_eigene() -> None:
+    """A place name the vocabulary knows as a medical term is not the patient's place, and
+    neither is one of the sender's own places (compared trimmed and case-insensitively)."""
+
+    class Fachwissen:
+        def ist_fachbegriff(self, wort: str) -> bool:
+            return wort == "Augsburg"
+
+    zwei = rr.schaetze("Patient aus Augsburg, geboren in Weitnau.", "m",
+                       fachbegriffe=Fachwissen())
+    assert [m.schluessel for m in zwei.merkmale if m.kategorie == "Ort"] == ["ort:weitnau"]
+    keiner = rr.schaetze("Patient aus Augsburg, geboren in Weitnau.", "m",
+                         eigene_orte=[" weitnau ", ""], fachbegriffe=Fachwissen())
+    assert not any(m.kategorie == "Ort" for m in keiner.merkmale)
+    assert not any(mk.schluessel.startswith("kleiner_ort:") for mk in keiner.markierungen)
+
+
+def test_erkrankung_mit_synonym_zaehlt_einmal() -> None:
+    """A disease named by its name and by a synonym is one feature, counted once, flagged once;
+    a second disease is listed but not counted."""
+    doppelt = rr.schaetze("Chorea Huntington, also Huntington-Krankheit; keine Wilson-Krankheit.",
+                          "m")
+    diagnosen = [m for m in doppelt.merkmale if m.kategorie == "Diagnose"]
+    assert [m.schluessel for m in diagnosen] == ["diagnose:905", "diagnose:399"]  # rarest first
+    assert [m.gezaehlt for m in diagnosen] == [True, False]
+    assert [mk.schluessel for mk in doppelt.markierungen] == ["selten:905", "selten:399"]
+
+
+def test_alter_ab_90_aus_dem_geburtsjahr() -> None:
+    """The 90+ flag also follows from a birth year and the current year; the birthday window
+    needs year, age and an exact date together."""
+    hoch = rr.schaetze("Patient [geb. 1930].", "m", heute_jahr=2026)
+    assert any(mk.schluessel == "alter_90" for mk in hoch.markierungen)
+    jung = rr.schaetze("Patient [geb. 1930].", "m", heute_jahr=2010)
+    assert not any(mk.schluessel == "alter_90" for mk in jung.markierungen)
+    ohne_datum = rr.schaetze("Die 66-jährige Patientin [geb. 1959].", "w")
+    assert [m.schluessel for m in ohne_datum.merkmale] == ["geschlecht", "geburt:jahr"]
+    assert ohne_datum.merkmale[1].beleg == "[geb. 1959]" and ohne_datum.datumsangaben == 0
+    nur_alter = rr.schaetze("Alter: 66 Jahre, [Alter 66].", "")
+    assert [m.beleg for m in nur_alter.merkmale] == ["Alter 66"]
+
+
+def test_hinweise_mit_belegen() -> None:
+    """Flags carry a whitespace-collapsed excerpt; an event without a date nearby is no flag."""
+    flags = rr.schaetze("Er arbeitet\n\n  als Lehrer an einer Schule; drei Kinder.", "m")
+    je_schluessel = {mk.schluessel: mk for mk in flags.markierungen}
+    assert je_schluessel["beruf"].beleg.startswith("arbeitet als Lehrer an einer Schule")
+    assert je_schluessel["familie"].beleg.startswith("drei Kinder")
+    ruhig = rr.schaetze("Nach dem Sturz keine Beschwerden.", "m")
+    assert not any(mk.schluessel == "ereignis_datiert" for mk in ruhig.markierungen)
+    datiert = rr.schaetze("Sturz am 3. Mai 2024 auf der Treppe.", "m")
+    ereignis = next(mk for mk in datiert.markierungen if mk.schluessel == "ereignis_datiert")
+    assert ereignis.beleg == "Sturz am 3. Mai 2024 auf der Treppe."
+
+
+def test_vereinigung_nimmt_je_schluessel_das_hoechste_gewicht() -> None:
+    """Per key the highest weight stays, in the position of its first appearance and counted
+    again; flags are kept once per key; reference and date counts are merged."""
+    a = rr.Restrisiko(merkmale=[rr.Merkmal("ort:x", "Ort", "x", 4.0),
+                                rr.Merkmal("geschlecht", "Geschlecht", "g", 1.0)],
+                      markierungen=[rr.Markierung("beruf", "erst")], referenz=1000,
+                      datumsangaben=1)
+    b = rr.Restrisiko(merkmale=[rr.Merkmal("ort:x", "Ort", "x", 9.0, gezaehlt=False)],
+                      markierungen=[rr.Markierung("beruf", "zweit")], referenz=500,
+                      datumsangaben=2)
+    gesamt = rr.vereinige([a, b])
+    assert [(m.schluessel, m.bits, m.gezaehlt) for m in gesamt.merkmale] == [
+        ("ort:x", 9.0, True), ("geschlecht", 1.0, True)]
+    assert [mk.text for mk in gesamt.markierungen] == ["erst"]
+    assert gesamt.referenz == 500 and gesamt.datumsangaben == 3 and gesamt.fruehere == 0

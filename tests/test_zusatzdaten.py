@@ -161,3 +161,97 @@ def test_kaputte_datei(tmp_path: Path) -> None:
     (tmp_path / "leer.xlsx").write_bytes(leer.getvalue())
     with pytest.raises(zd.ZusatzFehler):
         zd.lade_kliniken_at(sqlite3.connect(":memory:"), datei=tmp_path / "leer.xlsx")
+
+
+def test_zellen_aus_gemeinsamen_zeichenketten_und_werten() -> None:
+    """Shared strings, stored numbers, a gap, a cell beyond column Z and an empty sheet."""
+    m = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    puffer = io.BytesIO()
+    with zipfile.ZipFile(puffer, "w") as z:
+        z.writestr("xl/workbook.xml",
+                   f'<workbook xmlns="{m}" xmlns:r="{r}"><sheets>'
+                   '<sheet name="Daten" sheetId="1" r:id="rId1"/>'
+                   '<sheet name="Leer" sheetId="2" r:id="rId2"/></sheets></workbook>')
+        z.writestr("xl/_rels/workbook.xml.rels",
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+                   'relationships"><Relationship Id="rId1" Target="/xl/worksheets/sheet1.xml"/>'
+                   '<Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>')
+        z.writestr("xl/sharedStrings.xml",
+                   f'<sst xmlns="{m}"><si><t>Haus</t></si><si><t>am </t><t>Bach</t></si></sst>')
+        z.writestr("xl/worksheets/sheet1.xml",
+                   f'<worksheet xmlns="{m}"><sheetData>'
+                   '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1"><v>12.0</v></c>'
+                   '<c r="AA1" t="s"><v>1</v></c></row>'
+                   '<row r="2"><c r="B2" t="inlineStr"><is><t>  zwei  Worte </t></is></c></row>'
+                   '</sheetData></worksheet>')
+        z.writestr("xl/worksheets/sheet2.xml", f'<worksheet xmlns="{m}"/>')
+    blaetter = zd.xlsx_blaetter(puffer.getvalue())
+    assert blaetter["Daten"][0] == ["Haus", "", "12.0"] + [""] * 23 + ["am Bach"]
+    assert blaetter["Daten"][1] == ["", "zwei Worte"]
+    assert blaetter["Leer"] == []
+
+
+def test_gemeinde_ohne_kennziffer_wird_hergeleitet() -> None:
+    """Vienna from the postcode, the postcode table, the word match inside the Bezirk, a
+    unique name, and nothing when the evidence is ambiguous."""
+    tab = zd._AtTabellen(
+        gemeinden={"92301": "Wien 23., Liesing", "10101": "Eisenstadt", "60101": "Graz",
+                   "61207": "Bad Aussee", "61235": "Bad Mitterndorf", "70101": "Innsbruck"},
+        bezirke={"101": "Eisenstadt(Stadt)", "601": "Graz(Stadt)", "612": "Liezen",
+                 "701": "Innsbruck-Stadt"},
+        nach_plz={"8010": "60101"})
+    assert zd._gemeinde_at("Wien", "1230", "", tab) == "92301"
+    assert zd._gemeinde_at("", "1100", "", zd._AtTabellen({}, {}, {})) == "91001"
+    assert zd._gemeinde_at("", "1240", "", tab) == ""  # no 24th district
+    assert zd._gemeinde_at("Nirgendwo", "8010", "", tab) == "60101"  # postcode table
+    assert zd._gemeinde_at("Bad Aussee", "", "Liezen", tab) == "61207"  # word match
+    assert zd._gemeinde_at("Bad", "", "Liezen", tab) == ""  # "bad" is too short to count
+    assert zd._gemeinde_at("Bad Aussee Mitterndorf", "", "Liezen", tab) == ""  # a tie
+    assert zd._gemeinde_at("Graz", "", "Graz(Stadt)", tab) == "60101"  # exact Bezirk name
+    assert zd._gemeinde_at("Innsbruck", "", "", tab) == "70101"  # unique name, no Bezirk
+    assert zd._gemeinde_at("Unbekannt", "9999", "Liezen", tab) == ""
+
+
+def test_tabellen_aus_zeilen() -> None:
+    """Only Austrian rows count; the postcode keeps the Gemeinde with the largest share."""
+    demografie = [{"land": "AT", "ebene": "kreis", "kennung": "612", "name": "Liezen"},
+                  {"land": "AT", "ebene": "gemeinde", "kennung": "61207", "name": "Bad Aussee"},
+                  {"land": "AT", "ebene": "staat", "kennung": "AT", "name": "Österreich"},
+                  {"land": "DE", "ebene": "gemeinde", "kennung": "09761000", "name": "Augsburg"}]
+    assert zd._at_namen(iter(demografie)) == ({"61207": "Bad Aussee"}, {"612": "Liezen"})
+    plz = [{"land": "AT", "plz": "8990", "gemeinde_kennung": "61207", "anteil": "0.4"},
+           {"land": "AT", "plz": "8990", "gemeinde_kennung": "61235", "anteil": "0.6"},
+           {"land": "AT", "plz": "8991", "gemeinde_kennung": "61235", "anteil": "x"},
+           {"land": "AT", "plz": "8991", "gemeinde_kennung": "61207", "anteil": "0.1"},
+           {"land": "DE", "plz": "8990", "gemeinde_kennung": "0", "anteil": "1"}]
+    assert zd._at_plz_gemeinden(iter(plz)) == {"8990": "61235", "8991": "61207"}
+
+
+def test_standorte_aus_rohdaten() -> None:
+    """One site per code despite one row per department; the Gemeinde's name stands in when
+    the Ort column has no postcode; rows without a code are skipped."""
+    roh = [STANDORTE_KOPF,
+           ["K1.1", "A", "10101 Eisenstadt", "7000 Eisenstadt", "", "01", "1"],
+           ["K1.1", "A", "10101 Eisenstadt", "7000 Eisenstadt", "", "02", "1"],
+           ["K1.2", "B", "60101 Graz", "Graz", "", "", ""],
+           ["", "C", "", "", "", "", ""],
+           ["K2", "D", "", "8990 Bad Aussee", "", "", ""]]
+    assert zd._standorte(roh) == {
+        "K1": [zd._Standort("K1.1", "10101", "7000", "Eisenstadt"),
+               zd._Standort("K1.2", "60101", "", "Graz")],
+        "K2": [zd._Standort("K2", "", "8990", "Bad Aussee")]}
+    assert zd._standorte([]) == {}
+
+
+def test_felder_einer_krankenanstalt() -> None:
+    assert zd._typ("Rehabilitation", "", "Haus") == "reha"
+    assert zd._typ("Akut", "", "Zentrum für Psychosomatik") == "psychiatrie"
+    assert zd._typ("Akut", "Allgemein", "Haus") == "krankenhaus"
+    assert (zd._betten("12.0"), zd._betten(""), zd._betten("viele")) == (12, None, None)
+    assert zd._plz_ort("Weg 1, 8990 Bad Aussee") == ("8990", "Bad Aussee")
+    assert zd._plz_ort("ohne Postleitzahl") == ("", "")
+    spalten = zd._kopfspalten(KOPF)
+    assert (spalten.nr, spalten.name, spalten.traeger) == (1, 2, 10)
+    with pytest.raises(zd.ZusatzFehler):
+        zd._kopfspalten(["Bundesland", "Name"])

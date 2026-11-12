@@ -34,13 +34,17 @@ says so wherever it is shown.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import gzip
 import math
 import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pseudonymed.erkennung.fachbegriffe import Fachbegriffe
 
 DATEN = Path(__file__).resolve().parent.parent / "daten"
 GEMEINDEN = DATEN / "gemeinden_de.csv.gz"
@@ -120,6 +124,7 @@ class Begriffsindex:
         self.max_woerter = max_woerter
 
     def fuege_hinzu(self, begriff: str, wert: Any) -> None:
+        """Registers a term under all its normalised forms; the first value for a form wins."""
         for form in _formen(begriff):
             self.eintraege.setdefault(form, wert)
 
@@ -145,6 +150,8 @@ class Begriffsindex:
 # -- data ------------------------------------------------------------------------------------------
 @dataclass
 class Gemeinde:
+    """One municipality of the Destatis register with the population that sets its weight."""
+
     name: str
     einwohner: int
     plz: str
@@ -154,6 +161,8 @@ class Gemeinde:
 
 @dataclass
 class Erkrankung:
+    """One rare disease of the Orphanet table: prevalence ``p`` as a fraction, its class as text."""
+
     orpha: str
     name: str
     p: float
@@ -193,6 +202,7 @@ def gemeindenindex() -> tuple[Begriffsindex, str]:
 
 
 def erkrankungsindex() -> tuple[Begriffsindex, str]:
+    """Index of rare-disease names and synonyms → Erkrankung, read once from the Orphanet table."""
     global _erkrankungen
     if _erkrankungen is None:
         index = Begriffsindex(max_woerter=6)
@@ -209,6 +219,8 @@ def erkrankungsindex() -> tuple[Begriffsindex, str]:
 # -- result ----------------------------------------------------------------------------------------
 @dataclass
 class Merkmal:
+    """One quasi-identifier that remains in the text, with its weight in bits."""
+
     schluessel: str  # stable key for the union across documents
     kategorie: str  # Geschlecht, Geburtsdatum, Ort, Diagnose, Datum
     beschreibung: str
@@ -220,6 +232,8 @@ class Merkmal:
 
 @dataclass
 class Markierung:
+    """A rule flag without a weight: something the model cannot weigh but a reader must see."""
+
     schluessel: str
     text: str
     beleg: str = ""
@@ -227,6 +241,9 @@ class Markierung:
 
 @dataclass
 class Restrisiko:
+    """The estimate for one text or one patient: features, flags and the reference population;
+    λ, κ and the light are derived from them."""
+
     merkmale: list[Merkmal] = field(default_factory=list)
     markierungen: list[Markierung] = field(default_factory=list)
     referenz: int = REFERENZ_DEUTSCHLAND
@@ -235,18 +252,24 @@ class Restrisiko:
 
     @property
     def bits(self) -> float:
+        """Sum of the counted features' bits."""
         return sum(m.bits for m in self.merkmale if m.gezaehlt)
 
     @property
     def referenz_bits(self) -> float:
+        """log₂ of the reference population: the bits that single one person out of it."""
         return math.log2(max(self.referenz, 2))
 
     @property
     def lam(self) -> float:
+        """λ, the expected number of people in the reference population who share all counted
+        features."""
         return 2.0 ** (self.referenz_bits - self.bits)
 
     @property
     def kappa(self) -> float:
+        """κ, the probability that a match is the right person (Rocher 2019); 1/λ for large
+        groups, where the exact form only costs precision."""
         lam = self.lam
         if lam <= 0:
             return 1.0
@@ -256,6 +279,7 @@ class Restrisiko:
 
     @property
     def ampel(self) -> str:
+        """The light: red below λ = 5, yellow below 11, green from there."""
         lam = self.lam
         if lam < LAMBDA_ROT:
             return "rot"
@@ -265,10 +289,12 @@ class Restrisiko:
 
     @property
     def dominant(self) -> Merkmal | None:
+        """The counted feature with the most bits, None when nothing is counted."""
         gezaehlt = [m for m in self.merkmale if m.gezaehlt]
         return max(gezaehlt, key=lambda m: m.bits) if gezaehlt else None
 
     def als_dict(self) -> dict[str, Any]:
+        """JSON-ready form with the derived figures and the model's name added."""
         d = asdict(self)
         d.update({"bits": round(self.bits, 2), "referenz_bits": round(self.referenz_bits, 2),
                   "lambda": round(self.lam, 3), "kappa": round(self.kappa, 4), "ampel": self.ampel,
@@ -277,6 +303,7 @@ class Restrisiko:
 
     @classmethod
     def aus_dict(cls, d: dict[str, Any]) -> Restrisiko:
+        """The inverse of ``als_dict``; the derived figures are recomputed, not read."""
         return cls(merkmale=[Merkmal(**m) for m in d.get("merkmale", [])],
                    markierungen=[Markierung(**m) for m in d.get("markierungen", [])],
                    referenz=int(d.get("referenz", REFERENZ_DEUTSCHLAND)),
@@ -284,6 +311,7 @@ class Restrisiko:
                    datumsangaben=int(d.get("datumsangaben", 0)))
 
     def kurz(self) -> str:
+        """One line with λ, κ and the light, for the report heading and the GUI."""
         return (f"λ ≈ {_zahl(self.lam)} gleichartige Personen, κ ≈ {self.kappa:.2f}"
                 f" → {self.ampel.upper()}")
 
@@ -321,106 +349,224 @@ def _zahl(x: float) -> str:
 
 
 def ampel_text(ampel: str) -> str:
+    """The threshold a light stands for, in the words of the report."""
     return {"gruen": f"λ ≥ {LAMBDA_GRUEN:.0f} (κ ≤ 0,09, EMA-Niveau)",
             "gelb": f"{LAMBDA_ROT:.0f} ≤ λ < {LAMBDA_GRUEN:.0f} (k = 5 der Praxisleitfäden)",
             "rot": f"λ < {LAMBDA_ROT:.0f} (κ > 0,2)"}[ampel]
 
 
 # -- estimate --------------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Teilergebnis:
+    """What one family of quasi-identifiers contributes: weighted features and unweighted flags.
+
+    Each detector below returns one; ``schaetze`` concatenates them in a fixed order, so the
+    report lists features and flags family by family, the same from run to run."""
+
+    merkmale: tuple[Merkmal, ...] = ()
+    markierungen: tuple[Markierung, ...] = ()
+
+
+def _geschlecht(text: str, geschlecht: str) -> Teilergebnis:
+    """One bit for the sex when it is known or the prose gives it away ("Patientin")."""
+    if geschlecht not in ("m", "w") and not re.search(r"\bPatientin\b|\bPatient\b", text):
+        return Teilergebnis()
+    return Teilergebnis((Merkmal("geschlecht", "Geschlecht", "Geschlecht (Anrede, Pseudonym)",
+                                 1.0),))
+
+
+def _alter_im_text(text: str) -> list[str]:
+    """Every age stated in the text, as the digit strings the age patterns captured."""
+    return [next(g for g in m.groups() if g) for m in _ALTER.finditer(text)]
+
+
+def _ab_90(alter: list[str], geb: list[str], jahr: int) -> bool:
+    """Whether any age, stated or derived from a birth year, reaches the 90+ cohort."""
+    alter_zahlen = [int(a) for a in alter if a.isdigit()] + [jahr - int(g) for g in geb
+                                                               if g.isdigit()]
+    return any(a >= 90 for a in alter_zahlen)
+
+
+def _geburt(text: str, jahr: int, daten: list[str]) -> Teilergebnis:
+    """The birth cohort: year of birth or age, narrowed further when both stand next to exact
+    letter dates; ages from 90 are flagged (the small cohort HIPAA Safe Harbor merges)."""
+    geb = _GEB_JAHR.findall(text)
+    alter = _alter_im_text(text)
+    if not (geb or alter):
+        return Teilergebnis()
+    beleg = f"[geb. {geb[0]}]" if geb else f"Alter {alter[0]}"
+    merkmale = [Merkmal("geburt:jahr", "Geburtsdatum", "Geburtsjahr bzw. Alter", BITS_JAHR, beleg,
+                        "Annahme: 1 von 85 Jahrgängen")]
+    markierungen: list[Markierung] = []
+    if geb and alter and daten:
+        merkmale.append(Merkmal("geburt:fenster", "Geburtsdatum",
+                                "Geburtsjahr und Alter neben exakten Daten engen den"
+                                " Geburtstag ein", BITS_ALTER_UND_DATUM,
+                                f"[geb. {geb[0]}] + {alter[0]} + {daten[0]}"))
+        markierungen.append(Markierung("alter_und_datum",
+                                       "Geburtsjahr und Alter zusammen mit exakten Daten"
+                                       " im Text: eines davon genügt",
+                                       f"[geb. {geb[0]}], Alter {alter[0]}, {daten[0]}"))
+    if _ab_90(alter, geb, jahr):
+        markierungen.append(Markierung("alter_90", "Alter ab 90: kleine Kohorte, wie bei"
+                                       " HIPAA Safe Harbor zusammenfassen (90+)"))
+    return Teilergebnis(tuple(merkmale), tuple(markierungen))
+
+
+def _ist_patientenort(beleg: str, gemeinde: Gemeinde, eigene: set[str],
+                      fachbegriffe: Fachbegriffe | None) -> bool:
+    """Whether a matched municipality can be the patient's place: written with a capital, not
+    one of the sender's own places, and not a medical term that happens to be a place name."""
+    if not beleg[:1].isupper() or _norm(gemeinde.name) in eigene:
+        return False
+    return fachbegriffe is None or not fachbegriffe.ist_fachbegriff(gemeinde.name)
+
+
+def _ortsmerkmal(beleg: str, g: Gemeinde, referenz: int, quelle: str, gezaehlt: bool) -> Merkmal:
+    """The weight of one place: log₂ of the reference population over the municipality's."""
+    bits = max(0.0, math.log2(referenz / max(g.einwohner, 1)))
+    zusatz = f", {g.mehrdeutig} gleichnamige, größte gezählt" if g.mehrdeutig > 1 else ""
+    return Merkmal(f"ort:{_norm(g.name)}", "Ort",
+                   f"Ort {g.name} ({_tausender(g.einwohner)} Einwohner{zusatz})",
+                   bits, beleg, quelle, gezaehlt=gezaehlt)
+
+
+def _kleiner_ort(beleg: str, g: Gemeinde) -> Markierung:
+    """The flag for a municipality below the Safe-Harbor-like threshold standing in clear."""
+    return Markierung(f"kleiner_ort:{_norm(g.name)}",
+                      f"Ortsname einer Gemeinde unter {_tausender(KLEINE_GEMEINDE)} Einwohnern im"
+                      f" Klartext: {g.name}", beleg)
+
+
+def _orte(text: str, referenz: int, eigene_orte: Iterable[str],
+          fachbegriffe: Fachbegriffe | None) -> Teilergebnis:
+    """Every municipality named in the text, smallest first.  Only the smallest is counted,
+    because several places in one letter are usually correlated; every one under
+    ``KLEINE_GEMEINDE`` inhabitants is flagged."""
+    index, quelle = gemeindenindex()
+    eigene = {_norm(o.strip()) for o in eigene_orte if o.strip()}
+    orte = sorted((t for t in index.finde(text) if _ist_patientenort(*t, eigene, fachbegriffe)),
+                  key=lambda o: o[1].einwohner)
+    merkmale = tuple(_ortsmerkmal(beleg, g, referenz, quelle, gezaehlt=i == 0)
+                     for i, (beleg, g) in enumerate(orte))
+    markierungen = tuple(_kleiner_ort(beleg, g) for beleg, g in orte
+                         if g.einwohner < KLEINE_GEMEINDE)
+    return Teilergebnis(merkmale, markierungen)
+
+
+def _erste_je_orpha(treffer: list[tuple[str, Erkrankung]]) -> list[tuple[str, Erkrankung]]:
+    """Keeps the first match per disease, so that a name and its synonym count once."""
+    je_orpha: dict[str, tuple[str, Erkrankung]] = {}
+    for beleg, e in treffer:
+        je_orpha.setdefault(e.orpha, (beleg, e))
+    return list(je_orpha.values())
+
+
+def _diagnosemerkmal(beleg: str, e: Erkrankung, quelle: str, gezaehlt: bool) -> Merkmal:
+    """The weight of one rare disease: −log₂ of its Orphanet prevalence."""
+    bits = -math.log2(max(e.p, 1e-9))
+    klasse = e.klasse or f"{e.p:g}"
+    return Merkmal(f"diagnose:{e.orpha}", "Diagnose",
+                   f"Seltene Erkrankung {e.name} (ORPHA:{e.orpha}, Prävalenz"
+                   f" {klasse}, {e.quelle})", bits, beleg, quelle, gezaehlt=gezaehlt)
+
+
+def _seltene_erkrankungen(text: str) -> Teilergebnis:
+    """Every rare disease named in the text, rarest first.  Only the rarest is counted; those
+    at or below the EU threshold of a rare disease are flagged."""
+    index, quelle = erkrankungsindex()
+    krank = _erste_je_orpha(sorted(index.finde(text), key=lambda k: k[1].p))
+    merkmale = tuple(_diagnosemerkmal(beleg, e, quelle, gezaehlt=i == 0)
+                     for i, (beleg, e) in enumerate(krank))
+    markierungen = tuple(Markierung(f"selten:{e.orpha}", f"Benannte seltene Erkrankung: {e.name}",
+                                    beleg)
+                         for beleg, e in krank if e.p <= SELTEN)
+    return Teilergebnis(merkmale, markierungen)
+
+
+def _ausschnitt(text: str, start: int, ende: int, laenge: int) -> str:
+    """A whitespace-collapsed excerpt of the text, the evidence shown next to a flag."""
+    return " ".join(text[start:ende].split())[:laenge]
+
+
+def _datiertes_ereignis(text: str) -> Markierung | None:
+    """The first reportable event (accident, assault, birth …) with an exact date within 80
+    characters: such pairs also appear in police reports and local news."""
+    for m in _EREIGNIS.finditer(text):
+        start, ende = max(0, m.start() - 80), m.end() + 80
+        if _DATUM.search(text[start:ende]):
+            return Markierung("ereignis_datiert", "Datiertes, öffentlich berichtbares Ereignis",
+                              _ausschnitt(text, start, ende, 120))
+    return None
+
+
+@dataclass(frozen=True)
+class _Hinweismuster:
+    """A pattern whose first match earns an unweighted flag, with an excerpt as evidence."""
+
+    schluessel: str
+    hinweis: str
+    muster: re.Pattern[str]
+    nachlauf: int  # characters kept after the match
+    laenge: int  # length of the excerpt
+
+    def finde(self, text: str) -> Markierung | None:
+        """The flag for the first match, None when the pattern does not occur."""
+        m = self.muster.search(text)
+        if m is None:
+            return None
+        return Markierung(self.schluessel, self.hinweis,
+                          _ausschnitt(text, m.start(), m.end() + self.nachlauf, self.laenge))
+
+
+_HINWEISMUSTER = (
+    _Hinweismuster("beruf", "Beruf, Arbeitgeber oder Institution genannt", _BERUF, 60, 100),
+    _Hinweismuster("familie", "Familienkonstellation genannt", _FAMILIE, 40, 80),
+)
+
+
+def _hinweise(text: str) -> Teilergebnis:
+    """Rule flags the model cannot weigh: a dated reportable event, an occupation or employer,
+    a family constellation."""
+    gefunden = [_datiertes_ereignis(text), *(h.finde(text) for h in _HINWEISMUSTER)]
+    return Teilergebnis(markierungen=tuple(mk for mk in gefunden if mk is not None))
+
+
 def schaetze(text: str, geschlecht: str = "", referenz: int = REFERENZ_DEUTSCHLAND,
-             eigene_orte: Iterable[str] = (), fachbegriffe=None, heute_jahr: int | None = None,
-             ) -> Restrisiko:
+             eigene_orte: Iterable[str] = (), fachbegriffe: Fachbegriffe | None = None,
+             heute_jahr: int | None = None) -> Restrisiko:
     """Estimate for one pseudonymised text.  ``geschlecht`` is the patient's sex ("m", "w",
     "") when known; ``eigene_orte`` names places of the sender that are not the patient's
     (practice, clinic); ``fachbegriffe`` (a Fachbegriffe matcher) keeps medical terms from
-    being taken for place names."""
-    r = Restrisiko(referenz=max(int(referenz), 100))  # a practice's patients at the least
-    import datetime as dt
-
+    being taken for place names.  One detector per family of quasi-identifiers; their
+    findings are concatenated in a fixed order."""
+    bezug = max(int(referenz), 100)  # a practice's patients at the least
     jahr = heute_jahr or dt.date.today().year
-    # sex
-    if geschlecht in ("m", "w") or re.search(r"\bPatientin\b|\bPatient\b", text):
-        r.merkmale.append(Merkmal("geschlecht", "Geschlecht", "Geschlecht (Anrede, Pseudonym)",
-                                  1.0))
-    # birth year / age
-    geb = _GEB_JAHR.findall(text)
-    alter = [next(g for g in m.groups() if g) for m in _ALTER.finditer(text)]
     daten = _DATUM.findall(text)
-    r.datumsangaben = len(daten)
-    if geb or alter:
-        beleg = f"[geb. {geb[0]}]" if geb else f"Alter {alter[0]}"
-        r.merkmale.append(Merkmal("geburt:jahr", "Geburtsdatum", "Geburtsjahr bzw. Alter",
-                                  BITS_JAHR, beleg, "Annahme: 1 von 85 Jahrgängen"))
-        if geb and alter and daten:
-            r.merkmale.append(Merkmal("geburt:fenster", "Geburtsdatum",
-                                      "Geburtsjahr und Alter neben exakten Daten engen den"
-                                      " Geburtstag ein", BITS_ALTER_UND_DATUM,
-                                      f"[geb. {geb[0]}] + {alter[0]} + {daten[0]}"))
-            r.markierungen.append(Markierung("alter_und_datum",
-                                             "Geburtsjahr und Alter zusammen mit exakten Daten"
-                                             " im Text: eines davon genügt",
-                                             f"[geb. {geb[0]}], Alter {alter[0]}, {daten[0]}"))
-        alter_zahlen = [int(a) for a in alter if a.isdigit()] + \
-            [jahr - int(g) for g in geb if g.isdigit()]
-        if any(a >= 90 for a in alter_zahlen):
-            r.markierungen.append(Markierung("alter_90", "Alter ab 90: kleine Kohorte, wie bei"
-                                             " HIPAA Safe Harbor zusammenfassen (90+)"))
-    # places
-    index, quelle_orte = gemeindenindex()
-    eigene = {_norm(o.strip()) for o in eigene_orte if o.strip()}
-    orte: list[tuple[str, Gemeinde]] = []
-    for beleg, gemeinde in index.finde(text):
-        if not beleg[:1].isupper() or _norm(gemeinde.name) in eigene:
-            continue
-        if fachbegriffe is not None and fachbegriffe.ist_fachbegriff(gemeinde.name):
-            continue
-        orte.append((beleg, gemeinde))
-    orte.sort(key=lambda o: o[1].einwohner)
-    for i, (beleg, g) in enumerate(orte):
-        bits = max(0.0, math.log2(r.referenz / max(g.einwohner, 1)))
-        zusatz = f", {g.mehrdeutig} gleichnamige, größte gezählt" if g.mehrdeutig > 1 else ""
-        r.merkmale.append(Merkmal(f"ort:{_norm(g.name)}", "Ort",
-                                  f"Ort {g.name} ({_tausender(g.einwohner)} Einwohner{zusatz})",
-                                  bits, beleg, quelle_orte, gezaehlt=i == 0))
-        if g.einwohner < KLEINE_GEMEINDE:
-            r.markierungen.append(Markierung(
-                f"kleiner_ort:{_norm(g.name)}",
-                f"Ortsname einer Gemeinde unter {_tausender(KLEINE_GEMEINDE)} Einwohnern im"
-                f" Klartext: {g.name}", beleg))
-    # rare diseases
-    index_k, quelle_k = erkrankungsindex()
-    krank = sorted(index_k.finde(text), key=lambda k: k[1].p)
-    gesehen: set[str] = set()
-    for i, (beleg, e) in enumerate(krank):
-        if e.orpha in gesehen:
-            continue
-        gesehen.add(e.orpha)
-        bits = -math.log2(max(e.p, 1e-9))
-        klasse = e.klasse or f"{e.p:g}"
-        r.merkmale.append(Merkmal(f"diagnose:{e.orpha}", "Diagnose",
-                                  f"Seltene Erkrankung {e.name} (ORPHA:{e.orpha}, Prävalenz"
-                                  f" {klasse}, {e.quelle})", bits, beleg, quelle_k,
-                                  gezaehlt=i == 0))
-        if e.p <= SELTEN:
-            r.markierungen.append(Markierung(f"selten:{e.orpha}",
-                                             f"Benannte seltene Erkrankung: {e.name}", beleg))
-    # rule flags without a weight
-    for m in _EREIGNIS.finditer(text):
-        umfeld = text[max(0, m.start() - 80):m.end() + 80]
-        if _DATUM.search(umfeld):
-            r.markierungen.append(Markierung("ereignis_datiert",
-                                             "Datiertes, öffentlich berichtbares Ereignis",
-                                             " ".join(umfeld.split())[:120]))
-            break
-    m = _BERUF.search(text)
-    if m:
-        r.markierungen.append(Markierung("beruf", "Beruf, Arbeitgeber oder Institution genannt",
-                                         " ".join(text[m.start():m.end() + 60].split())[:100]))
-    m = _FAMILIE.search(text)
-    if m:
-        r.markierungen.append(Markierung("familie", "Familienkonstellation genannt",
-                                         " ".join(text[m.start():m.end() + 40].split())[:80]))
-    return r
+    teile = (_geschlecht(text, geschlecht), _geburt(text, jahr, daten),
+             _orte(text, bezug, eigene_orte, fachbegriffe), _seltene_erkrankungen(text),
+             _hinweise(text))
+    return Restrisiko(merkmale=[m for t in teile for m in t.merkmale],
+                      markierungen=[mk for t in teile for mk in t.markierungen],
+                      referenz=bezug, datumsangaben=len(daten))
+
+
+def _uebernimm_staerkste(ziel: dict[str, Merkmal], merkmale: Iterable[Merkmal]) -> None:
+    """Merges features into ``ziel`` by key, keeping the highest weight and counting every one
+    again; which place or diagnosis counts is decided afterwards over the whole set."""
+    for m in merkmale:
+        alt = ziel.get(m.schluessel)
+        if alt is None or m.bits > alt.bits:
+            ziel[m.schluessel] = Merkmal(**{**asdict(m), "gezaehlt": True})
+
+
+def _zaehle_nur_staerkste(merkmale: list[Merkmal]) -> None:
+    """Leaves only the strongest place and the strongest diagnosis counted, because correlated
+    attributes must not be multiplied."""
+    for kategorie in ("Ort", "Diagnose"):
+        gruppe = sorted((m for m in merkmale if m.kategorie == kategorie), key=lambda m: -m.bits)
+        for m in gruppe[1:]:
+            m.gezaehlt = False
 
 
 def vereinige(risiken: Iterable[Restrisiko], fruehere: Iterable[Merkmal] = (),
@@ -434,20 +580,10 @@ def vereinige(risiken: Iterable[Restrisiko], fruehere: Iterable[Merkmal] = (),
     for r in list(risiken):
         referenz = min(referenz, r.referenz)
         daten += r.datumsangaben
-        for m in r.merkmale:
-            alt = merkmale.get(m.schluessel)
-            if alt is None or m.bits > alt.bits:
-                merkmale[m.schluessel] = Merkmal(**{**asdict(m), "gezaehlt": True})
+        _uebernimm_staerkste(merkmale, r.merkmale)
         for mk in r.markierungen:
             markierungen.setdefault(mk.schluessel, mk)
-    for m in fruehere:
-        alt = merkmale.get(m.schluessel)
-        if alt is None or m.bits > alt.bits:
-            merkmale[m.schluessel] = Merkmal(**{**asdict(m), "gezaehlt": True})
-    for kategorie in ("Ort", "Diagnose"):
-        gruppe = sorted((m for m in merkmale.values() if m.kategorie == kategorie),
-                        key=lambda m: -m.bits)
-        for m in gruppe[1:]:
-            m.gezaehlt = False
+    _uebernimm_staerkste(merkmale, fruehere)
+    _zaehle_nur_staerkste(list(merkmale.values()))
     return Restrisiko(merkmale=list(merkmale.values()), markierungen=list(markierungen.values()),
                       referenz=referenz, fruehere=fruehere_anzahl, datumsangaben=daten)
