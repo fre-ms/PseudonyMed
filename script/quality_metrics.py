@@ -204,8 +204,20 @@ def _funktionen(baum: ast.AST):
             yield n
 
 
+def _ist_cli_befehl(f: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """True for a Typer command (decorated with ``<app>.command(...)``): its parameters are
+    the command's options, the user-facing contract, so their number is not a design
+    smell of the function."""
+    for d in f.decorator_list:
+        aufruf = d.func if isinstance(d, ast.Call) else d
+        if isinstance(aufruf, ast.Attribute) and aufruf.attr == "command":
+            return True
+    return False
+
+
 def structure_metrics() -> dict[str, Any]:
-    """The monolith instrument: long functions, deep nesting, long modules, wide signatures."""
+    """The monolith instrument: long functions, deep nesting, long modules, wide signatures
+    (Typer commands excepted, see :func:`_ist_cli_befehl`)."""
     lang: list[dict[str, Any]] = []
     tief: list[dict[str, Any]] = []
     breit: list[dict[str, Any]] = []
@@ -228,7 +240,7 @@ def structure_metrics() -> dict[str, Any]:
             args = f.args
             anzahl = len(args.posonlyargs) + len(args.args) + len(args.kwonlyargs)
             anzahl -= 1 if args.args and args.args[0].arg in ("self", "cls") else 0
-            if anzahl > VIELE_PARAMETER:
+            if anzahl > VIELE_PARAMETER and not _ist_cli_befehl(f):
                 breit.append({"file": _rel(p), "name": f.name, "line": f.lineno,
                               "parameters": anzahl})
     lang.sort(key=lambda r: -r["statements"])
