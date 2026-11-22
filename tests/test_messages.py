@@ -87,7 +87,7 @@ def _core_modules() -> list[Path]:
             continue
         if rel.parts[0] == "gui" and p.name != "session.py":
             continue
-        if str(rel) in ("core/text.py", "document/optdoc_adapter.py"):
+        if rel.as_posix() in ("core/text.py", "document/optdoc_adapter.py"):
             continue  # the translation tables themselves
         files.append(p)
     return files
@@ -105,7 +105,7 @@ def _unwrapped_german(path: Path) -> list[str]:
                   and n.body and isinstance(n.body[0], ast.Expr)
                   and isinstance(n.body[0].value, ast.Constant)}
     inner = {v for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for v in n.values}
-    rel = str(path.relative_to(ROOT))
+    rel = path.relative_to(ROOT).as_posix()  # the keys use /
     allowed = NOT_MESSAGES.get(rel, set())
     found = []
     for node in ast.walk(tree):
