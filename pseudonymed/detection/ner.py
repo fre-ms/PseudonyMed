@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from optdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind
+from pseudonymed.core.text import say
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
 if TYPE_CHECKING:
@@ -76,10 +77,12 @@ class NER:
         try:
             import spacy
         except ImportError as e:
-            raise RuntimeError("NER braucht das Extra 'ner' (spaCy).") from e
+            raise RuntimeError(say("NER braucht das Extra 'ner' (spaCy).",
+                                   "NER needs the extra 'ner' (spaCy).")) from e
         name = model or available_model()
         if not name:
-            raise RuntimeError("Kein deutsches spaCy-Modell installiert (de_core_news_md).")
+            raise RuntimeError(say("Kein deutsches spaCy-Modell installiert (de_core_news_md).",
+                                   "No German spaCy model installed (de_core_news_md)."))
         self.name = name
         # the morphologizer stays: its part of speech tells a sentence-initial verb
         # ("Überwiesen hat Sie …") from a place name

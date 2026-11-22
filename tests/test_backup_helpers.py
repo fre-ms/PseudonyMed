@@ -16,6 +16,7 @@ import pytest
 
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
+from pseudonymed.pseudonyms import statistics as stats_mod
 from pseudonymed.pseudonyms.store import _SCHEMA
 
 
@@ -34,7 +35,7 @@ def _manifest(files: dict[str, bytes]) -> bytes:
 
 
 def test_statistics_lines_order() -> None:
-    st = backup_mod.Statistics(
+    st = stats_mod.Statistics(
         path=Path("/x/p.sqlite"), exists=True, per_category=[("Patient", 1)], discarded=2,
         discarded_per_rule=[("ner.person", 2)], vocabulary_categories=[("Test", 1)],
         lexicon_categories=[("Klinik", "merkmal", 5), ("Anatomie", "fach", 7)],
@@ -49,7 +50,7 @@ def test_statistics_lines_order() -> None:
     values = dict(st.lines())
     assert values["Lexikon (Einträge)"] == "12" and values["Schema"] == "–"
     assert values["Zusatzdaten (selbst geladen)"] == "Kliniken AT: 3 Einträge, 2026-11-12"
-    assert "Lexikon (Einträge)" not in dict(backup_mod.Statistics(path=Path("/x")).lines())
+    assert "Lexikon (Einträge)" not in dict(stats_mod.Statistics(path=Path("/x")).lines())
 
 
 def test_archive_path(tmp_path: Path) -> None:

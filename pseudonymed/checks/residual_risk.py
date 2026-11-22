@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from pseudonymed.core.stored import as_stored, field_values
+from pseudonymed.core.text import english, in_language, say
 
 if TYPE_CHECKING:
     from pseudonymed.detection.medical_terms import MedicalTerms
@@ -306,13 +307,20 @@ class ResidualRisk:
         counted = [m for m in self.features if m.counted]
         return max(counted, key=lambda m: m.bits) if counted else None
 
-    def as_dict(self) -> dict[str, Any]:
-        """JSON-ready form with the derived figures and the model's name added."""
+    def as_dict(self, language: str = "de") -> dict[str, Any]:
+        """JSON-ready form with the derived figures and the model's name added; with an
+        English ``language`` the wording (descriptions, flags, sources) is English."""
         d = as_stored(self)
+        if english(language):
+            for m, stored in zip(self.features, d["merkmale"], strict=True):
+                stored.update({"beschreibung": in_language(m.description, language),
+                               "quelle": in_language(m.source, language)})
+            for mk, stored in zip(self.markers, d["markierungen"], strict=True):
+                stored["text"] = in_language(mk.text, language)
         d.update({"bits": round(self.bits, 2), "referenz_bits": round(self.reference_bits, 2),
                   "lambda": round(self.lam, 3), "kappa": round(self.kappa, 4),
                   "ampel": self.traffic_light,
-                  "modell": "k-map-Schätzung (Synthese, kein Standard)"})
+                  "modell": in_language(MODEL_NAME, language)})
         return d
 
     @classmethod
@@ -324,49 +332,85 @@ class ResidualRisk:
                    earlier=int(d.get("fruehere", 0)),
                    date_mentions=int(d.get("datumsangaben", 0)))
 
-    def short(self) -> str:
+    def short(self, language: str = "de") -> str:
         """One line with λ, κ and the light, for the report heading and the GUI."""
-        return (f"λ ≈ {_number(self.lam)} gleichartige Personen, κ ≈ {self.kappa:.2f}"
-                f" → {self.traffic_light.upper()}")
+        light = light_name(self.traffic_light, language).upper()
+        people = "similar people" if english(language) else "gleichartige Personen"
+        return f"λ ≈ {_number(self.lam, language)} {people}, κ ≈ {self.kappa:.2f} → {light}"
 
-    def as_lines(self) -> list[str]:
+    def as_lines(self, language: str = "de") -> list[str]:
         """Lines for the report: the estimate, the contributions, the flags."""
-        lines = [
-            "Restrisiko (Schätzung, Synthese nach El Emam/EMA/Rocher, kein Standard): "
-            + self.short(),
-            f"  Referenz {_thousands(self.reference)} Personen = {self.reference_bits:.1f} Bit;"
-            f" verbliebene Merkmale {self.bits:.1f} Bit"
-            + (f"; mit {self.earlier} früheren Dokument(en) dieses Patienten" if self.earlier
-               else ""),
-        ]
-        for m in sorted(self.features, key=lambda m: (-m.counted, -m.bits)):
-            lines.append(f"  {'•' if m.counted else '◦'} {m.description}: {m.bits:.1f} Bit"
-                         + ("" if m.counted else " (nicht gezählt)"))
-        for mk in self.markers:
-            lines.append(f"  ! {mk.text}" + (f" [{mk.evidence}]" if mk.evidence else ""))
+        return [*self._head_lines(language), *self._weight_lines(language)]
+
+    def _head_lines(self, language: str) -> list[str]:
+        """The estimate with its figures, the reference and the earlier documents."""
+        if english(language):
+            earlier = (f"; with {self.earlier} earlier document(s) of this patient"
+                       if self.earlier else "")
+            return ["Residual risk (estimate, synthesis after El Emam/EMA/Rocher, not a"
+                    " standard): " + self.short(language),
+                    f"  Reference {_thousands(self.reference, 'en')} people ="
+                    f" {self.reference_bits:.1f} bits; remaining features {self.bits:.1f} bits"
+                    + earlier]
+        earlier = (f"; mit {self.earlier} früheren Dokument(en) dieses Patienten"
+                   if self.earlier else "")
+        return ["Restrisiko (Schätzung, Synthese nach El Emam/EMA/Rocher, kein Standard): "
+                + self.short(language),
+                f"  Referenz {_thousands(self.reference)} Personen = {self.reference_bits:.1f} Bit;"
+                f" verbliebene Merkmale {self.bits:.1f} Bit" + earlier]
+
+    def _weight_lines(self, language: str) -> list[str]:
+        """One line per feature (counted first, heaviest first), the flags, the dates."""
+        en = english(language)
+        unit, not_counted = (" bits", " (not counted)") if en else (" Bit", " (nicht gezählt)")
+        lines = [f"  {'•' if m.counted else '◦'} {in_language(m.description, language)}:"
+                 f" {m.bits:.1f}{unit}" + ("" if m.counted else not_counted)
+                 for m in sorted(self.features, key=lambda m: (-m.counted, -m.bits))]
+        lines += [f"  ! {in_language(mk.text, language)}"
+                  + (f" [{mk.evidence}]" if mk.evidence else "") for mk in self.markers]
         if self.date_mentions:
-            lines.append(f"  {self.date_mentions} exakte Datumsangabe(n) im Text (zählen erst,"
+            lines.append(f"  {self.date_mentions} exact date(s) in the text (they count only"
+                         " once the attacker knows the patient)" if en else
+                         f"  {self.date_mentions} exakte Datumsangabe(n) im Text (zählen erst,"
                          " wenn der Angreifer den Patienten kennt)")
         return lines
 
 
-def _thousands(n: int) -> str:
-    return f"{n:,}".replace(",", ".")
+def _thousands(n: int, language: str = "de") -> str:
+    """A whole number with thousands separators: dots in German, commas in English."""
+    return f"{n:,}" if english(language) else f"{n:,}".replace(",", ".")
 
 
-def _number(x: float) -> str:
+def _number(x: float, language: str = "de") -> str:
+    """λ for display: whole numbers from 10 on (with separators from 100), else one or three
+    decimals."""
     if x >= 100:
-        return f"{x:,.0f}".replace(",", ".")
+        return _thousands(round(x), language)
     if x >= 10:
         return f"{x:.0f}"
     return f"{x:.1f}" if x >= 0.1 else f"{x:.3f}"
 
 
-def traffic_light_text(traffic_light: str) -> str:
+def traffic_light_text(traffic_light: str, language: str = "de") -> str:
     """The threshold a light stands for, in the words of the report."""
+    if english(language):
+        return {"gruen": f"λ ≥ {LAMBDA_GREEN:.0f} (κ ≤ 0.09, EMA level)",
+                "gelb": f"{LAMBDA_RED:.0f} ≤ λ < {LAMBDA_GREEN:.0f} (k = 5 of the practice guides)",
+                "rot": f"λ < {LAMBDA_RED:.0f} (κ > 0.2)"}[traffic_light]
     return {"gruen": f"λ ≥ {LAMBDA_GREEN:.0f} (κ ≤ 0,09, EMA-Niveau)",
             "gelb": f"{LAMBDA_RED:.0f} ≤ λ < {LAMBDA_GREEN:.0f} (k = 5 der Praxisleitfäden)",
             "rot": f"λ < {LAMBDA_RED:.0f} (κ > 0,2)"}[traffic_light]
+
+
+MODEL_NAME = say("k-map-Schätzung (Synthese, kein Standard)",
+                 "k-map estimate (synthesis, not a standard)")
+_LIGHT_NAMES = {"gruen": say("gruen", "green"), "gelb": say("gelb", "yellow"),
+                "rot": say("rot", "red"), "grau": say("grau", "grey")}
+
+
+def light_name(traffic_light: str, language: str = "de") -> str:
+    """The name of a light ("gruen", "gelb", "rot", "grau") in the language."""
+    return in_language(_LIGHT_NAMES.get(traffic_light, traffic_light), language)
 
 
 # -- estimate --------------------------------------------------------------------------------------
@@ -385,8 +429,9 @@ def _sex(text: str, sex: str) -> PartialResult:
     """One bit for the sex when it is known or the prose gives it away ("Patientin")."""
     if sex not in ("m", "w") and not re.search(r"\bPatientin\b|\bPatient\b", text):
         return PartialResult()
-    return PartialResult((Feature("geschlecht", "Geschlecht", "Geschlecht (Anrede, Pseudonym)",
-                                  1.0),))
+    return PartialResult((Feature("geschlecht", "Geschlecht",
+                                  say("Geschlecht (Anrede, Pseudonym)",
+                                      "Sex (salutation, pseudonym)"), 1.0),))
 
 
 def _ages_in_text(text: str) -> list[str]:
@@ -409,22 +454,29 @@ def _birth(text: str, year: int, data: list[str]) -> PartialResult:
     if not (born or age):
         return PartialResult()
     evidence = f"[geb. {born[0]}]" if born else f"Alter {age[0]}"
-    features = [Feature("geburt:jahr", "Geburtsdatum", "Geburtsjahr bzw. Alter", BITS_YEAR,
+    features = [Feature("geburt:jahr", "Geburtsdatum",
+                        say("Geburtsjahr bzw. Alter", "Year of birth or age"), BITS_YEAR,
                         evidence,
-                        "Annahme: 1 von 85 Jahrgängen")]
+                        say("Annahme: 1 von 85 Jahrgängen", "Assumption: 1 of 85 birth years"))]
     markers: list[Marker] = []
     if born and age and data:
         features.append(Feature("geburt:fenster", "Geburtsdatum",
-                                "Geburtsjahr und Alter neben exakten Daten engen den"
-                                " Geburtstag ein", BITS_AGE_AND_DATE,
+                                say("Geburtsjahr und Alter neben exakten Daten engen den"
+                                    " Geburtstag ein",
+                                    "Year of birth and age next to exact dates narrow down the"
+                                    " birthday"), BITS_AGE_AND_DATE,
                                 f"[geb. {born[0]}] + {age[0]} + {data[0]}"))
         markers.append(Marker("alter_und_datum",
-                              "Geburtsjahr und Alter zusammen mit exakten Daten"
-                              " im Text: eines davon genügt",
+                              say("Geburtsjahr und Alter zusammen mit exakten Daten"
+                                  " im Text: eines davon genügt",
+                                  "Year of birth and age together with exact dates in the"
+                                  " text: one of them is enough"),
                               f"[geb. {born[0]}], Alter {age[0]}, {data[0]}"))
     if _aged_90_plus(age, born, year):
-        markers.append(Marker("alter_90", "Alter ab 90: kleine Kohorte, wie bei"
-                              " HIPAA Safe Harbor zusammenfassen (90+)"))
+        markers.append(Marker("alter_90", say("Alter ab 90: kleine Kohorte, wie bei"
+                                              " HIPAA Safe Harbor zusammenfassen (90+)",
+                                              "Age 90 or over: a small cohort, combine it as"
+                                              " HIPAA Safe Harbor does (90+)")))
     return PartialResult(tuple(features), tuple(markers))
 
 
@@ -441,17 +493,28 @@ def _place_feature(evidence: str, g: Municipality, reference: int, source: str,
                    counted: bool) -> Feature:
     """The weight of one place: log₂ of the reference population over the municipality's."""
     bits = max(0.0, math.log2(reference / max(g.population, 1)))
-    extra = f", {g.namesakes} gleichnamige, größte gezählt" if g.namesakes > 1 else ""
-    return Feature(f"ort:{_norm(g.name)}", "Ort",
-                   f"Ort {g.name} ({_thousands(g.population)} Einwohner{extra})",
-                   bits, evidence, source, counted=counted)
+    people = _thousands(g.population)
+    if g.namesakes > 1:
+        description = say(f"Ort {g.name} ({people} Einwohner, {g.namesakes} gleichnamige,"
+                          " größte gezählt)",
+                          f"Place {g.name} ({_thousands(g.population, 'en')} inhabitants,"
+                          f" {g.namesakes} of that name,"
+                          " the largest counted)")
+    else:
+        description = say(f"Ort {g.name} ({people} Einwohner)",
+                          f"Place {g.name} ({_thousands(g.population, 'en')} inhabitants)")
+    return Feature(f"ort:{_norm(g.name)}", "Ort", description, bits, evidence, source,
+                   counted=counted)
 
 
 def _small_place(evidence: str, g: Municipality) -> Marker:
     """The flag for a municipality below the Safe-Harbor-like threshold standing in clear."""
+    limit = _thousands(SMALL_MUNICIPALITY)
     return Marker(f"kleiner_ort:{_norm(g.name)}",
-                  f"Ortsname einer Gemeinde unter {_thousands(SMALL_MUNICIPALITY)} Einwohnern"
-                  f" im Klartext: {g.name}", evidence)
+                  say(f"Ortsname einer Gemeinde unter {limit} Einwohnern im Klartext: {g.name}",
+                      f"Name of a municipality under {_thousands(SMALL_MUNICIPALITY, 'en')}"
+                      f" inhabitants in clear: {g.name}"),
+                  evidence)
 
 
 def _places(text: str, reference: int, own_places: Iterable[str],
@@ -483,8 +546,10 @@ def _diagnosis_feature(evidence: str, e: Disease, source: str, counted: bool) ->
     bits = -math.log2(max(e.p, 1e-9))
     category = e.category or f"{e.p:g}"
     return Feature(f"diagnose:{e.orpha}", "Diagnose",
-                   f"Seltene Erkrankung {e.name} (ORPHA:{e.orpha}, Prävalenz"
-                   f" {category}, {e.source})", bits, evidence, source, counted=counted)
+                   say(f"Seltene Erkrankung {e.name} (ORPHA:{e.orpha}, Prävalenz"
+                       f" {category}, {e.source})",
+                       f"Rare disease {e.name} (ORPHA:{e.orpha}, prevalence {category},"
+                       f" {e.source})"), bits, evidence, source, counted=counted)
 
 
 def _rare_diseases(text: str) -> PartialResult:
@@ -494,8 +559,9 @@ def _rare_diseases(text: str) -> PartialResult:
     diseases = _first_per_orpha(sorted(index.find(text), key=lambda k: k[1].p))
     features = tuple(_diagnosis_feature(evidence, e, source, counted=i == 0)
                      for i, (evidence, e) in enumerate(diseases))
-    markers = tuple(Marker(f"selten:{e.orpha}", f"Benannte seltene Erkrankung: {e.name}",
-                           evidence)
+    markers = tuple(Marker(f"selten:{e.orpha}",
+                           say(f"Benannte seltene Erkrankung: {e.name}",
+                               f"Named rare disease: {e.name}"), evidence)
                     for evidence, e in diseases if e.p <= RARE)
     return PartialResult(features, markers)
 
@@ -511,7 +577,9 @@ def _dated_event(text: str) -> Marker | None:
     for m in _EVENT.finditer(text):
         start, end = max(0, m.start() - 80), m.end() + 80
         if _DATE.search(text[start:end]):
-            return Marker("ereignis_datiert", "Datiertes, öffentlich berichtbares Ereignis",
+            return Marker("ereignis_datiert",
+                          say("Datiertes, öffentlich berichtbares Ereignis",
+                              "Dated, publicly reportable event"),
                           _excerpt(text, start, end, 120))
     return None
 
@@ -536,8 +604,10 @@ class _NotePattern:
 
 
 _NOTE_PATTERNS = (
-    _NotePattern("beruf", "Beruf, Arbeitgeber oder Institution genannt", _OCCUPATION, 60, 100),
-    _NotePattern("familie", "Familienkonstellation genannt", _FAMILY, 40, 80),
+    _NotePattern("beruf", say("Beruf, Arbeitgeber oder Institution genannt",
+                              "Occupation, employer or institution named"), _OCCUPATION, 60, 100),
+    _NotePattern("familie", say("Familienkonstellation genannt", "Family constellation named"),
+                 _FAMILY, 40, 80),
 )
 
 

@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from pseudonymed.core.model import Hit, Kind, Patient
+from pseudonymed.core.text import Text, read_back, say
 from pseudonymed.detection import identifiers as ident_module
 from pseudonymed.detection import medical_content as medical_module
 from pseudonymed.detection import medical_terms as terms_module
@@ -56,8 +57,10 @@ def _matching_warning(code: CodeResult) -> list[str]:
         return []
     a = code.matching
     fields = ", ".join(f"{k} {v:.2f}" for k, v in a.fields.items())
-    return [f"Patient dem vorhandenen Eintrag {a.code} zugeordnet"
-            f" (Abgleich {a.score:.2f}: {fields})."]
+    return [say(f"Patient dem vorhandenen Eintrag {a.code} zugeordnet"
+                f" (Abgleich {a.score:.2f}: {fields}).",
+                f"Patient assigned to the existing entry {a.code}"
+                f" (match {a.score:.2f}: {fields}).")]
 
 
 def _load_ner(opt: PipelineOptions, warnings: list[str]) -> ner_module.NER | None:
@@ -66,8 +69,10 @@ def _load_ner(opt: PipelineOptions, warnings: list[str]) -> ner_module.NER | Non
         return None
     if ner_module.available():
         return ner_module.NER()
-    warnings.append("NER gewünscht, aber spaCy oder das deutsche Modell fehlt"
-                    " (Extra 'ner', siehe Anleitung); ohne NER fortgefahren.")
+    warnings.append(say("NER gewünscht, aber spaCy oder das deutsche Modell fehlt"
+                        " (Extra 'ner', siehe Anleitung); ohne NER fortgefahren.",
+                        "NER was asked for, but spaCy or the German model is missing"
+                        " (extra 'ner', see the manual); went on without NER."))
     return None
 
 
@@ -75,8 +80,10 @@ def _medical_warnings(medical: medical_module.MedicalSearch | None) -> list[str]
     """A warning for every chosen medical level whose list is empty."""
     if medical is None:
         return []
-    return [f"{category}e schwärzen gewählt, aber die Liste ist leer"
-            " (Lexikon nicht geladen?); nichts davon geschwärzt."
+    return [say(f"{category}e schwärzen gewählt, aber die Liste ist leer"
+                " (Lexikon nicht geladen?); nichts davon geschwärzt.",
+                f"Redacting {read_back(category).lower()}s was chosen, but the list is empty"
+                " (lexicon not loaded?); none of them redacted.")
             for category in medical.missing_lists()]
 
 
@@ -84,9 +91,12 @@ def toolkit(patient: Patient, opt: PipelineOptions, store: PseudonymStore) -> To
     """Identity, pseudonyms, rules and helpers for one patient.  Pseudonyms for a
     recipient need the one-time store: the local database must not learn the mapping."""
     if opt.recipient and not store.is_one_time:
-        raise ValueError("Pseudonyme für einen Empfänger brauchen den Einmalspeicher"
-                         " (einmalspeicher()): die lokale Datenbank darf die Zuordnung nicht"
-                         " erhalten, und die Codes dürfen nicht die eigenen sein.")
+        raise ValueError(say("Pseudonyme für einen Empfänger brauchen den Einmalspeicher"
+                             " (one_time_store()): die lokale Datenbank darf die Zuordnung"
+                             " nicht erhalten, und die Codes dürfen nicht die eigenen sein.",
+                             "Pseudonyms for a recipient need the one-time store"
+                             " (one_time_store()): the local database must not get the mapping,"
+                             " and the codes must not be your own."))
     code = store.code_for(patient, opt.matching)
     assignment = PseudonymAssignment(patient, code.code, opt.date_format,
                                      secret=store.secret)
@@ -99,27 +109,31 @@ def toolkit(patient: Patient, opt: PipelineOptions, store: PseudonymStore) -> To
                    identifiers, medical)
 
 
-def _category_note(hits: list[Hit], kind: Kind, title: str,
-                   extra: str) -> str | None:
+def _category_note(hits: list[Hit], kind: Kind, title: Text, extra: Text) -> str | None:
     """A count of the hits of ``kind`` per class (the first word of the pseudonym)."""
     counts = Counter(f.pseudonym.strip("[]").split(" ")[0]
                      for f in hits if f.kind == kind)
     if not counts:
         return None
+    total = sum(counts.values())
     parts = ", ".join(f"{k} {n}" for k, n in sorted(counts.items()))
-    return f"{title}: {sum(counts.values())} Treffer ({parts}); {extra}"
+    parts_en = ", ".join(f"{read_back(k)} {n}" for k, n in sorted(counts.items()))
+    return say(f"{title}: {total} Treffer ({parts}); {extra}",
+               f"{title.en}: {total} hit(s) ({parts_en}); {extra.en}")
 
 
 def _identifier_note(hits: list[Hit]) -> str | None:
     """How many identifiers (hospitals, professions, studies, titles) were found, per class."""
-    return _category_note(hits, Kind.IDENTIFIER, "Identifikatoren",
-                          "standardmäßig geschwärzt, im Prüfschritt ansehen.")
+    return _category_note(hits, Kind.IDENTIFIER, say("Identifikatoren", "Identifiers"),
+                          say("standardmäßig geschwärzt, im Prüfschritt ansehen.",
+                              "redacted by default, look at them in the review."))
 
 
 def _medical_note(hits: list[Hit]) -> str | None:
     """How much medical content was redacted on request, per level."""
-    return _category_note(hits, Kind.MEDICAL, "Medizinischer Inhalt",
-                          "auf Wunsch geschwärzt (Optionen in „6 Analyse“).")
+    return _category_note(hits, Kind.MEDICAL, say("Medizinischer Inhalt", "Medical content"),
+                          say("auf Wunsch geschwärzt (Optionen in „6 Analyse“).",
+                              "redacted on request (options in “6 Analysis”)."))
 
 
 def _ner_warning(r: Toolkit, hits: list[Hit], spared: list[str]) -> str | None:
@@ -127,10 +141,16 @@ def _ner_warning(r: Toolkit, hits: list[Hit], spared: list[str]) -> str | None:
     if r.ner is None:
         return None
     ner_matches = sum(1 for f in hits if f.rule.startswith("ner."))
-    protection = (f", {len(spared)} Kandidaten als Fachbegriffe verschont"
-                  f" ({r.medical_terms.count} Begriffe)" if r.medical_terms is not None else "")
-    return (f"NER ({r.ner.name}): {ner_matches} zusätzliche Personen/Orte gefunden{protection};"
-            " NER rät, Treffer im Prüfschritt ansehen.")
+    protection = say("", "")
+    if r.medical_terms is not None:
+        protection = say(f", {len(spared)} Kandidaten als Fachbegriffe verschont"
+                         f" ({r.medical_terms.count} Begriffe)",
+                         f", {len(spared)} candidates spared as medical terms"
+                         f" ({r.medical_terms.count} terms)")
+    return say(f"NER ({r.ner.name}): {ner_matches} zusätzliche Personen/Orte gefunden{protection};"
+               " NER rät, Treffer im Prüfschritt ansehen.",
+               f"NER ({r.ner.name}): {ner_matches} more people/places found{protection.en};"
+               " NER guesses, look at the hits in the review.")
 
 
 def analysis_notes(r: Toolkit, hits: list[Hit],

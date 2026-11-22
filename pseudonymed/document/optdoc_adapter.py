@@ -20,6 +20,7 @@ from optdoc.pagetext import PageText
 from optdoc.settings import SettingsLike, set_settings
 
 from pseudonymed.core.model import Hit, Kind
+from pseudonymed.core.text import english, error_text
 
 UNREADABLE = "[unlesbar]"  # what a line OCR could not read becomes in the output
 
@@ -112,11 +113,12 @@ def description(plan: cleanup.CleanupPlan, language: str = "de") -> str:
 
 
 def message(error: BaseException, language: str = "de") -> str:
-    """The message of an error for the user: optdoc's own in German unless the language is
-    English ("en"), every other message as it is."""
+    """The message of an error for the user in the interface language: optdoc's own (English)
+    in German unless the language is English, PseudonyMed's own (German) in English when it
+    is, every other message as it is."""
     text = str(error)
-    if language.startswith("en"):
-        return text
+    if english(language):
+        return error_text(error, language)
     for muster, german in _MESSAGES_DE:
         matches = muster.fullmatch(text)
         if matches:

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pseudonymed import environment
+from pseudonymed.core.text import say
 
 BASE = Path(__file__).resolve().parent.parent / "data" / "fachbegriffe_de.txt.gz"
 BODY_PARTS = Path(__file__).resolve().parent.parent / "data" / "koerperteile_de.txt"
@@ -344,7 +345,8 @@ def import_file(path: Path, name: str, format_: str = "liste", column: int = 0,
     elif format_ == "liste":
         terms = _read_list(path)
     else:
-        raise ValueError(f"Unbekanntes Format: {format_!r} (liste, csv, mesh-xml)")
+        raise ValueError(say(f"Unbekanntes Format: {format_!r} (liste, csv, mesh-xml)",
+                             f"Unknown format: {format_!r} (liste, csv, mesh-xml)"))
     from pseudonymed.detection import vocabulary as vocab_mod
 
     with vocab_mod.Vocabulary() as v:

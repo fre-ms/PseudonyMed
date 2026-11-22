@@ -31,7 +31,7 @@ from pseudonymed.config import Settings, load_settings, save_settings
 from pseudonymed.document import optdoc_adapter
 from pseudonymed.gui.export_page import TRAFFIC_LIGHT_COLOURS
 from pseudonymed.gui.session import Document, Session
-from pseudonymed.gui.translation import interface_language
+from pseudonymed.gui.translation import interface_language, shown
 from pseudonymed.gui.worker import Worker
 from pseudonymed.pipeline import Result
 
@@ -244,7 +244,7 @@ class ControlPage(QWidget):
         """Fill both lights and the document table, then the details of the selected row."""
         colour, text = self.session.traffic_light()
         self._set_traffic_light(self.traffic_light, colour)
-        self.traffic_light_text.setText(self.tr(text))
+        self.traffic_light_text.setText(shown(text))
         self._show_residual_risk()
         if self._fill_table() and self.table.currentRow() < 0:
             self.table.selectRow(0)
@@ -266,10 +266,11 @@ class ControlPage(QWidget):
         contribution if there is one, the number of earlier released documents if any."""
         dominant = total.dominant
         sentence = self.tr("Alle Dokumente dieses Patienten zusammen: {kurz}; {schwelle}.").format(
-            kurz=total.short(), schwelle=risk_module.traffic_light_text(total.traffic_light))
+            kurz=total.short(interface_language()),
+            schwelle=risk_module.traffic_light_text(total.traffic_light, interface_language()))
         if dominant:
             sentence += self.tr(" Größter Beitrag: {merkmal} ({bits:.1f} Bit).").format(
-                merkmal=dominant.description, bits=dominant.bits)
+                merkmal=shown(dominant.description), bits=dominant.bits)
         if earlier:
             sentence += self.tr(" Einschließlich {n} früher freigegebener Dokument(e).").format(
                 n=earlier)
@@ -295,10 +296,11 @@ class ControlPage(QWidget):
         r = e.residual_risk
         if r is None:
             return [d.path.name, verdict, "–", "–", "–", "–"]
-        contribution = (f"{r.dominant.description} ({r.dominant.bits:.1f} Bit)"
+        contribution = (f"{shown(r.dominant.description)} ({r.dominant.bits:.1f} Bit)"
                         if r.dominant else "–")
-        return [d.path.name, verdict, risk_module._number(r.lam), f"{r.kappa:.2f}",
-                r.traffic_light.upper(), contribution]
+        language = interface_language()
+        return [d.path.name, verdict, risk_module._number(r.lam, language), f"{r.kappa:.2f}",
+                risk_module.light_name(r.traffic_light, language).upper(), contribution]
 
     def _show_details(self) -> None:
         """Details of the selected row: the counted features with their evidence and the
@@ -313,7 +315,7 @@ class ControlPage(QWidget):
         for i, line in enumerate(lines):
             for j, w in enumerate(line):
                 self.features.setItem(i, j, QTableWidgetItem(w))
-        self.log.setPlainText(as_text(d.precheck.report))
+        self.log.setPlainText(as_text(d.precheck.report, interface_language()))
 
     def _selected_document(self) -> Document | None:
         """The session document behind the selected table row, found by the id stored in
@@ -330,8 +332,8 @@ class ControlPage(QWidget):
         only listed, then the markers prefixed with "!"; nothing without an estimate."""
         if r is None:
             return []
-        features = [(m.description + ("" if m.counted else self.tr(" (nicht gezählt)")),
+        features = [(shown(m.description) + ("" if m.counted else self.tr(" (nicht gezählt)")),
                      f"{m.bits:.1f}", m.evidence)
                     for m in sorted(r.features, key=lambda m: (-m.counted, -m.bits))]
-        markers = [("! " + mk.text, "", mk.evidence) for mk in r.markers]
+        markers = [("! " + shown(mk.text), "", mk.evidence) for mk in r.markers]
         return features + markers

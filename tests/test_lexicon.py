@@ -91,7 +91,7 @@ def test_does_not_change_the_protection(tmp_path: Path, lexicon_on: None,
 
 
 def test_statistics_show_lexicon(tmp_path: Path, lexicon_on: None) -> None:
-    from pseudonymed.pseudonyms.backup import statistics
+    from pseudonymed.pseudonyms.statistics import statistics
 
     path = tmp_path / "p.sqlite"
     Vocabulary(path).close()

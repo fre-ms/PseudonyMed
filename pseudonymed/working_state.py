@@ -37,6 +37,7 @@ from pseudonymed import TOOL
 from pseudonymed.checks.recheck import tolerance_key
 from pseudonymed.core.model import Hit, Patient
 from pseudonymed.core.stored import as_stored, field_values
+from pseudonymed.core.text import in_language, say
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.pipeline import (
     PageEntry,
@@ -55,7 +56,7 @@ FORMAT_MARK = "pseudonymed_arbeitsstand"
 VERSION = 1
 INFIX = ".arbeitsstand"
 EXTENSION = INFIX + ".json"
-_OUTER_OPTIONS = ("cleanup", "recipient", "recipient_fingerprint", "matching")
+_OUTER_OPTIONS = ("cleanup", "recipient", "recipient_fingerprint", "matching", "language")
 
 
 class WorkingStateError(Exception):
@@ -164,11 +165,14 @@ def _page_as_dict(s: PageEntry) -> dict[str, Any]:
 def capture(v: Preparation | TextPreparation) -> WorkingState:
     """Capture a preparation as it stands (nothing is written)."""
     if v.opt.recipient:
-        raise WorkingStateError(
+        raise WorkingStateError(say(
             "Im Empfängermodus (Einmalschlüssel) lässt sich kein Arbeitsstand speichern:"
-            " die Codes wären beim Wiederaufnehmen nicht mehr dieselben.")
+            " die Codes wären beim Wiederaufnehmen nicht mehr dieselben.",
+            "A working state cannot be saved in recipient mode (one-time key): the codes"
+            " would no longer be the same when resuming."))
     if v.finalised:
-        raise WorkingStateError("Diese Vorbereitung ist schon abgeschlossen.")
+        raise WorkingStateError(say("Diese Vorbereitung ist schon abgeschlossen.",
+                                    "This preparation has been finished already."))
     if isinstance(v, TextPreparation):
         document = v.text.encode("utf-8")
         extension = v.output_extension
@@ -193,6 +197,9 @@ def capture(v: Preparation | TextPreparation) -> WorkingState:
         "wiederhergestellt": [list(k) for k in sorted(v.restored)],
         "warnungen": list(v.warnings),
         "hinweise": list(v.notes),
+        # the same messages in English, so that a resumed review can still show them so
+        "warnungen_en": [in_language(w, "en") for w in v.warnings],
+        "hinweise_en": [in_language(h, "en") for h in v.notes],
         "version": v.version,
     }
     return WorkingState(data, document, folder=v.source.parent)
@@ -235,21 +242,27 @@ def read(path: str | Path) -> WorkingState:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        raise WorkingStateError(f"{path.name}: kein lesbarer Arbeitsstand ({e}).") from e
+        raise WorkingStateError(say(f"{path.name}: kein lesbarer Arbeitsstand ({e}).",
+                                    f"{path.name}: not a readable working state ({e}).")) from e
     if not isinstance(data, dict) or FORMAT_MARK not in data:
-        raise WorkingStateError(f"{path.name}: kein Arbeitsstand von PseudonyMed.")
+        raise WorkingStateError(say(f"{path.name}: kein Arbeitsstand von PseudonyMed.",
+                                    f"{path.name}: not a working state of PseudonyMed."))
     if int(data[FORMAT_MARK]) > VERSION:
-        raise WorkingStateError(f"{path.name}: stammt von einem neueren PseudonyMed.")
+        raise WorkingStateError(say(f"{path.name}: stammt von einem neueren PseudonyMed.",
+                                    f"{path.name}: comes from a newer PseudonyMed."))
     document = path.parent / str(data["dokument"]["datei"])
     try:
         content = document.read_bytes()
     except OSError as e:
         raise WorkingStateError(
-            f"Das Dokument {document.name} fehlt neben {path.name}.") from e
+            say(f"Das Dokument {document.name} fehlt neben {path.name}.",
+                f"The document {document.name} is missing next to {path.name}.")) from e
     if hashlib.sha256(content).hexdigest() != data["dokument"]["sha256"]:
         raise WorkingStateError(
-            f"{document.name} wurde seit dem Speichern verändert; der Arbeitsstand passt nicht"
-            " mehr dazu.")
+            say(f"{document.name} wurde seit dem Speichern verändert; der Arbeitsstand passt nicht"
+                " mehr dazu.",
+                f"{document.name} has changed since it was saved; the working state no longer"
+                " fits it."))
     return WorkingState(data, content, path)
 
 
@@ -286,17 +299,27 @@ def _pdf_pages_from(pages: list[dict[str, Any]], plan: dict[int, cleanup_module.
 def _reading_messages(a: WorkingState) -> tuple[list[str], list[str]]:
     """The warnings and hints a rebuilt reading keeps: those about the text layer, the OCR
     and the clean-up, plus where the state came from."""
-    warnings = [w for w in a.data.get("warnungen", []) if "Textebene" in w]
-    notes = [h for h in a.data.get("hinweise", []) if "OCR" in h or "aufbereitet" in h]
+    warnings = [w for w in _saved(a, "warnungen") if "Textebene" in w]
+    notes = [h for h in _saved(a, "hinweise") if "OCR" in h or "aufbereitet" in h]
     notes.append(_load_note(a))
     return warnings, notes
+
+
+def _saved(a: WorkingState, key: str) -> list[str]:
+    """The saved messages under ``key``, each with its English form when the state has it."""
+    de = [str(x) for x in a.data.get(key, [])]
+    en = a.data.get(key + "_en", [])
+    if len(en) != len(de):
+        return de
+    return [say(d, str(e)) for d, e in zip(de, en, strict=True)]
 
 
 def reading_from(a: WorkingState, opt: PipelineOptions | None = None) -> Reading:
     """The reading phase rebuilt from a state, nothing searched yet: for a new
     analysis that keeps the clean-up, the OCR and the corrections."""
     if a.is_text:
-        raise WorkingStateError("Textdateien haben keine Lesung; vorbereiten() aufrufen.")
+        raise WorkingStateError(say("Textdateien haben keine Lesung; prepare() aufrufen.",
+                                    "Text files have no reading; call prepare()."))
     opt = opt or a.options
     plan = _plan_from(a.data)
     doc = pymupdf.open("pdf", a.document)
@@ -315,23 +338,29 @@ def reading_from(a: WorkingState, opt: PipelineOptions | None = None) -> Reading
 
 def _load_note(a: WorkingState) -> str:
     """The hint naming the state and when, and by which tool version, it was saved."""
-    name = a.path.name if a.path is not None else "dem Speicher"
-    return (f"Arbeitsstand aus {name} übernommen (gespeichert {a.data.get('erstellt', '?')},"
-            f" {a.data.get('werkzeug', '?')}).")
+    saved, tool = a.data.get("erstellt", "?"), a.data.get("werkzeug", "?")
+    if a.path is None:
+        return say(f"Arbeitsstand aus dem Speicher übernommen (gespeichert {saved}, {tool}).",
+                   f"Working state taken over from memory (saved {saved}, {tool}).")
+    return say(f"Arbeitsstand aus {a.path.name} übernommen (gespeichert {saved}, {tool}).",
+               f"Working state taken over from {a.path.name} (saved {saved}, {tool}).")
 
 
 def _preparation_messages(a: WorkingState, r: Toolkit) -> tuple[list[str], list[str]]:
     """The saved warnings and hints without an earlier load hint, the current one added, and
     a warning when this database issues another identifier than the state was saved under."""
-    warnings = [w for w in a.data.get("warnungen", []) if "Arbeitsstand" not in w]
-    notes = [h for h in a.data.get("hinweise", []) if "Arbeitsstand" not in h]
+    warnings = [w for w in _saved(a, "warnungen") if "Arbeitsstand" not in w]
+    notes = [h for h in _saved(a, "hinweise") if "Arbeitsstand" not in h]
     notes.append(_load_note(a))
     if a.code and r.code != a.code:
-        warnings.append(
+        warnings.append(say(
             f"Der Arbeitsstand wurde mit der Kennung {a.code} angelegt, diese Datenbank"
             f" vergibt {r.code} (anderer Schlüssel oder andere Datenbank): gespeicherte"
             " Pseudonyme bleiben und werden der Zuordnung hinzugefügt, neue Treffer"
-            " bekommen Codes dieser Datenbank.")
+            " bekommen Codes dieser Datenbank.",
+            f"The working state was saved under the code {a.code}, this database issues"
+            f" {r.code} (another key or another database): saved pseudonyms stay and are"
+            " added to the mapping, new hits get codes of this database."))
     return warnings, notes
 
 
@@ -465,6 +494,8 @@ def adopt_decisions(old: WorkingState, new: Preparation | TextPreparation) -> in
     hits were taken over or discarded."""
     n = sum(_adopt_manual_matches(d, new) for d in old.data["seiten"])
     n += _discard_again(old, new)
-    new.notes.append(f"{n} Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
-                     " Markierungen, verworfene Treffer).")
+    new.notes.append(say(f"{n} Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
+                         " Markierungen, verworfene Treffer).",
+                         f"{n} decisions taken over from the working state (boxes, masks,"
+                         " marks, discarded hits)."))
     return n

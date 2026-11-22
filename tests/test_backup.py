@@ -14,6 +14,7 @@ from pseudonymed.core.model import Patient
 from pseudonymed.pipeline import PipelineOptions, pseudonymise
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
+from pseudonymed.pseudonyms import statistics as stats_mod
 from pseudonymed.pseudonyms.store import PseudonymStore
 from tests.synthetic import synthetic_patient
 from tests.test_gui import qapp  # noqa: F401
@@ -32,10 +33,10 @@ def _populated(folder: Path, report_pdf: Path, patient: Patient) -> Path:
 def test_statistics_and_categories(tmp_path: Path, report_pdf: Path, patient: Patient,
                                    monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
-    empty = backup_mod.statistics(tmp_path / "nix.sqlite")
+    empty = stats_mod.statistics(tmp_path / "nix.sqlite")
     assert not empty.exists and empty.patients == 0 and "nein" in dict(empty.lines())["Vorhanden"]
     db = _populated(tmp_path, report_pdf, patient)
-    st = backup_mod.statistics(db)
+    st = stats_mod.statistics(db)
     assert st.exists and st.size > 0 and st.patients == 1 and st.mappings >= 8
     assert st.key_present and len(st.key_id) == 16 and st.schema == "hash"
     categories = dict(st.per_category)
@@ -43,8 +44,8 @@ def test_statistics_and_categories(tmp_path: Path, report_pdf: Path, patient: Pa
     assert "Zuweiser" in categories and st.integrity == "ok" and st.last_entry
     lines = dict(st.lines())
     assert lines["Patienten"] == "1" and "    Patient" in lines
-    assert backup_mod.category("[Code]", "manuell") == "Barcode/QR"
-    assert backup_mod.category("irgendwas", "email") == "E-Mail"
+    assert stats_mod.category("[Code]", "manuell") == "Barcode/QR"
+    assert stats_mod.category("irgendwas", "email") == "E-Mail"
 
 
 def test_export_and_restore(tmp_path: Path, report_pdf: Path, patient: Patient,
@@ -68,7 +69,7 @@ def test_export_and_restore(tmp_path: Path, report_pdf: Path, patient: Patient,
     assert "fachbegriffe/nutzervokabular.txt" not in names  # taken over into the table
     m = backup_mod.check(archive)
     assert m.patients == 1 and m.mappings >= 8 and m.config and m.vocabulary == 0
-    assert m.key_id == backup_mod.statistics(db).key_id
+    assert m.key_id == stats_mod.statistics(db).key_id
     # restore into an empty place: same identifiers, same mapping, same key
     new = tmp_path / "neu" / "pseudonyme.sqlite"
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "neu"))

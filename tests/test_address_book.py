@@ -13,6 +13,7 @@ from pseudonymed import config as config_module
 from pseudonymed.cli import app
 from pseudonymed.core.model import Patient
 from pseudonymed.pseudonyms import backup as backup_mod
+from pseudonymed.pseudonyms import statistics as stats_mod
 from pseudonymed.pseudonyms.store import (
     PseudonymStore,
     default_key_path,
@@ -125,7 +126,7 @@ def test_storage_location_configurable(data_folder: Path, tmp_path: Path, report
     with PseudonymStore() as sp:  # default store now lives there, same key, same code
         assert sp.path == new_db and sp.key_path == new_key
         assert sp.code_for(patient).code == code
-    st = backup_mod.statistics()
+    st = stats_mod.statistics()
     assert st.path == new_db and st.key_path == new_key and st.patients == 1
     # an explicit database path keeps its key next to it (tests, --speicher)
     with PseudonymStore(tmp_path / "anders" / "x.sqlite") as sp:
@@ -226,5 +227,5 @@ def test_database_page_storage_location(qapp: QApplication, data_folder: Path,  
     v = page.set_storage_location()
     assert v is not None and v.copied and "Speicherort" in page.location_status.text()
     assert default_path() == tmp_path / "woanders" / "db.sqlite"
-    assert backup_mod.statistics().patients == 1
+    assert stats_mod.statistics().patients == 1
     window.close()

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from pseudonymed import working_state as state_mod
 from pseudonymed.core.model import Hit
 from pseudonymed.gui.session import Document, Session
+from pseudonymed.gui.translation import shown, shown_error
 
 # Traffic light: red = will be redacted, yellow = uncertain (read badly, blanked as a
 # precaution), green = stays (medical term, discarded hit).  The source of a hit is in
@@ -330,7 +331,7 @@ class ReviewPage(QWidget):
         warnings = [w for w in v.warnings + v.notes
                     if "OCR" in w or "Textebene" in w or w.startswith("Unscharfe Suche")]
         note = self.tr("{n} Fachbegriffe markiert").format(n=v.medical_term_count)
-        self.note.setText(" · ".join([note] + warnings[:1]))
+        self.note.setText(" · ".join([note] + [shown(w) for w in warnings[:1]]))
 
     # -- actions ---------------------------------------------------------------------------------
     def select_hit(self, f: Hit) -> None:
@@ -383,7 +384,8 @@ class ReviewPage(QWidget):
                 text = pseudonym if pseudonym is not None else self.replacement_text.text().strip()
                 added = v.box(self.page, rect, text or self.tr("[geschwärzt]"))
         except Exception as e:  # noqa: BLE001 - must be visible, never silent
-            self.note.setText(self.tr("Kasten nicht gesetzt: {fehler}").format(fehler=e))
+            self.note.setText(self.tr("Kasten nicht gesetzt: {fehler}").format(
+                fehler=shown_error(e)))
             return
         self.selected = added[0] if added else None
         self.draw()
@@ -428,7 +430,7 @@ class ReviewPage(QWidget):
         try:
             f = v.take_up(self.page, span[0], span[1], self._replacement(pseudonym))
         except ValueError as e:
-            self.note.setText(str(e))
+            self.note.setText(shown_error(e))
             return
         self.selection = None
         self.selected = f
@@ -474,7 +476,7 @@ class ReviewPage(QWidget):
         except (state_mod.WorkingStateError, OSError) as e:
             if self.synchronous:
                 raise
-            QMessageBox.warning(self, self.tr("Arbeitsstand"), str(e))
+            QMessageBox.warning(self, self.tr("Arbeitsstand"), shown_error(e))
             return None
         self.note.setText(self.tr(
             "Arbeitsstand gespeichert: {dokument} und {konfiguration} (beide mit Klardaten,"

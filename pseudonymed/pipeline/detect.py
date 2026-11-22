@@ -10,6 +10,7 @@ from optdoc.pagetext import PageText
 
 from pseudonymed.checks.recheck import tolerance_key
 from pseudonymed.core.model import Hit
+from pseudonymed.core.text import say
 from pseudonymed.detection import codes as codes_module
 from pseudonymed.detection import identifiers as ident_module
 from pseudonymed.detection import medical_terms as terms_module
@@ -128,6 +129,8 @@ def discard_remembered(pages: list[PageEntry], remembered: set[tuple[str, str]],
                 s.hits.remove(f)
                 discarded.append(f)
     if discarded:
-        notes.append(f"{len(discarded)} Treffer nach gespeicherter Entscheidung verworfen"
-                     " (grün im Prüfschritt; Wiederherstellen hebt sie auf).")
+        notes.append(say(f"{len(discarded)} Treffer nach gespeicherter Entscheidung verworfen"
+                         " (grün im Prüfschritt; Wiederherstellen hebt sie auf).",
+                         f"{len(discarded)} hit(s) discarded by a remembered decision"
+                         " (green in the review; restoring undoes it)."))
     return discarded

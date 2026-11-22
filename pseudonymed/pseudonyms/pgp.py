@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pseudonymed.core.text import english, say
+
 if TYPE_CHECKING:
     import pysequoia as sq
 
@@ -63,8 +65,11 @@ class Certificate:
         """The last four groups of the fingerprint, enough to tell keys apart in a list."""
         return self.groups[-19:]  # the last four groups
 
-    def description(self) -> str:
+    def description(self, language: str = "de") -> str:
         """User IDs and the grouped fingerprint on one line, for dialogues and reports."""
+        if english(language):
+            who = "; ".join(self.user_ids) if self.user_ids else "without a name"
+            return f"{who} · fingerprint {self.groups}"
         who = "; ".join(self.user_ids) if self.user_ids else "ohne Namen"
         return f"{who} · Fingerabdruck {self.groups}"
 
@@ -116,7 +121,7 @@ def _gpg(arguments: list[str], input_text: bytes | None = None, home: Path | Non
     becomes a PGPError carrying gpg's last stderr line.  ``home`` sets GNUPGHOME."""
     program = gnupg_program()
     if not program:
-        raise PGPError("GnuPG (gpg) ist nicht installiert.")
+        raise PGPError(say("GnuPG (gpg) ist nicht installiert.", "GnuPG (gpg) is not installed."))
     environment = dict(os.environ)
     if home is not None:
         environment["GNUPGHOME"] = str(home)
@@ -124,11 +129,13 @@ def _gpg(arguments: list[str], input_text: bytes | None = None, home: Path | Non
         run = subprocess.run([program, "--batch", "--yes", *arguments], input=input_text,
                              capture_output=True, check=False, timeout=timeout, env=environment)
     except (OSError, subprocess.TimeoutExpired) as e:
-        raise PGPError(f"GnuPG konnte nicht ausgeführt werden: {e}") from e
+        raise PGPError(say(f"GnuPG konnte nicht ausgeführt werden: {e}",
+                           f"GnuPG could not be run: {e}")) from e
     if run.returncode != 0:
         message = run.stderr.decode("utf-8", "replace").strip()
-        raise PGPError("GnuPG meldet: " + (message.splitlines()[-1] if message else
-                                           f"Rückgabewert {run.returncode}"))
+        last = message.splitlines()[-1] if message else ""
+        raise PGPError(say(f"GnuPG meldet: {last or f'Rückgabewert {run.returncode}'}",
+                           f"GnuPG reports: {last or f'exit code {run.returncode}'}"))
     return run.stdout
 
 
@@ -140,18 +147,21 @@ def _fetch_https(address: str) -> bytes:
         with urllib.request.urlopen(request, timeout=15) as response:  # noqa: S310
             data = response.read(MAX_KEY_BYTES + 1)
     except OSError as e:
-        raise PGPError(f"Schlüssel konnte nicht geladen werden: {e}") from e
+        raise PGPError(say(f"Schlüssel konnte nicht geladen werden: {e}",
+                           f"The key could not be loaded: {e}")) from e
     if len(data) > MAX_KEY_BYTES:
-        raise PGPError("Die Antwort ist zu groß für einen Schlüssel.")
+        raise PGPError(say("Die Antwort ist zu groß für einen Schlüssel.",
+                           "The answer is too large for a key."))
     return data
 
 
 def _fetch_file(path: Path) -> bytes:
     """The bytes of a key file, refused when missing or larger than a key can be."""
     if not path.is_file():
-        raise PGPError(f"Schlüsseldatei nicht gefunden: {path}")
+        raise PGPError(say(f"Schlüsseldatei nicht gefunden: {path}", f"Key file not found: {path}"))
     if path.stat().st_size > MAX_KEY_BYTES:
-        raise PGPError("Die Datei ist zu groß für einen Schlüssel.")
+        raise PGPError(say("Die Datei ist zu groß für einen Schlüssel.",
+                           "The file is too large for a key."))
     return path.read_bytes()
 
 
@@ -161,7 +171,8 @@ def _fetch(source: str | Path) -> bytes:
         return source.encode("utf-8")
     text = str(source)
     if text.startswith("http://"):
-        raise PGPError("Öffentliche Schlüssel nur über https laden (oder als Datei).")
+        raise PGPError(say("Öffentliche Schlüssel nur über https laden (oder als Datei).",
+                           "Load public keys over https only (or as a file)."))
     if text.startswith("https://"):
         return _fetch_https(text)
     return _fetch_file(Path(text).expanduser())
@@ -175,7 +186,8 @@ def load_certificate(source: str | Path) -> Certificate:
         return _certificate_sequoia(data)
     if gnupg_program():
         return _certificate_gnupg(data)
-    raise PGPError("Weder pysequoia (Extra 'pgp') noch GnuPG vorhanden.")
+    raise PGPError(say("Weder pysequoia (Extra 'pgp') noch GnuPG vorhanden.",
+                       "Neither pysequoia (extra 'pgp') nor GnuPG is available."))
 
 
 def _certificate_sequoia(data: bytes) -> Certificate:
@@ -186,15 +198,17 @@ def _certificate_sequoia(data: bytes) -> Certificate:
     try:
         cert = sq.Cert.from_bytes(data)
     except Exception as e:  # noqa: BLE001
-        raise PGPError(f"Kein lesbarer OpenPGP-Schlüssel: {e}") from e
+        raise PGPError(say(f"Kein lesbarer OpenPGP-Schlüssel: {e}",
+                           f"Not a readable OpenPGP key: {e}")) from e
     if getattr(cert, "is_revoked", False):
-        raise PGPError("Der Schlüssel ist widerrufen.")
+        raise PGPError(say("Der Schlüssel ist widerrufen.", "The key is revoked."))
     expiry = cert.expiration
     if expiry is not None:
         import datetime as dt
 
         if expiry < dt.datetime.now(tz=expiry.tzinfo):
-            raise PGPError(f"Der Schlüssel ist abgelaufen ({expiry:%d.%m.%Y}).")
+            raise PGPError(say(f"Der Schlüssel ist abgelaufen ({expiry:%d.%m.%Y}).",
+                               f"The key expired on {expiry:%d %B %Y}."))
     return Certificate(fingerprint=str(cert.fingerprint).upper(),
                        user_ids=[str(u) for u in cert.user_ids],
                        armor=sq.armor(bytes(cert), sq.ArmorKind.PublicKey),
@@ -206,15 +220,18 @@ def _certificate_gnupg(data: bytes) -> Certificate:
     text, because the armour is kept verbatim for encrypting later."""
     text = data.decode("utf-8", "replace")
     if _PUBLIC_KEY_HEADER not in text:
-        raise PGPError("Ohne pysequoia bitte einen ASCII-gepanzerten Schlüssel"
-                       " (gpg --armor --export) angeben.")
+        raise PGPError(say("Ohne pysequoia bitte einen ASCII-gepanzerten Schlüssel"
+                           " (gpg --armor --export) angeben.",
+                           "Without pysequoia please give an ASCII-armoured key"
+                           " (gpg --armor --export)."))
     with tempfile.TemporaryDirectory() as folder:
         file = Path(folder) / "schluessel.asc"
         file.write_bytes(data)
         out = _gpg(["--with-colons", "--import-options", "show-only", "--import", str(file)])
     fpr, user_ids, expiry = _read_colon_output(out)
     if not fpr:
-        raise PGPError("GnuPG fand keinen Schlüssel in der Datei.")
+        raise PGPError(say("GnuPG fand keinen Schlüssel in der Datei.",
+                           "GnuPG found no key in the file."))
     return Certificate(fingerprint=fpr.upper(), user_ids=user_ids, armor=text, expiry=expiry)
 
 
@@ -239,9 +256,9 @@ def _read_colon_output(out: bytes) -> tuple[str, list[str], str]:
 def _check_validity(flags: str) -> None:
     """Refuse a key whose validity field marks it revoked (``r``) or expired (``e``)."""
     if "r" in flags:
-        raise PGPError("Der Schlüssel ist widerrufen.")
+        raise PGPError(say("Der Schlüssel ist widerrufen.", "The key is revoked."))
     if "e" in flags:
-        raise PGPError("Der Schlüssel ist abgelaufen.")
+        raise PGPError(say("Der Schlüssel ist abgelaufen.", "The key has expired."))
 
 
 # -- encrypt / decrypt -----------------------------------------------------------------------------
@@ -267,7 +284,8 @@ def decrypt(data: bytes, private_key: str | Path | None = None,
     if private_key:
         return _decrypt_sequoia(data, private_key, passphrase)
     if not gnupg_program():
-        raise PGPError("Kein privater Schlüssel angegeben und GnuPG nicht installiert.")
+        raise PGPError(say("Kein privater Schlüssel angegeben und GnuPG nicht installiert.",
+                           "No private key given and GnuPG not installed."))
     return _decrypt_gnupg(data, passphrase, gnupg_home)
 
 
@@ -275,20 +293,25 @@ def _decrypt_sequoia(data: bytes, private_key: str | Path,
                      passphrase: str | None) -> bytes:
     """Decrypt with a private-key file through pysequoia."""
     if not pysequoia_available():
-        raise PGPError("Für eine Schlüsseldatei wird pysequoia gebraucht (Extra 'pgp');"
-                       " sonst den Schlüssel in GnuPG importieren.")
+        raise PGPError(say("Für eine Schlüsseldatei wird pysequoia gebraucht (Extra 'pgp');"
+                           " sonst den Schlüssel in GnuPG importieren.",
+                           "A key file needs pysequoia (extra 'pgp'); otherwise import the key"
+                           " into GnuPG."))
     import pysequoia as sq
 
     try:
         tsk = sq.Tsk.from_file(str(Path(private_key).expanduser()))
     except Exception as e:  # noqa: BLE001
-        raise PGPError(f"Privater Schlüssel nicht lesbar: {e}. GnuPG-2.5-Exporte von"
-                       " Curve25519-Schlüsseln bitte über den Schlüsselbund nutzen.") from e
+        raise PGPError(say(f"Privater Schlüssel nicht lesbar: {e}. GnuPG-2.5-Exporte von"
+                           " Curve25519-Schlüsseln bitte über den Schlüsselbund nutzen.",
+                           f"The private key is not readable: {e}. Please use GnuPG 2.5 exports"
+                           " of Curve25519 keys through the keyring.")) from e
     dec = _unlocked(tsk, passphrase)
     try:
         return _plaintext(sq.decrypt(decryptor=dec, bytes=data))
     except Exception as e:  # noqa: BLE001
-        raise PGPError(f"Entschlüsselung fehlgeschlagen: {e}") from e
+        raise PGPError(say(f"Entschlüsselung fehlgeschlagen: {e}",
+                           f"Decryption failed: {e}")) from e
 
 
 def _unlocked(tsk: sq.Tsk, passphrase: str | None) -> sq.PyDecryptor:
@@ -299,8 +322,9 @@ def _unlocked(tsk: sq.Tsk, passphrase: str | None) -> sq.PyDecryptor:
         return tsk.decryptor(password=passphrase) if passphrase else tsk.decryptor()
     except Exception as e:  # noqa: BLE001
         if passphrase is None:
-            raise PGPError("Passphrase nötig") from e
-        raise PGPError(f"Schlüssel ließ sich nicht entsperren: {e}") from e
+            raise PGPError(say("Passphrase nötig", "Passphrase needed")) from e
+        raise PGPError(say(f"Schlüssel ließ sich nicht entsperren: {e}",
+                           f"The key could not be unlocked: {e}")) from e
 
 
 def _decrypt_gnupg(data: bytes, passphrase: str | None,
@@ -328,7 +352,7 @@ def _plaintext(result: sq.Decrypted) -> bytes:
 def encrypt_with_passphrase(data: bytes, passphrase: str) -> bytes:
     """``data`` as a binary OpenPGP message protected by a passphrase (backups)."""
     if not passphrase:
-        raise PGPError("Leere Passphrase.")
+        raise PGPError(say("Leere Passphrase.", "Empty passphrase."))
     if pysequoia_available():
         import pysequoia as sq
 
@@ -345,7 +369,8 @@ def decrypt_with_passphrase(data: bytes, passphrase: str) -> bytes:
         try:
             return _plaintext(sq.decrypt(passwords=[passphrase], bytes=data))
         except Exception as e:  # noqa: BLE001
-            raise PGPError(f"Entschlüsselung fehlgeschlagen (Passphrase?): {e}") from e
+            raise PGPError(say(f"Entschlüsselung fehlgeschlagen (Passphrase?): {e}",
+                               f"Decryption failed (passphrase?): {e}")) from e
     with tempfile.TemporaryDirectory() as folder:
         file = Path(folder) / "sicherung.gpg"
         file.write_bytes(data)
@@ -357,11 +382,13 @@ def decrypt_with_passphrase(data: bytes, passphrase: str) -> bytes:
 def create_key_pair(name: str, email: str) -> tuple[str, str]:
     """A fresh OpenPGP key pair (Curve25519) as armoured public and secret key."""
     if not pysequoia_available():
-        raise PGPError("Schlüssel erzeugen braucht pysequoia (Extra 'pgp').")
+        raise PGPError(say("Schlüssel erzeugen braucht pysequoia (Extra 'pgp').",
+                           "Creating a key needs pysequoia (extra 'pgp')."))
     import pysequoia as sq
 
     if not re.fullmatch(r"[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+", email or ""):
-        raise PGPError("Bitte eine gültige E-Mail-Adresse angeben.")
+        raise PGPError(say("Bitte eine gültige E-Mail-Adresse angeben.",
+                           "Please give a valid e-mail address."))
     tsk = sq.Tsk.generate(f"{name.strip()} <{email.strip()}>")
     public_key = sq.armor(bytes(tsk.extract_certificate()), sq.ArmorKind.PublicKey)
     secret_key = sq.armor(bytes(tsk), sq.ArmorKind.SecretKey)

@@ -66,6 +66,7 @@ class PipelineOptions:
     reference_population: int = risk_module.REFERENCE_GERMANY  # people the attacker chooses from
     own_places: str = ""  # places of the sender (practice, clinic), comma-separated, not counted
     redaction: RedactionOptions = field(default_factory=RedactionOptions)
+    language: str = "de"  # of the report and the vocabulary file ("en" from the English desktop)
 
     def as_dict(self) -> dict[str, object]:
         """The options as the report records them (no paths, no key material)."""

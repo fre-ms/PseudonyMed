@@ -28,9 +28,9 @@ app.add_typer(database_app, name="datenbank")
 @database_app.command("status")
 def database_status(store: StoreOption = None) -> None:
     """Was gespeichert ist: Zuordnungen je Kategorie, Größe, Integrität, Schlüssel."""
-    from pseudonymed.pseudonyms import backup as backup_mod
+    from pseudonymed.pseudonyms import statistics as stats_mod
 
-    st = backup_mod.statistics(store)
+    st = stats_mod.statistics(store)
     width = max(len(m) for m, _w in st.lines())
     for feature, value in st.lines():
         typer.echo(f"{feature:<{width}}  {value}")

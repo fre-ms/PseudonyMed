@@ -14,6 +14,7 @@ from optdoc.pagetext import Box
 
 from pseudonymed.checks.recheck import tolerance_key
 from pseudonymed.core.model import Hit, Kind, Patient
+from pseudonymed.core.text import say
 from pseudonymed.detection.fuzzy import Target
 from pseudonymed.detection.rules import Rule, box_to_hits
 from pseudonymed.pipeline.detect import correction_matches, discard_remembered, recognise_pages
@@ -157,7 +158,7 @@ class Preparation(PreparationBase):
         """
         s = self.pages[number]
         if s.ocr is None:
-            raise ValueError("Diese Seite hat keinen OCR-Text.")
+            raise ValueError(say("Diese Seite hat keinen OCR-Text.", "This page has no OCR text."))
         if unchanged(s, text):
             s.correction, s.correction_matches = None, []
             return []
@@ -241,7 +242,8 @@ def _page_notes(r: Toolkit, pages: list[PageEntry], spared: list[str]) -> list[s
     notes = analysis_notes(r, all_items, spared)
     unreadable = sum(1 for f in all_items if f.rule == "ocr.unlesbar")
     if unreadable:
-        notes.append(f"{unreadable} unlesbare OCR-Zeile(n) vorsorglich geschwärzt.")
+        notes.append(say(f"{unreadable} unlesbare OCR-Zeile(n) vorsorglich geschwärzt.",
+                         f"{unreadable} unreadable OCR line(s) redacted as a precaution."))
     return notes
 
 
@@ -255,7 +257,8 @@ def analyse(
     codes, unreadable lines, the corrected OCR text.  Takes over the documents of the
     reading (which must not be used afterwards)."""
     if reading.used_up:
-        raise RuntimeError("Diese Lesung wurde bereits analysiert.")
+        raise RuntimeError(say("Diese Lesung wurde bereits analysiert.",
+                               "This reading has been analysed already."))
     opt = opt or reading.opt
     own_store = store is None
     store = store or PseudonymStore()

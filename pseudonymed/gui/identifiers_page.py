@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from pseudonymed.detection import identifiers as ident_module
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
+from pseudonymed.gui.translation import shown_error
 
 
 class IdentifiersModel(ListModel):
@@ -285,7 +286,7 @@ class IdentifiersPage(ListPage):
             with self._identifiers() as ident:
                 new, read_in = ident.import_csv(path, category)
         except OSError as e:
-            self._notify(self.tr("Identifikatoren"), str(e))
+            self._notify(self.tr("Identifikatoren"), shown_error(e))
             return 0
         self._clear_cache()
         self.status.setText(self.tr(

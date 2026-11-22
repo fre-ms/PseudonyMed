@@ -143,7 +143,7 @@ Step 10 of the desktop (`pseudonymed datenbank status|speicherort|exportieren|im
 
 ### Languages
 
-The interface is German with an en-GB translation (`pseudonymed gui --language en`, the *Language* menu, or `PSEUDONYMED_SPRACHE=en`); manuals: `docs/anleitung.md` (German), `docs/manual.md` (English). Reports and command-line messages are German.
+The interface is German with an en-GB translation (`pseudonymed gui --language en`, the *Language* menu, or `PSEUDONYMED_SPRACHE=en`); manuals: `docs/anleitung.md` (German), `docs/manual.md` (English). In the English interface the messages of the core, the control step and the reports written from the desktop are English as well (the core writes `say(german, english)`, `pseudonymed/core/text.py`); the command line and its reports stay German, and so do the pseudonyms, which belong to the German document.
 
 ## What it does not do yet
 

@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from pseudonymed.checks.report import as_text
 from pseudonymed.document import optdoc_adapter
 from pseudonymed.gui.session import Document, Session
-from pseudonymed.gui.translation import interface_language
+from pseudonymed.gui.translation import interface_language, shown
 from pseudonymed.gui.worker import Worker
 from pseudonymed.pipeline import Result
 
@@ -183,7 +183,7 @@ class ExportPage(QWidget):
         if total is None:
             self.risk_text.setText(self.tr("noch nicht geschätzt"))
         else:
-            self.risk_text.setText(total.short() + (
+            self.risk_text.setText(total.short(interface_language()) + (
                 self.tr(" (mit {n} früheren Dokumenten)").format(n=earlier) if earlier else ""))
         self.risk_confirmed.setVisible(self.risk_colour == "rot")
         if self.risk_colour != "rot":
@@ -201,7 +201,7 @@ class ExportPage(QWidget):
     def refresh(self) -> None:
         """Called when the step is shown: run the re-check for everything that needs it."""
         colour, text = self.session.traffic_light()
-        self._set_traffic_light(colour, self.tr(text))
+        self._set_traffic_light(colour, shown(text))
         if colour == "grau" and any(d.ready_to_check and not d.precheck_current
                                     for d in self.session.documents):
             self.check()
@@ -228,7 +228,7 @@ class ExportPage(QWidget):
         """Show the outcome of the re-check: the light, the status line and, for red, the
         residual hits per document."""
         colour, text = self.session.traffic_light()
-        self._set_traffic_light(colour, self.tr(text))
+        self._set_traffic_light(colour, shown(text))
         if colour == "rot":
             self._notify_abort()
         elif colour == "gelb":
@@ -313,7 +313,7 @@ class ExportPage(QWidget):
                 self.status.setText(self.tr("Fertig."))
                 self.opener.setEnabled(True)
                 colour, text = self.session.traffic_light()
-                self._set_traffic_light(colour, self.tr(text))
+                self._set_traffic_light(colour, shown(text))
             self.again.setEnabled(True)
             return
         d = self._queue.pop(0)
@@ -339,7 +339,7 @@ class ExportPage(QWidget):
 
     def _finish(self, result: Result) -> None:
         """Append the document's report and outcome to the protocol, then go on."""
-        text = as_text(result.report)
+        text = as_text(result.report, interface_language())
         if self._phase == "pruefen":
             text += (self.tr("Erneute Prüfung bestanden; Export möglich.") if result.released
                      else self.tr("Erneute Prüfung NICHT bestanden; Export gesperrt.")) + "\n"

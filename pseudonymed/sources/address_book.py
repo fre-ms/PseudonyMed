@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pseudonymed.config import CardDAVConfig, load_config, load_password, load_settings
 from pseudonymed.core.model import Patient
+from pseudonymed.core.text import error_text, say
 from pseudonymed.sources.carddav import CardDAVClient, CardDAVError, fits
 from pseudonymed.sources.vcf import patients_from_vcf
 
@@ -60,14 +61,17 @@ def search(term: str, config_file: str | Path | None = None,
         try:
             result.patients += search_local(local, term)
         except (OSError, ValueError) as e:
-            result.error.append(f"Lokales Adressbuch {local}: {e}")
+            result.error.append(say(f"Lokales Adressbuch {local}: {e}",
+                                    f"Local address book {local}: {error_text(e, 'en')}"))
     k = carddav or load_config(config_file)
     if k.complete:
         result.sources.append(f"CardDAV ({k.code})")
         password = load_password(k)
         if not password:
-            result.error.append(f"Kein App-Passwort für {k.code} (Schlüsselbund,"
-                                " Konfiguration oder PSEUDONYMED_CARDDAV_PASSWORT).")
+            result.error.append(say(f"Kein App-Passwort für {k.code} (Schlüsselbund,"
+                                    " Konfiguration oder PSEUDONYMED_CARDDAV_PASSWORT).",
+                                    f"No app password for {k.code} (keyring, configuration or"
+                                    " PSEUDONYMED_CARDDAV_PASSWORT)."))
         else:
             try:
                 client = CardDAVClient(k.url, k.user, password)
@@ -76,5 +80,5 @@ def search(term: str, config_file: str | Path | None = None,
                 result.patients += [kk.patient for kk in contacts
                                     if kk.patient.key() not in known]
             except CardDAVError as e:
-                result.error.append(f"CardDAV: {e}")
+                result.error.append(say(f"CardDAV: {e}", f"CardDAV: {error_text(e, 'en')}"))
     return result

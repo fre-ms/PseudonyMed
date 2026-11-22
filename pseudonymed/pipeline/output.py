@@ -9,15 +9,19 @@ from collections.abc import Iterable
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import save_report
 from pseudonymed.core.model import Hit
+from pseudonymed.core.text import in_language, say
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.pipeline.options import PipelineOptions, Result, target_path
 from pseudonymed.pipeline.preparation import PreparationBase
 from pseudonymed.pseudonyms import capsule as capsule_module
 from pseudonymed.pseudonyms import pgp as pgp_module
 
-VOCABULARY_HEADER = ("# PseudonyMed: im Prüfschritt verworfene Rate-Treffer (NER, unscharfe"
-                     " Suche), ein Begriff je Zeile.\n# In „3 Fachvokabular“ als Nutzervokabular"
-                     " importierbar; Zeilen mit # werden überlesen.\n")
+VOCABULARY_HEADER = say("# PseudonyMed: im Prüfschritt verworfene Rate-Treffer (NER, unscharfe"
+                        " Suche), ein Begriff je Zeile.\n# In „3 Fachvokabular“ als"
+                        " Nutzervokabular importierbar; Zeilen mit # werden überlesen.\n",
+                        "# PseudonyMed: guesses discarded in the review (NER, fuzzy search), one"
+                        " term per line.\n# Can be imported in “3 Medical vocabulary” as user"
+                        " vocabulary; lines starting with # are skipped.\n")
 
 
 def vocabulary_from(discarded: Iterable[Hit]) -> list[str]:
@@ -50,10 +54,15 @@ def write_capsule(v: PreparationBase, result: Result, notes: list[str]) -> None:
     target = capsule_module.write(capsule, certificate,
                                   target_path(v.source, v.opt, capsule_module.EXTENSION))
     result.target_capsule = target
-    notes.append(f"Schlüsselkapsel für den Empfänger (Fingerabdruck … {certificate.short})"
-                 f" geschrieben: {target.name}. Die Zuordnung der Pseudonyme steht nur dort,"
-                 " verschlüsselt; die lokale Datenbank bleibt unberührt. Die Kapsel geht an"
-                 " den Empfänger, nie an das Sprachmodell.")
+    notes.append(say(
+        f"Schlüsselkapsel für den Empfänger (Fingerabdruck … {certificate.short})"
+        f" geschrieben: {target.name}. Die Zuordnung der Pseudonyme steht nur dort,"
+        " verschlüsselt; die lokale Datenbank bleibt unberührt. Die Kapsel geht an"
+        " den Empfänger, nie an das Sprachmodell.",
+        f"Key capsule for the recipient (fingerprint … {certificate.short}) written:"
+        f" {target.name}. The mapping of the pseudonyms is only in there, encrypted; the"
+        " local database stays untouched. The capsule goes to the recipient, never to the"
+        " language model."))
 
 
 def residual_risk(v: PreparationBase, text: str) -> risk_module.ResidualRisk:
@@ -73,10 +82,13 @@ def write_vocabulary(v: PreparationBase, result: Result, notes: list[str]) -> No
         return
     target = target_path(v.source, v.opt, ".vokabular.txt")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(VOCABULARY_HEADER + "\n".join(terms) + "\n", encoding="utf-8")
+    header = in_language(VOCABULARY_HEADER, v.opt.language)
+    target.write_text(header + "\n".join(terms) + "\n", encoding="utf-8")
     result.target_vocabulary = target
-    notes.append(f"{len(terms)} verworfene Rate-Treffer als Vokabular geschrieben"
-                 f" ({target.name}); in „3 Fachvokabular“ importierbar.")
+    notes.append(say(f"{len(terms)} verworfene Rate-Treffer als Vokabular geschrieben"
+                     f" ({target.name}); in „3 Fachvokabular“ importierbar.",
+                     f"{len(terms)} discarded guesses written as vocabulary ({target.name});"
+                     " can be imported in “3 Medical vocabulary”."))
 
 
 def remember_decisions(v: PreparationBase) -> None:
@@ -95,5 +107,5 @@ def write_report(result: Result, opt: PipelineOptions) -> None:
         return
     target = target_path(result.source, opt, ".bericht.json")
     target.parent.mkdir(parents=True, exist_ok=True)
-    save_report(result.report, target)
+    save_report(result.report, target, opt.language)
     result.target_report = target

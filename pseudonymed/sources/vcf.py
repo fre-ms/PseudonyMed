@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from pseudonymed.core.model import Patient, parse_date
+from pseudonymed.core.text import say
 
 _KVNR = re.compile(r"(?<![A-Z0-9])[A-Z]\d{9}(?!\d)")
 _SALUTATION_M = {"herr", "herrn", "hr.", "hr", "mr", "mr.", "sr."}
@@ -339,7 +340,7 @@ def _notes(card: VCard) -> list[str]:
     notes = [h.text.strip() for h in card.all_items("NOTE") if h.text.strip()]
     role = card.value("ROLE")
     if role:
-        notes.append(f"Beruf: {role}")
+        notes.append(say(f"Beruf: {role}", f"Occupation: {role}"))
     return notes
 
 

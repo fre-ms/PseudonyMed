@@ -15,17 +15,24 @@ import pymupdf
 from optdoc.pagetext import PageText, read_text_layers
 
 from pseudonymed.core.model import Kind, Recheck, Role
+from pseudonymed.core.text import say
 from pseudonymed.detection.rules import Rule, find, find_in_text
 from pseudonymed.detection.variants import exact_pattern
 from pseudonymed.redaction.pdf import ALLOWED_METADATA, NOTICE_PREFIX
 
-KIND_NAMES = {
-    Kind.NAME: "Name", Kind.FIRST_NAME: "Vorname", Kind.SURNAME: "Nachname",
-    Kind.BIRTH_NAME: "Geburtsname", Kind.BIRTH_DATE: "Geburtsdatum", Kind.ADDRESS: "Straße",
-    Kind.PLACE: "Ort", Kind.PHONE: "Telefon", Kind.EMAIL: "E-Mail",
-    Kind.INSURANCE_NUMBER: "Versichertennummer", Kind.PATIENT_ID: "Patienten-ID",
-    Kind.CASE_NUMBER: "Aktenzeichen", Kind.IBAN: "IBAN", Kind.TERM: "Begriffe",
+KIND_NAMES: dict[Kind, str] = {
+    Kind.NAME: say("Name", "Name"), Kind.FIRST_NAME: say("Vorname", "First name"),
+    Kind.SURNAME: say("Nachname", "Surname"), Kind.BIRTH_NAME: say("Geburtsname", "Birth name"),
+    Kind.BIRTH_DATE: say("Geburtsdatum", "Date of birth"), Kind.ADDRESS: say("Straße", "Street"),
+    Kind.PLACE: say("Ort", "Place"), Kind.PHONE: say("Telefon", "Phone"),
+    Kind.EMAIL: say("E-Mail", "E-mail"),
+    Kind.INSURANCE_NUMBER: say("Versichertennummer", "Insurance number"),
+    Kind.PATIENT_ID: say("Patienten-ID", "Patient ID"),
+    Kind.CASE_NUMBER: say("Aktenzeichen", "Case number"), Kind.IBAN: say("IBAN", "IBAN"),
+    Kind.TERM: say("Begriffe", "Terms"),
 }
+_RELATIVES = say("Angehörige", "Relatives")
+_REFERRERS = say("Zuweiser", "Referrers")
 
 
 def checked_from(rules: Iterable[Rule]) -> list[str]:
@@ -34,10 +41,11 @@ def checked_from(rules: Iterable[Rule]) -> list[str]:
     names: list[str] = []
     roles: list[str] = []
     for r in rules:
+        entry: str
         if r.role == Role.RELATIVE:
-            entry = "Angehörige"
+            entry = _RELATIVES
         elif r.role == Role.REFERRER:
-            entry = "Zuweiser"
+            entry = _REFERRERS
         else:
             entry = KIND_NAMES.get(r.kind, str(r.kind))
         target = roles if r.role in (Role.RELATIVE, Role.REFERRER) else names
@@ -172,25 +180,28 @@ def _check_metadata(doc: pymupdf.Document, result: Recheck) -> None:
         if _metadata_harmless(field_name, value):
             continue
         result.metadata_empty = False
-        result.remarks.append(f"Metadatum '{field_name}' ist nicht leer")
+        result.remarks.append(say(f"Metadatum '{field_name}' ist nicht leer",
+                                  f"Metadata entry '{field_name}' is not empty"))
     if doc.xref_xml_metadata() > 0:
         result.metadata_empty = False
-        result.remarks.append("XMP-Metadaten vorhanden")
+        result.remarks.append(say("XMP-Metadaten vorhanden", "XMP metadata present"))
 
 
 def _check_structure(doc: pymupdf.Document, result: Recheck) -> None:
     """Flags embedded files, bookmarks, annotations and form fields: a clean export has
     none of them, and each could carry text the rules never saw."""
     findings = [
-        (doc.embfile_count(), "{n} eingebettete Datei(en)"),
-        (len(doc.get_toc()), "Lesezeichen vorhanden"),
-        (sum(len(list(p.annots())) for p in doc), "{n} Anmerkung(en) vorhanden"),
-        (sum(len(list(p.widgets())) for p in doc), "{n} Formularfeld(er) vorhanden"),
+        (doc.embfile_count(), "{n} eingebettete Datei(en)", "{n} embedded file(s)"),
+        (len(doc.get_toc()), "Lesezeichen vorhanden", "Bookmarks present"),
+        (sum(len(list(p.annots())) for p in doc), "{n} Anmerkung(en) vorhanden",
+         "{n} annotation(s) present"),
+        (sum(len(list(p.widgets())) for p in doc), "{n} Formularfeld(er) vorhanden",
+         "{n} form field(s) present"),
     ]
-    for count, message in findings:
+    for count, de, en in findings:
         if count:
             result.structure_clean = False
-            result.remarks.append(message.format(n=count))
+            result.remarks.append(say(de.format(n=count), en.format(n=count)))
 
 
 def check(

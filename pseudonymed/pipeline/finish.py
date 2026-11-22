@@ -20,6 +20,7 @@ from pseudonymed.checks.recheck import (
 )
 from pseudonymed.checks.report import create_report
 from pseudonymed.core.model import Hit, Patient, Recheck, RunLog
+from pseudonymed.core.text import say
 from pseudonymed.detection import codes as codes_module
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection.fuzzy import find_fuzzy
@@ -93,8 +94,10 @@ def _redact_pages(doc: pymupdf.Document, original: pymupdf.Document, pages: list
         if not layout.layout_intact:
             rasterise_page(doc, s.number, original, s.text, s.hits, opt)
             rasterised.add(s.number)
-            warnings.append(f"Seite {s.number + 1}: Textlayout nach der Redaktion verschoben,"
-                            " Seite deshalb gerastert.")
+            warnings.append(say(f"Seite {s.number + 1}: Textlayout nach der Redaktion verschoben,"
+                                " Seite deshalb gerastert.",
+                                f"Page {s.number + 1}: the text layout shifted after the redaction,"
+                                " so the page was rasterised."))
     return rasterised
 
 
@@ -106,7 +109,7 @@ def _rasterised_output(doc: pymupdf.Document, pages: list[PageEntry], opt: Redac
     if opt.text_layer:
         _embed_text_layer(output, pages, {s.number for s in pages}, opt)
     sanitise(output, notice=opt.notice)
-    notes.append("Ausgabe gerastert.")
+    notes.append(say("Ausgabe gerastert.", "Output rasterised."))
     return output
 
 
@@ -225,12 +228,14 @@ def _finalise_pdf(v: Preparation, final: bool) -> Result:
                     code=v.code, text=text, preview=preview)
     result.residual_risk = residual_risk(v, text)
     if v.without_text:
-        recheck.remarks.append("Seiten ohne Textebene konnten nicht geprüft werden")
+        recheck.remarks.append(say("Seiten ohne Textebene konnten nicht geprüft werden",
+                                   "Pages without a text layer could not be checked"))
     if recheck.passed and not v.without_text:
         _release(v, result, target, text, notes)
     else:
         target.unlink(missing_ok=True)
-        warnings.append("Nicht freigegeben: Ausgabe verworfen.")
+        warnings.append(say("Nicht freigegeben: Ausgabe verworfen.",
+                            "Not released: output discarded."))
     log = RunLog(_report_options(v), warnings, notes,
                  result.residual_risk.as_dict())
     result.report = create_report(source, result.target_pdf, page_count,
@@ -249,7 +254,8 @@ def finalise(v: Preparation | TextPreparation, final: bool = True) -> Result:
     are stored when the options ask for it.
     """
     if v.finalised:
-        raise RuntimeError("Diese Vorbereitung wurde bereits abgeschlossen.")
+        raise RuntimeError(say("Diese Vorbereitung wurde bereits abgeschlossen.",
+                               "This preparation has been finished already."))
     try:
         if isinstance(v, TextPreparation):
             return finalise_text(v, final)

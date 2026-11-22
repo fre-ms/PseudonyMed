@@ -34,8 +34,10 @@ from PySide6.QtWidgets import (
 
 from pseudonymed.detection import extra_data as extra_data_mod
 from pseudonymed.gui.session import Document, Session
+from pseudonymed.gui.translation import interface_language, shown, shown_error
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
+from pseudonymed.pseudonyms import statistics as stats_mod
 
 
 class DatabasePage(QWidget):
@@ -261,7 +263,7 @@ class DatabasePage(QWidget):
         except (extra_data_mod.ExtraDataError, OSError, ValueError, KeyError, zipfile.BadZipFile,
                 ET.ParseError) as e:
             self._failed(self.extra_status,
-                         self.tr("Laden fehlgeschlagen: {fehler}").format(fehler=e), e)
+                         self.tr("Laden fehlgeschlagen: {fehler}").format(fehler=shown_error(e)), e)
             return None
         finally:
             if not self.synchronous:
@@ -284,10 +286,10 @@ class DatabasePage(QWidget):
             QMessageBox.StandardButton.Yes
 
     # -- statistics --------------------------------------------------------------------------------
-    def refresh(self) -> backup_mod.Statistics:
+    def refresh(self) -> stats_mod.Statistics:
         """Re-read the statistics into the table and the paths into the location fields
         (a field being edited keeps its text); returns the statistics."""
-        st = backup_mod.statistics(self.session.store_path)
+        st = stats_mod.statistics(self.session.store_path)
         if not self.database_location.hasFocus():
             self.database_location.setText(str(st.path))
         if not self.key_location.hasFocus():
@@ -295,7 +297,7 @@ class DatabasePage(QWidget):
         lines = st.lines()
         self.table.setRowCount(len(lines))
         for i, (feature, value) in enumerate(lines):
-            self.table.setItem(i, 0, QTableWidgetItem(feature))
+            self.table.setItem(i, 0, QTableWidgetItem(shown(feature)))
             self.table.setItem(i, 1, QTableWidgetItem(value))
         return st
 
@@ -347,9 +349,9 @@ class DatabasePage(QWidget):
                                     self.copy_to_location.isChecked())
         except (backup_mod.BackupError, OSError) as e:
             self._failed(self.location_status, self.tr(
-                "Speicherort nicht übernommen: {fehler}").format(fehler=e), e)
+                "Speicherort nicht übernommen: {fehler}").format(fehler=shown_error(e)), e)
             return None
-        self.location_status.setText(v.description())
+        self.location_status.setText(v.description(interface_language()))
         self.refresh()
         return v
 
@@ -381,7 +383,7 @@ class DatabasePage(QWidget):
                                      passphrase=passphrase)
         except (backup_mod.BackupError, pgp_module.PGPError, OSError) as e:
             self._failed(self.export_status, self.tr(
-                "Sicherung fehlgeschlagen: {fehler}").format(fehler=e), e)
+                "Sicherung fehlgeschlagen: {fehler}").format(fehler=shown_error(e)), e)
             return None
         self.export_status.setText(self.tr("Gesichert: {pfad}").format(pfad=path) + (
             self.tr(" (verschlüsselt; gpg --decrypt öffnet das Archiv auch ohne PseudonyMed)")
@@ -424,20 +426,20 @@ class DatabasePage(QWidget):
             m = backup_mod.check(Path(path), self.import_passphrase.text() or None)
         except (backup_mod.BackupError, OSError) as e:
             self._failed(self.archive_info,
-                         self.tr("Archiv nicht lesbar: {fehler}").format(fehler=e), e)
+                         self.tr("Archiv nicht lesbar: {fehler}").format(fehler=shown_error(e)), e)
             return None
-        st = backup_mod.statistics(self.session.store_path)
+        st = stats_mod.statistics(self.session.store_path)
         self.manifest, self.archive = m, Path(path)
         self._offer_import_mode(m, st)
         self.import_button.setEnabled(True)
         return m
 
-    def _offer_import_mode(self, m: backup_mod.Manifest, st: backup_mod.Statistics) -> None:
+    def _offer_import_mode(self, m: backup_mod.Manifest, st: stats_mod.Statistics) -> None:
         """Describe the archive and offer merging only when its key is the local one (or
         there is no local database yet); with another key only replacing remains."""
         same = st.key_id and st.key_id == m.key_id
         self.archive_info.setText(self.tr("Archiv: {beschreibung}. ").format(
-            beschreibung=m.description()) + (
+            beschreibung=m.description(interface_language())) + (
             self.tr("Gleicher Schlüssel wie lokal: Zusammenführen möglich.") if same else
             self.tr("Anderer Schlüssel als lokal (oder noch keiner): nur Ersetzen.")))
         self.mode_merge.setEnabled(bool(same) or not st.exists)
@@ -464,10 +466,10 @@ class DatabasePage(QWidget):
                                        config=self.import_config.isChecked(),
                                        vocabulary=self.import_vocabulary.isChecked())
         except (backup_mod.BackupError, OSError) as e:
-            self._failed(self.import_status,
-                         self.tr("Import fehlgeschlagen: {fehler}").format(fehler=e), e)
+            self._failed(self.import_status, self.tr(
+                "Import fehlgeschlagen: {fehler}").format(fehler=shown_error(e)), e)
             return None
-        self.import_status.setText(b.description())
+        self.import_status.setText(b.description(interface_language()))
         self.import_passphrase.clear()
         self.refresh()
         return b

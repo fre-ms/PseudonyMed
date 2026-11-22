@@ -14,6 +14,7 @@ from pseudonymed import working_state as state_mod
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Patient
 from pseudonymed.core.stored import field_values
+from pseudonymed.core.text import Text, say
 from pseudonymed.document.text_file import TEXT_EXTENSIONS, is_text_file
 from pseudonymed.pipeline import (
     OpenedDocument,
@@ -33,25 +34,31 @@ from pseudonymed.pseudonyms.pgp import Certificate
 from pseudonymed.pseudonyms.store import PseudonymStore, UncertainMatch, one_time_store
 
 
-def _ocr_notice(pages: list[int]) -> str:
+def _ocr_notice(pages: list[int]) -> Text:
     """The ", OCR auf Seite(n) …" suffix of a state line; empty when no page needed OCR."""
-    return f", OCR auf Seite(n) {', '.join(map(str, pages))}" if pages else ""
+    if not pages:
+        return say("", "")
+    listed = ", ".join(map(str, pages))
+    return say(f", OCR auf Seite(n) {listed}", f", OCR on page(s) {listed}")
 
 
 def _state_analysed(v: Preparation | TextPreparation) -> str:
     """State line of an analysed document: pages, hits and the OCR pages; a text file
     has no pages to count."""
     if v.is_text:
-        return f"Text, {len(v.hits)} Treffer"
-    return f"{len(v.pages)} Seite(n), {len(v.hits)} Treffer{_ocr_notice(v.ocr_pages)}"
+        return say(f"Text, {len(v.hits)} Treffer", f"Text, {len(v.hits)} hit(s)")
+    ocr = _ocr_notice(v.ocr_pages)
+    return say(f"{len(v.pages)} Seite(n), {len(v.hits)} Treffer{ocr}",
+               f"{len(v.pages)} page(s), {len(v.hits)} hit(s){ocr.en}")
 
 
 def _state_loaded(opened: OpenedDocument) -> str:
     """State line of an opened document: its pages and how many lack a text layer."""
     n = len(opened.candidates)
     if n:
-        return f"{opened.page_count} Seite(n), {n} ohne Textebene (aufbereiten)"
-    return f"{opened.page_count} Seite(n), geladen"
+        return say(f"{opened.page_count} Seite(n), {n} ohne Textebene (aufbereiten)",
+                   f"{opened.page_count} page(s), {n} without text layer (clean up)")
+    return say(f"{opened.page_count} Seite(n), geladen", f"{opened.page_count} page(s), loaded")
 
 
 @dataclass
@@ -106,23 +113,25 @@ class Document:
     def state(self) -> str:
         """One line for the document list: the error, else the furthest phase reached."""
         if self.error:
-            return f"Fehler: {self.error}"
+            return say(f"Fehler: {self.error}", f"Error: {self.error}")
         if self.result is not None:
-            return "freigegeben" if self.result.released else "nicht freigegeben"
+            return (say("freigegeben", "released") if self.result.released
+                    else say("nicht freigegeben", "not released"))
         if self.preparation is not None:
             return _state_analysed(self.preparation)
         if self.reading is not None:
             ocr = _ocr_notice(self.reading.ocr_pages)
-            return f"{self.reading.page_count} Seite(n) gelesen{ocr}"
+            return say(f"{self.reading.page_count} Seite(n) gelesen{ocr}",
+                       f"{self.reading.page_count} page(s) read{ocr.en}")
         if self.opened is not None:
             return _state_loaded(self.opened)
-        return "noch nicht analysiert"
+        return say("noch nicht analysiert", "not analysed yet")
 
 
 def _pending_preparation(d: Document) -> Preparation | TextPreparation:
     """The open preparation of an analysed document; ValueError for any other state."""
     if d.preparation is None or not d.ready_to_check:
-        raise ValueError("Dokument ist nicht analysiert.")
+        raise ValueError(say("Dokument ist nicht analysiert.", "The document is not analysed."))
     return d.preparation
 
 
@@ -192,14 +201,15 @@ def _copy_outputs(source: Result, target_folder: Path) -> Result:
 
 
 _TRAFFIC_LIGHT_GREEN = ("gruen",
-                        "Erneute Prüfung bestanden: nichts mehr gefunden, bereit zum Export.")
+                        say("Erneute Prüfung bestanden: nichts mehr gefunden, bereit zum Export.",
+                            "Re-check passed: nothing found any more, ready for the export."))
 
 
 def _traffic_light_check_pending(pending: list[Document]) -> tuple[str, str] | None:
     """Grey while a document's pre-check is missing or older than its review."""
     if all(d.precheck_current for d in pending):
         return None
-    return "grau", "Erneute Prüfung steht aus."
+    return "grau", say("Erneute Prüfung steht aus.", "The re-check is still to come.")
 
 
 def _traffic_light_remaining_matches(pending: list[Document]) -> tuple[str, str] | None:
@@ -207,7 +217,9 @@ def _traffic_light_remaining_matches(pending: list[Document]) -> tuple[str, str]
     red = sum(1 for d in pending if d.precheck is not None and not d.precheck.released)
     if not red:
         return None
-    return "rot", f"Identifikatoren noch gefunden in {red} Dokument(en): nichts wird exportiert."
+    return "rot", say(f"Identifikatoren noch gefunden in {red} Dokument(en): nichts wird"
+                      " exportiert.",
+                      f"Identifiers still found in {red} document(s): nothing will be exported.")
 
 
 def _traffic_light_warnings(pending: list[Document]) -> tuple[str, str] | None:
@@ -215,7 +227,9 @@ def _traffic_light_warnings(pending: list[Document]) -> tuple[str, str] | None:
     yellow = sum(1 for d in pending if d.precheck is not None and d.precheck.report.warnings)
     if not yellow:
         return None
-    return "gelb", f"Erneute Prüfung bestanden; {yellow} Dokument(e) mit Warnungen, bitte lesen."
+    return "gelb", say(f"Erneute Prüfung bestanden; {yellow} Dokument(e) mit Warnungen, bitte"
+                       " lesen.",
+                       f"Re-check passed; {yellow} document(s) with warnings, please read them.")
 
 
 @dataclass
@@ -231,6 +245,7 @@ class Session:
     documents: list[Document] = field(default_factory=list)
     matching: str | None = None  # decision for an uncertain match, set by the dialog
     recipient: Certificate | None = None  # pseudonyms for someone else: one-time key, capsule
+    language: str = "de"  # of the interface: reports and vocabulary files are written in it
     _scratch: Path | None = None
     _one_time: PseudonymStore | None = None
 
@@ -325,7 +340,8 @@ class Session:
         """Restore a saved working state: the review is filled in, the patient taken over."""
         assert d.working_state is not None
         if self.recipient is not None:
-            d.error = "Im Empfängermodus lässt sich kein Arbeitsstand laden."
+            d.error = say("Im Empfängermodus lässt sich kein Arbeitsstand laden.",
+                          "A working state cannot be loaded in recipient mode.")
             raise ValueError(d.error)
         try:
             a = state_mod.read(d.working_state)
@@ -350,11 +366,12 @@ class Session:
         analysed already is analysed again on its saved reading (clean-up, OCR and
         corrections stay), and the boxes, masks, marks and discards are taken over."""
         if self.patient is None:
-            raise ValueError("Kein Patient gewählt.")
+            raise ValueError(say("Kein Patient gewählt.", "No patient chosen."))
         patient = self.patient
         old = _capture_state(d)
         d.preparation, d.result, d.error = None, None, ""
-        opt = PipelineOptions(**{**self.options.__dict__, "matching": self.matching})
+        opt = PipelineOptions(**{**self.options.__dict__, "matching": self.matching,
+                                 "language": self.language})
         store = self.store()
         try:
             if old is None:
@@ -382,7 +399,7 @@ class Session:
         """The options for finishing ``v``: the session's, with the match decision, the
         date form the analysis used and the folder the files go to."""
         return PipelineOptions(**{**self.options.__dict__, "matching": self.matching,
-                                 "date_format": v.opt.date_format,
+                                 "language": self.language, "date_format": v.opt.date_format,
                                  "target_folder": target_folder})
 
     def check(self, d: Document) -> Result:
@@ -448,8 +465,8 @@ class Session:
         """Without open documents: green once every finished one was released, else grey."""
         done = [d.result for d in self.documents if d.result is not None]
         if done and all(e.released for e in done):
-            return "gruen", "Exportiert."
-        return "grau", "Keine analysierten Dokumente."
+            return "gruen", say("Exportiert.", "Exported.")
+        return "grau", say("Keine analysierten Dokumente.", "No analysed documents.")
 
     def control(self) -> tuple[risk_module.ResidualRisk | None, int]:
         """All checked documents of the session together with what earlier released

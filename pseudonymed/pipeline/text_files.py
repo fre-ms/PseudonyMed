@@ -15,6 +15,7 @@ from pseudonymed.checks.recheck import (
 )
 from pseudonymed.checks.report import create_report
 from pseudonymed.core.model import Hit, Kind, Patient, Recheck, RunLog
+from pseudonymed.core.text import say
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import number_words
 from pseudonymed.detection.fuzzy import Target, find_fuzzy
@@ -114,8 +115,10 @@ def _fuzzy_note(hits: list[Hit]) -> list[str]:
     fuzzy_count = sum(1 for f in hits if f.source == "unscharf")
     if not fuzzy_count:
         return []
-    return [f"Unscharfe Suche: {fuzzy_count} abweichend geschriebene Treffer"
-            " (Transkript, Tippfehler); im Prüfschritt ansehen."]
+    return [say(f"Unscharfe Suche: {fuzzy_count} abweichend geschriebene Treffer"
+                " (Transkript, Tippfehler); im Prüfschritt ansehen.",
+                f"Fuzzy search: {fuzzy_count} hit(s) written differently (transcript, typing"
+                " errors); look at them in the review.")]
 
 
 def prepare_text(
@@ -236,7 +239,8 @@ def finalise_text(v: TextPreparation, final: bool = True) -> Result:
     if recheck.passed:
         _write_text_output(v, result, output, notes)
     else:
-        warnings.append("Nicht freigegeben: keine Ausgabe geschrieben.")
+        warnings.append(say("Nicht freigegeben: keine Ausgabe geschrieben.",
+                            "Not released: no output written."))
     log = RunLog(opt.as_dict(), warnings, notes, result.residual_risk.as_dict())
     result.report = create_report(source, result.target_txt, 1, True, hits,
                                   recheck, log)

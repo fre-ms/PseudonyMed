@@ -21,6 +21,7 @@ from typing import Any
 
 from pseudonymed import environment
 from pseudonymed.core.model import Patient
+from pseudonymed.core.text import say
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 from pseudonymed.pseudonyms.matching import Comparison, compare, match_candidates
 from pseudonymed.pseudonyms.patient_code import canonical_identity, hash_code, load_secret
@@ -102,7 +103,8 @@ class UncertainMatch(Exception):
 
     def __init__(self, candidates: list[Comparison]) -> None:
         self.candidates = candidates
-        super().__init__(f"{len(candidates)} ähnliche(r) Eintrag/Einträge im Pseudonymspeicher")
+        super().__init__(say(f"{len(candidates)} ähnliche(r) Eintrag/Einträge im Pseudonymspeicher",
+                             f"{len(candidates)} similar entry/entries in the pseudonym store"))
 
 
 @dataclass
@@ -197,7 +199,8 @@ class PseudonymStore:
         key_path: str | Path | None = None,
     ) -> None:
         if schema not in SCHEMATA:
-            raise ValueError(f"Unbekanntes Pseudonymschema: {schema!r}")
+            raise ValueError(say(f"Unbekanntes Pseudonymschema: {schema!r}",
+                                 f"Unknown pseudonym scheme: {schema!r}"))
         self.schema = schema
         explicit = path is not None
         self.path = _database_path(path)
@@ -361,7 +364,8 @@ class PseudonymStore:
             return target
         info = self.find(code_=requested)
         if not info:
-            raise ValueError(f"Kennung {requested} ist nicht vergeben.")
+            raise ValueError(say(f"Kennung {requested} ist nicht vergeben.",
+                                 f"Code {requested} is not issued."))
         return Comparison(code=requested, key=info[0]["schluessel"], score=0.0)
 
     @staticmethod

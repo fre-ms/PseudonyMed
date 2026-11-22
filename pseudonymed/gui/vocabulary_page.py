@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
+from pseudonymed.gui.translation import shown_error
 
 
 class VocabularyModel(ListModel):
@@ -262,7 +263,7 @@ class VocabularyPage(ListPage):
             with self._vocabulary() as v:
                 new, read_in = v.import_csv(path, category)
         except OSError as e:
-            self._notify(self.tr("Vokabular"), str(e))
+            self._notify(self.tr("Vokabular"), shown_error(e))
             return 0
         self._clear_cache()
         self.status.setText(self.tr("{neu} neue von {gelesen} Begriffen aus {name} übernommen.")

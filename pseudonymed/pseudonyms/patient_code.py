@@ -25,6 +25,7 @@ import secrets
 from pathlib import Path
 
 from pseudonymed.core.model import Patient, normalise
+from pseudonymed.core.text import say
 from pseudonymed.pseudonyms.phonetics import cologne_phonetics
 
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 32 symbols, no 0/O/1/I
@@ -114,7 +115,8 @@ def load_secret(path: Path, create: bool = True) -> bytes:
         try:
             return bytes.fromhex(text)
         except ValueError as e:
-            raise ValueError(f"Pseudonymschlüssel in {path} ist nicht lesbar.") from e
+            raise ValueError(say(f"Pseudonymschlüssel in {path} ist nicht lesbar.",
+                                 f"The pseudonym key in {path} is not readable.")) from e
     if not create:
         raise FileNotFoundError(path)
     secret = secrets.token_bytes(32)

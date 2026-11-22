@@ -25,7 +25,7 @@ from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import ner as ner_module
 from pseudonymed.document import optdoc_adapter
 from pseudonymed.gui.session import Document, Session
-from pseudonymed.gui.translation import interface_language
+from pseudonymed.gui.translation import interface_language, shown, shown_error
 from pseudonymed.gui.worker import Worker
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms.store import UncertainMatch
@@ -198,7 +198,7 @@ class AnalysisPage(QWidget):
         """Refresh the document list with each document's state and the vocabulary line."""
         self.listing.clear()
         for d in self.session.documents:
-            self.listing.addItem(f"{d.path.name}  –  {d.state}")
+            self.listing.addItem(f"{d.path.name}  –  {shown(d.state)}")
         self._show_vocabulary()
 
     # -- vocabulary --------------------------------------------------------------------------------
@@ -254,7 +254,7 @@ class AnalysisPage(QWidget):
         except pgp_module.PGPError as e:
             self.certificate = None
             self.recipient_info.setText(self.tr("Schlüssel nicht brauchbar: {fehler}").format(
-                fehler=e))
+                fehler=shown_error(e)))
             return None
         settings = load_settings()
         warning = self._fingerprint_warning(settings, source, z)
@@ -267,7 +267,8 @@ class AnalysisPage(QWidget):
         self.certificate = z
         self.recipient_info.setText(self.tr(
             "Empfänger: {beschreibung}. Fingerabdruck mit dem Empfänger auf einem zweiten Weg"
-            " abgleichen (Webseite, Briefkopf, Telefon).").format(beschreibung=z.description())
+            " abgleichen (Webseite, Briefkopf, Telefon).").format(
+                beschreibung=z.description(interface_language()))
             + warning)
         return z
 

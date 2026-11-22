@@ -29,6 +29,7 @@ from pseudonymed.config import (
     save_password,
     save_settings,
 )
+from pseudonymed.gui.translation import shown_error
 from pseudonymed.sources.address_book import local_files
 from pseudonymed.sources.carddav import CardDAVClient, CardDAVError
 
@@ -137,7 +138,8 @@ class AddressBookDialog(QDialog):
         try:
             books = CardDAVClient(k.url, k.user, self.password.text()).address_books()
         except CardDAVError as e:
-            self.status.setText(self.tr("Verbindung fehlgeschlagen: {fehler}").format(fehler=e))
+            self.status.setText(self.tr("Verbindung fehlgeschlagen: {fehler}").format(
+                fehler=shown_error(e)))
             return []
         selected = k.address_book
         self.address_book.clear()
@@ -175,7 +177,7 @@ class AddressBookDialog(QDialog):
                 client.address_book(k.address_book)
             except CardDAVError as ex:
                 self.status.setText(self.tr("Verbindung fehlgeschlagen: {fehler}").format(
-                    fehler=ex))
+                    fehler=shown_error(ex)))
                 return False
             if not save_password(k, password):
                 k.password_in_file = password

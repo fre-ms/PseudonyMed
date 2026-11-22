@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pseudonymed.core.model import Person
+from pseudonymed.core.text import say
 from pseudonymed.pseudonyms.patient_code import is_hash_code, is_valid_code
 
 _CODE = r"(?:[A-Z]{1,3}|[A-Z2-9]{4,9})"
@@ -152,6 +153,10 @@ def _note(rest: str, known: list[str]) -> str:
     similar = [k for k in known if _one_edit_apart(code, k)]
     suggestion = similar[0] if len(similar) == 1 else ""
     if not is_valid_code(code):
-        extra = f"; gemeint wohl {suggestion}" if suggestion else ""
-        return "Prüfzeichen falsch, vermutlich verschrieben" + extra
-    return f"unbekannt; ähnlich: {suggestion}" if suggestion else ""
+        extra, extra_en = (f"; gemeint wohl {suggestion}", f"; probably {suggestion}") \
+            if suggestion else ("", "")
+        return say("Prüfzeichen falsch, vermutlich verschrieben" + extra,
+                   "Check character wrong, probably a typing error" + extra_en)
+    if not suggestion:
+        return ""
+    return say(f"unbekannt; ähnlich: {suggestion}", f"unknown; similar: {suggestion}")

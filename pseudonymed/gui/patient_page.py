@@ -28,6 +28,7 @@ from pseudonymed.detection.variants import street_and_number
 from pseudonymed.document.text_file import read_text_file
 from pseudonymed.gui.address_book_dialog import AddressBookDialog
 from pseudonymed.gui.session import Session
+from pseudonymed.gui.translation import shown, shown_error
 from pseudonymed.sources import address_book
 from pseudonymed.sources.manual import load_patient, template
 from pseudonymed.sources.vcf import patients_from_vcf
@@ -248,9 +249,10 @@ class PatientPage(QWidget):
             return None
         result = address_book.search(term)
         if result.error:
-            self.note.setText(" | ".join(result.error))
+            self.note.setText(" | ".join(map(shown, result.error)))
             if len(result.error) == len(result.sources) and not self.synchronous:
-                QMessageBox.warning(self, self.tr("Adressbuch"), "\n".join(result.error))
+                QMessageBox.warning(self, self.tr("Adressbuch"),
+                                    "\n".join(map(shown, result.error)))
         self.show_matches(result.patients)
         return result
 
@@ -263,7 +265,7 @@ class PatientPage(QWidget):
             try:
                 self.show_matches([load_patient(path)])
             except (OSError, ValueError) as e:
-                QMessageBox.warning(self, self.tr("Patientendatei"), str(e))
+                QMessageBox.warning(self, self.tr("Patientendatei"), shown_error(e))
 
     def save_template(self) -> None:
         """Write an empty patient file (JSON) to a place of the user's choice."""
@@ -322,7 +324,7 @@ class PatientPage(QWidget):
                                               for z in p.referrers))
         self.terms.setPlainText("\n".join(p.terms))
         if p.notes:
-            self.note.setText(self.tr("Notizen der Karte: ") + " | ".join(p.notes))
+            self.note.setText(self.tr("Notizen der Karte: ") + " | ".join(map(shown, p.notes)))
         else:
             self.note.setText("")
 

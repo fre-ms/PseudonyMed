@@ -15,7 +15,7 @@ uv run pseudonymed gui --language en
 
 Tesseract is used as a second OCR engine when it is installed (macOS: `brew install tesseract tesseract-lang`, Ubuntu: `apt install tesseract-ocr tesseract-ocr-deu`); it is found in the usual places even when the app is started from the Finder. It is not required, RapidOCR is included. To prefer Tesseract, put `backend = "tesseract"` under `[ocr]` in the configuration file (`pseudonymed konfig` shows the path) or set `PSEUDONYMED_OCR=tesseract`.
 
-**Language.** The interface follows the system language; `--language en` or `--language de` on the command line, the menu *Language* in the window, or `PSEUDONYMED_SPRACHE=en` choose it explicitly. Reports and command-line messages are in German.
+**Language.** The interface follows the system language; `--language en` or `--language de` on the command line, the menu *Language* in the window, or `PSEUDONYMED_SPRACHE=en` choose it explicitly. In the English interface every message, the control step and the reports written from the desktop (`.bericht.json`, the vocabulary file) are English; the command line and its reports stay German. Pseudonyms such as `[geb. 1959]` or `[Ort …]` stay German in either language, because they are part of the German document.
 
 ## First start
 

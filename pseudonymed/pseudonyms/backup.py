@@ -1,4 +1,5 @@
-"""Backup, restore and statistics of everything re-identification depends on.
+"""Backup and restore of everything re-identification depends on (the statistics of the
+store live in :mod:`pseudonymed.pseudonyms.statistics`).
 
 The pseudonym database (``pseudonyme.sqlite``) holds the identities and the mapping
 of every pseudonym back to its clear text; the key file (``pseudonymschluessel.txt``)
@@ -25,18 +26,17 @@ import shutil
 import sqlite3
 import tempfile
 import zipfile
-from collections import Counter
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from pseudonymed import TOOL
 from pseudonymed.config import config_path
 from pseudonymed.core.stored import as_stored, field_values
+from pseudonymed.core.text import english, say
 from pseudonymed.detection.medical_terms import data_folder as vocabulary_folder
 from pseudonymed.pseudonyms import pgp as pgp_module
-from pseudonymed.pseudonyms.store import default_key_path, default_path, key_path_for
+from pseudonymed.pseudonyms.statistics import key_id, statistics, store_paths, vocabulary_files
 
 VERSION = 1
 NAME_DB = "pseudonyme.sqlite"
@@ -48,145 +48,12 @@ _MARK = "pseudonymed_sicherung"
 _FORMER_MARK = "anonymed_sicherung"  # backups written before the project was renamed
 MODES = ("ersetzen", "zusammenfuehren")
 
-CATEGORIES = [  # pseudonym prefix -> label (first match wins)
-    ("Patientin ", "Patient"), ("Patient ", "Patient"), ("Angehörige", "Angehörige"),
-    ("Dr. Z", "Zuweiser"), ("[geb. ", "Geburtsdatum"), ("[Alter ", "Geburtsdatum"),
-    ("[Straße ", "Straße"), ("[PLZ Ort ", "PLZ und Ort"), ("[Ort ", "Ort"),
-    ("[Wohnort]", "Ort"), ("Person ", "Person (NER)"), ("[Telefon", "Telefon"),
-    ("[E-Mail", "E-Mail"), ("[Versicherten", "Versichertennummer"), ("[Pat", "Patienten-ID"),
-    ("[Aktenzeichen", "Aktenzeichen"), ("[IBAN", "IBAN"), ("[Code]", "Barcode/QR"),
-    ("[Beruf", "Beruf"), ("[Klinik", "Klinik"), ("[Studie", "Studie"), ("[Titel", "Titel"),
-    ("[Identifikator", "Identifikator"), ("[Medikament", "Medikament"),
-    ("[Dosierung", "Dosierung"), ("[Laborwert", "Laborwert"), ("[Messwert", "Messwert"),
-]
-_KIND_LABELS = {
-    "name": "Name", "vorname": "Name", "nachname": "Name", "geburtsname": "Geburtsname",
-    "geburtsdatum": "Geburtsdatum", "adresse": "Adresse", "ort": "Ort", "telefon": "Telefon",
-    "email": "E-Mail", "versichertennummer": "Versichertennummer",
-    "patienten_id": "Patienten-ID", "aktenzeichen": "Aktenzeichen", "iban": "IBAN",
-    "begriff": "Begriff", "manuell": "Manuell", "identifikator": "Identifikator",
-    "medizin": "Medizinischer Inhalt",
-}
 _TABLES = ("patienten", "aliasse", "zuordnungen", "verworfen", "vokabular",  # merged in
            "restrisiko", "restrisiko_dokumente")  # this order; older archives may lack some
 
 
 class BackupError(Exception):
     """Anything that stops a backup, restore or relocation; the message is for the user."""
-
-
-def category(pseudonym: str, kind: str = "") -> str:
-    """Human label for the statistics: by the pseudonym's shape, else by its kind."""
-    for begin, label in CATEGORIES:
-        if pseudonym.startswith(begin):
-            return label
-    return _KIND_LABELS.get(kind.lower(), kind or "Sonstige")
-
-
-def key_id(secret: bytes) -> str:
-    """A public handle for a secret key: 16 hex digits of its SHA-256, never the key."""
-    return hashlib.sha256(secret).hexdigest()[:16]
-
-
-# -- statistics ------------------------------------------------------------------------------------
-@dataclass
-class Statistics:
-    """What ``datenbank status`` and the database page show about the local pseudonym store."""
-    path: Path
-    exists: bool = False
-    size: int = 0
-    schema: str = ""
-    key_path: Path | None = None
-    key_present: bool = False
-    key_id: str = ""
-    patients: int = 0
-    aliases: int = 0
-    mappings: int = 0
-    discarded: int = 0
-    per_category: list[tuple[str, int]] = field(default_factory=list)
-    discarded_per_rule: list[tuple[str, int]] = field(default_factory=list)
-    first_entry: str = ""
-    last_entry: str = ""
-    integrity: str = ""
-    pages: int = 0
-    free_pages: int = 0
-    vocabulary_files: int = 0
-    vocabulary_terms: int = 0
-    vocabulary_categories: list[tuple[str, int]] = field(default_factory=list)
-    lexicon_categories: list[tuple[str, str, int]] = field(default_factory=list)
-    lexicon_extra: list[tuple[str, int, str]] = field(default_factory=list)
-    config_present: bool = False
-
-    def lines(self) -> list[tuple[str, str]]:
-        """Label/value pairs for display (CLI and desktop)."""
-        return (self._header_lines()
-                + _indented(self.per_category)
-                + [("Gemerkte Verwerfungen", str(self.discarded))]
-                + _indented(self.discarded_per_rule)
-                + self._status_lines()
-                + _indented(self.vocabulary_categories)
-                + self._lexicon_lines()
-                + [("Konfiguration", "vorhanden" if self.config_present else "keine")])
-
-    def _header_lines(self) -> list[tuple[str, str]]:
-        """Where database and key live, and the headline counts."""
-        return [
-            ("Datenbank", str(self.path)),
-            ("Vorhanden", "ja" if self.exists else "nein (noch nicht angelegt)"),
-            ("Größe", _mb(self.size)),
-            ("Schema", self.schema or "–"),
-            ("Schlüsseldatei", str(self.key_path or "–")),
-            ("Schlüssel vorhanden", "ja" if self.key_present else "nein"),
-            ("Schlüssel-Kennung", self.key_id or "–"),
-            ("Patienten", str(self.patients)),
-            ("Verknüpfte Schreibweisen", str(self.aliases)),
-            ("Zuordnungen gesamt", str(self.mappings)),
-        ]
-
-    def _status_lines(self) -> list[tuple[str, str]]:
-        """Time span of the entries, integrity, page usage and the vocabulary total."""
-        return [
-            ("Erster Eintrag", self.first_entry or "–"),
-            ("Letzter Eintrag", self.last_entry or "–"),
-            ("Integrität", self.integrity or "–"),
-            ("Seiten / frei", f"{self.pages} / {self.free_pages}"),
-            ("Vokabular (Begriffe)", str(self.vocabulary_terms)),
-        ]
-
-    def _lexicon_lines(self) -> list[tuple[str, str]]:
-        """The bundled lexicon per class (only when it is loaded) and the data sets the
-        user fetched themselves."""
-        out: list[tuple[str, str]] = []
-        if self.lexicon_categories:
-            out.append(("Lexikon (Einträge)", str(sum(n for _k, _r, n in self.lexicon_categories))))
-            out += [(f"    {k} ({'Identifikator' if r == 'merkmal' else 'Fachklasse'})", str(n))
-                    for k, r, n in self.lexicon_categories]
-        out += [("Zusatzdaten (selbst geladen)", f"{q}: {n} Einträge, {g[:10]}")
-                for q, n, g in self.lexicon_extra]
-        return out
-
-
-def _indented(pairs: Iterable[tuple[str, int]]) -> list[tuple[str, str]]:
-    """Sub-rows of a count, indented under their total."""
-    return [(f"    {k}", str(n)) for k, n in pairs]
-
-
-def _mb(n: int) -> str:
-    """A byte count as B, KB or MB with one decimal."""
-    if n < 1024:
-        return f"{n} B"
-    if n < 1024 * 1024:
-        return f"{n / 1024:.1f} KB"
-    return f"{n / (1024 * 1024):.1f} MB"
-
-
-def _paths(store_path: Path | None) -> tuple[Path, Path]:
-    """Database and key file: the configured ones for the default database, the key
-    next to the database when a database path was given explicitly."""
-    if store_path:
-        db = Path(store_path)
-        return db, key_path_for(db)
-    return default_path(), default_key_path()
 
 
 def _timestamp() -> str:
@@ -230,8 +97,17 @@ class Relocation:
     copied: bool = False
     renamed: list[Path] = field(default_factory=list)
 
-    def description(self) -> str:
+    def description(self, language: str = "de") -> str:
         """One sentence for the user about the new location and what moved."""
+        if english(language):
+            text = f"Location: database {self.database}, key {self.key}."
+            if self.copied:
+                text += " Existing files were copied there"
+                if self.renamed:
+                    text += "; the old ones are now called " + ", ".join(
+                        p.name for p in self.renamed)
+                text += "."
+            return text
         text = f"Speicherort: Datenbank {self.database}, Schlüssel {self.key}."
         if self.copied:
             text += " Vorhandene Dateien wurden dorthin kopiert"
@@ -250,10 +126,11 @@ def relocate(database: Path, key: Path, copy: bool = True) -> Relocation:
 
     database, key = Path(database).expanduser(), Path(key).expanduser()
     if not database.is_absolute() or not key.is_absolute():
-        raise BackupError("Bitte absolute Pfade angeben.")
+        raise BackupError(say("Bitte absolute Pfade angeben.", "Please give absolute paths."))
     if database == key:
-        raise BackupError("Datenbank und Schlüsseldatei brauchen verschiedene Dateinamen.")
-    old_db, old_key = _paths(None)
+        raise BackupError(say("Datenbank und Schlüsseldatei brauchen verschiedene Dateinamen.",
+                              "Database and key file need different file names."))
+    old_db, old_key = store_paths(None)
     v = Relocation(database=database, key=key)
     if copy and (old_db != database or old_key != key):
         v.renamed = _move_store(old_db, old_key, database, key)
@@ -283,8 +160,10 @@ def _relocate_database(old: Path, new: Path, stamp: str) -> Path | None:
     if not old.exists() or old == new:
         return None
     if new.exists() and not _is_empty(new):
-        raise BackupError(f"Am Ziel gibt es schon eine Datenbank: {new}."
-                          " Anderen Pfad wählen oder sie über den Import ersetzen.")
+        raise BackupError(say(f"Am Ziel gibt es schon eine Datenbank: {new}."
+                              " Anderen Pfad wählen oder sie über den Import ersetzen.",
+                              f"There is a database at the target already: {new}."
+                              " Choose another path or replace it through the import."))
     new.parent.mkdir(parents=True, exist_ok=True)
     _copy_database(old, new)
     return _set_aside(old, stamp)
@@ -296,107 +175,11 @@ def _relocate_key(old: Path, new: Path, stamp: str) -> Path | None:
     if not old.exists() or old == new:
         return None
     if new.exists() and new.read_bytes().strip() != old.read_bytes().strip():
-        raise BackupError(f"Am Ziel gibt es schon einen anderen Schlüssel: {new}.")
+        raise BackupError(say(f"Am Ziel gibt es schon einen anderen Schlüssel: {new}.",
+                              f"There is another key at the target already: {new}."))
     new.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(old, new)
     return _set_aside(old, stamp)
-
-
-def statistics(store_path: Path | None = None) -> Statistics:
-    """Describe the pseudonym store at ``store_path`` (default: the configured one)
-    without changing it; a database that cannot be read reports the error as integrity."""
-    db, key = _paths(store_path)
-    st = Statistics(path=db, key_path=key, exists=db.exists(),
-                    config_present=config_path().exists())
-    if key.exists():
-        st.key_present = True
-        st.key_id = _key_file_code(key)
-    st.vocabulary_files = len(_vocabulary_files(vocabulary_folder()))
-    if not db.exists():
-        return st
-    st.size = db.stat().st_size
-    v = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    try:
-        _count_contents(v, st)
-    except sqlite3.DatabaseError as e:
-        st.integrity = f"Fehler: {e}"
-    finally:
-        v.close()
-    return st
-
-
-def _key_file_code(key: Path) -> str:
-    """The public handle of the key in a key file, or ``unreadable`` when it is not hex digits."""
-    try:
-        return key_id(bytes.fromhex(key.read_text(encoding="utf-8").strip()))
-    except ValueError:
-        return "unlesbar"
-
-
-def _vocabulary_files(folder: Path) -> list[Path]:
-    """Vocabulary list files (``.txt``, ``.gz``) of a folder, sorted; none without the folder."""
-    if not folder.is_dir():
-        return []
-    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in (".txt", ".gz"))
-
-
-def _one(v: sqlite3.Connection, sql: str, default: Any = 0) -> Any:
-    """One value; a table that does not exist yet counts as empty."""
-    try:
-        return v.execute(sql).fetchone()[0]
-    except sqlite3.OperationalError:
-        return default
-
-
-def _all_rows(v: sqlite3.Connection, sql: str) -> list[tuple[Any, ...]]:
-    """All rows; a table that does not exist yet has none."""
-    try:
-        return list(v.execute(sql))
-    except sqlite3.OperationalError:
-        return []
-
-
-def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
-    """Fill counts, categories, time span, integrity and lexicon figures from an open connection."""
-    st.patients = _one(v, "SELECT COUNT(*) FROM patienten")
-    st.aliases = _one(v, "SELECT COUNT(*) FROM aliasse")
-    st.mappings = _one(v, "SELECT COUNT(*) FROM zuordnungen")
-    st.discarded = _one(v, "SELECT COUNT(*) FROM verworfen")
-    st.schema = ", ".join(sorted(r[0] for r in _all_rows(v,
-                                                         "SELECT DISTINCT schema FROM patienten")))
-    st.per_category = _per_category(v)
-    st.discarded_per_rule = [(r, n) for r, n in _all_rows(
-        v, "SELECT regel, COUNT(*) FROM verworfen GROUP BY regel ORDER BY COUNT(*) DESC, regel")]
-    st.first_entry, st.last_entry = _time_span(v)
-    st.integrity = str(_one(v, "PRAGMA integrity_check", "?"))
-    st.pages = _one(v, "PRAGMA page_count")
-    st.free_pages = _one(v, "PRAGMA freelist_count")
-    st.vocabulary_terms = _one(v, "SELECT COUNT(*) FROM vokabular")
-    st.vocabulary_categories = [(k, n) for k, n in _all_rows(
-        v, "SELECT kategorie, COUNT(*) FROM vokabular GROUP BY kategorie"
-        " ORDER BY COUNT(*) DESC, kategorie")]
-    from pseudonymed.detection.extra_data import loaded_sources
-    from pseudonymed.detection.lexicon import per_class
-
-    st.lexicon_categories = per_class(v)
-    st.lexicon_extra = loaded_sources(v)
-
-
-def _per_category(v: sqlite3.Connection) -> list[tuple[str, int]]:
-    """Mappings per human category, the most frequent first, ties by name."""
-    counter = Counter(category(pseudonym, kind or "")
-                      for pseudonym, kind in _all_rows(v, "SELECT pseudonym, art FROM zuordnungen"))
-    return sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-
-
-def _time_span(v: sqlite3.Connection) -> tuple[str, str]:
-    """First and last entry as ``YYYY-MM-DD HH:MM:SS``; two empty strings for an empty store."""
-    times = [t for t in (_one(v, "SELECT MIN(angelegt) FROM patienten", None),
-                         _one(v, "SELECT MAX(geaendert) FROM zuordnungen", None),
-                         _one(v, "SELECT MAX(angelegt) FROM patienten", None)) if t]
-    if not times:
-        return "", ""
-    return min(times)[:19].replace("T", " "), max(times)[:19].replace("T", " ")
 
 
 # -- backup ----------------------------------------------------------------------------------------
@@ -431,9 +214,15 @@ class Manifest:
         """Number of vocabulary list files in the archive."""
         return sum(1 for n in self.files if n.startswith(VOCABULARY_FOLDER + "/"))
 
-    def description(self) -> str:
+    def description(self, language: str = "de") -> str:
         """One line for the user: date, tool, counts, key handle and the optional parts."""
-        return (f"{self.created[:16].replace('T', ' ')} · {self.tool} · {self.patients}"
+        when = self.created[:16].replace("T", " ")
+        if english(language):
+            return (f"{when} · {self.tool} · {self.patients} patients, {self.mappings} mappings,"
+                    f" {self.discarded} discards · key {self.key_id}"
+                    + (" · configuration" if self.config else "")
+                    + (f" · {self.vocabulary} vocabulary file(s)" if self.vocabulary else ""))
+        return (f"{when} · {self.tool} · {self.patients}"
                 f" Patienten, {self.mappings} Zuordnungen, {self.discarded} Verwerfungen"
                 f" · Schlüssel {self.key_id}"
                 + (" · Konfiguration" if self.config else "")
@@ -457,12 +246,13 @@ def export(target: Path, store_path: Path | None = None, config: bool = True,
            vocabulary: bool = True, passphrase: str | None = None) -> Path:
     """Write the backup archive; ``target`` is a folder (file name chosen) or a file.
     With a passphrase the ZIP is wrapped in an OpenPGP message (``.zip.gpg``)."""
-    db, key = _paths(store_path)
+    db, key = store_paths(store_path)
     if not db.exists():
-        raise BackupError(f"Keine Datenbank unter {db}.")
+        raise BackupError(say(f"Keine Datenbank unter {db}.", f"No database at {db}."))
     if not key.exists():
-        raise BackupError(f"Keine Schlüsseldatei unter {key}; ohne sie lässt sich"
-                          " nichts rekonstruieren.")
+        raise BackupError(say(f"Keine Schlüsseldatei unter {key}; ohne sie lässt sich"
+                              " nichts rekonstruieren.",
+                              f"No key file at {key}; without it nothing can be reconstructed."))
     st = statistics(db)
     manifest = Manifest(created=dt.datetime.now().isoformat(timespec="seconds"),
                         schema=st.schema, key_id=st.key_id,
@@ -488,7 +278,7 @@ def _collect_contents(db: Path, key: Path, config: bool, vocabulary: bool) -> di
     if config and config_path().exists():
         contents[NAME_CONFIG] = config_path().read_bytes()
     if vocabulary:
-        for p in _vocabulary_files(vocabulary_folder()):
+        for p in vocabulary_files(vocabulary_folder()):
             contents[f"{VOCABULARY_FOLDER}/{p.name}"] = p.read_bytes()
     return contents
 
@@ -529,13 +319,15 @@ def _as_zip(raw: bytes, passphrase: str | None) -> bytes:
     if raw.startswith(b"PK"):
         return raw
     if not passphrase:
-        raise BackupError("Das Archiv ist verschlüsselt; Passphrase nötig.")
+        raise BackupError(say("Das Archiv ist verschlüsselt; Passphrase nötig.",
+                              "The archive is encrypted; a passphrase is needed."))
     try:
         decrypted = pgp_module.decrypt_with_passphrase(raw, passphrase)
     except pgp_module.PGPError as e:
         raise BackupError(str(e)) from e
     if not decrypted.startswith(b"PK"):
-        raise BackupError("Entschlüsselt, aber kein ZIP-Archiv.")
+        raise BackupError(say("Entschlüsselt, aber kein ZIP-Archiv.",
+                              "Decrypted, but not a ZIP archive."))
     return decrypted
 
 
@@ -545,11 +337,12 @@ def _read_archive(raw: bytes) -> tuple[Manifest, dict[str, bytes]]:
         with zipfile.ZipFile(io.BytesIO(raw)) as z:
             names = z.namelist()
             if NAME_MANIFEST not in names:
-                raise BackupError("Kein PseudonyMed-Archiv (manifest.json fehlt).")
+                raise BackupError(say("Kein PseudonyMed-Archiv (manifest.json fehlt).",
+                                      "Not a PseudonyMed archive (manifest.json is missing)."))
             manifest = _manifest_from(z.read(NAME_MANIFEST))
             contents = {n: z.read(n) for n in names if n != NAME_MANIFEST}
     except zipfile.BadZipFile as e:
-        raise BackupError("Beschädigtes Archiv.") from e
+        raise BackupError(say("Beschädigtes Archiv.", "Damaged archive.")) from e
     return manifest, contents
 
 
@@ -559,9 +352,10 @@ def _manifest_from(raw: bytes) -> Manifest:
     m = json.loads(raw.decode("utf-8"))
     marks = [m.pop(k, None) for k in (_MARK, _FORMER_MARK)]
     if all(x is None for x in marks):
-        raise BackupError("Kein PseudonyMed-Archiv.")
+        raise BackupError(say("Kein PseudonyMed-Archiv.", "Not a PseudonyMed archive."))
     if int(m.get("version", 0)) > VERSION:
-        raise BackupError("Das Archiv stammt von einem neueren PseudonyMed.")
+        raise BackupError(say("Das Archiv stammt von einem neueren PseudonyMed.",
+                              "The archive comes from a newer PseudonyMed."))
     return Manifest(**field_values(Manifest, m))
 
 
@@ -569,11 +363,15 @@ def _check_completeness(manifest: Manifest, contents: dict[str, bytes]) -> None:
     """Every listed file must be present with its checksum, and database and key among them."""
     for name, info in manifest.files.items():
         if name not in contents:
-            raise BackupError(f"Datei {name} fehlt im Archiv.")
+            raise BackupError(say(f"Datei {name} fehlt im Archiv.",
+                                  f"File {name} is missing from the archive."))
         if _sha(contents[name]) != info.get("sha256"):
-            raise BackupError(f"Prüfsumme von {name} stimmt nicht; Archiv beschädigt.")
+            raise BackupError(say(f"Prüfsumme von {name} stimmt nicht; Archiv beschädigt.",
+                                  f"The checksum of {name} does not match; the archive is"
+                                  " damaged."))
     if NAME_DB not in contents or NAME_KEY not in contents:
-        raise BackupError("Archiv ohne Datenbank oder Schlüssel.")
+        raise BackupError(say("Archiv ohne Datenbank oder Schlüssel.",
+                              "Archive without database or key."))
 
 
 def check(archive: Path, passphrase: str | None = None) -> Manifest:
@@ -596,8 +394,10 @@ class ImportReport:
 
     new_vocabulary: int = 0
 
-    def description(self) -> str:
+    def description(self, language: str = "de") -> str:
         """One sentence per mode: what was restored, or how many entries were new."""
+        if english(language):
+            return self._description_en()
         if self.mode == "ersetzen":
             return (f"Wiederhergestellt: {self.new_patients} Patienten, {self.new_mappings}"
                     f" Zuordnungen, {self.new_discarded} Verwerfungen; Schlüssel"
@@ -612,6 +412,23 @@ class ImportReport:
                 f" Schreibweisen, {self.new_mappings} neue Zuordnungen, {self.new_discarded}"
                 f" neue Verwerfungen, {self.new_vocabulary} neue Vokabeln"
                 + (f", {self.vocabulary_files} neue Vokabulardatei(en)" if self.vocabulary_files
+                   else "") + ".")
+
+    def _description_en(self) -> str:
+        """The English sentence of :meth:`description`."""
+        files = f", {self.vocabulary_files} vocabulary file(s)" if self.vocabulary_files else ""
+        if self.mode == "ersetzen":
+            return (f"Restored: {self.new_patients} patients, {self.new_mappings} mappings,"
+                    f" {self.new_discarded} discards; key"
+                    f" {'replaced' if self.key_replaced else 'unchanged'}"
+                    + (", configuration replaced" if self.config_replaced else "") + files
+                    + (". Previous version kept: "
+                       + ", ".join(p.name for p in self.prior_backups)
+                       if self.prior_backups else "."))
+        return (f"Merged: {self.new_patients} new patients, {self.new_aliases} new spellings,"
+                f" {self.new_mappings} new mappings, {self.new_discarded} new discards,"
+                f" {self.new_vocabulary} new vocabulary terms"
+                + (f", {self.vocabulary_files} new vocabulary file(s)" if self.vocabulary_files
                    else "") + ".")
 
 
@@ -647,9 +464,10 @@ def import_file(archive: Path, store_path: Path | None = None, passphrase: str |
                 ) -> ImportReport:
     """Restore (``ersetzen``) or merge (``zusammenfuehren``) an archive."""
     if mode not in MODES:
-        raise BackupError(f"Modus muss einer von {', '.join(MODES)} sein.")
+        raise BackupError(say(f"Modus muss einer von {', '.join(MODES)} sein.",
+                              f"The mode must be one of {', '.join(MODES)}."))
     manifest, contents = _unpack(archive, passphrase)
-    db, key = _paths(store_path)
+    db, key = store_paths(store_path)
     new_key = _key_from(contents)
     local_key = key.read_bytes().strip() if key.exists() else None
     report = ImportReport(mode=mode)
@@ -665,7 +483,7 @@ def import_file(archive: Path, store_path: Path | None = None, passphrase: str |
             _merge(e, report)
         _protect(key, db)
         if vocabulary:
-            _adopt_vocabulary_files(contents, mode, report)
+            _adoptvocabulary_files(contents, mode, report)
     return report
 
 
@@ -675,7 +493,8 @@ def _key_from(contents: dict[str, bytes]) -> bytes:
     try:
         bytes.fromhex(key.decode("ascii"))
     except (UnicodeDecodeError, ValueError) as e:
-        raise BackupError("Der Schlüssel im Archiv ist nicht lesbar.") from e
+        raise BackupError(say("Der Schlüssel im Archiv ist nicht lesbar.",
+                              "The key in the archive is not readable.")) from e
     return key
 
 
@@ -720,10 +539,13 @@ def _require_same_key(e: _ImportContext, local_empty: bool) -> None:
         return
     k_archive = key_id(bytes.fromhex(e.new_key.decode()))
     k_local = key_id(bytes.fromhex(e.local_key.decode()))
-    raise BackupError(
+    raise BackupError(say(
         "Zusammenführen geht nur bei gleichem Pseudonymschlüssel: das Archiv hat"
         f" den Schlüssel {k_archive}, die lokale Datenbank {k_local}. Zwei"
-        " Pseudonymräume lassen sich nicht mischen; stattdessen Ersetzen.")
+        " Pseudonymräume lassen sich nicht mischen; stattdessen Ersetzen.",
+        f"Merging only works with the same pseudonym key: the archive has the key {k_archive},"
+        f" the local database {k_local}. Two pseudonym spaces cannot be mixed; replace"
+        " instead."))
 
 
 def _adopt_entries(db: Path, archive_db: Path) -> dict[str, int]:
@@ -759,7 +581,7 @@ def _adopt_table(target: sqlite3.Connection, table: str) -> int:
     return after - before
 
 
-def _adopt_vocabulary_files(contents: dict[str, bytes], mode: str,
+def _adoptvocabulary_files(contents: dict[str, bytes], mode: str,
                             report: ImportReport) -> None:
     """Write the archive's vocabulary list files into the data folder: all of them when
     restoring, only the missing ones when merging."""

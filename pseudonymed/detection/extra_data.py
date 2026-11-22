@@ -29,6 +29,7 @@ from io import BytesIO
 from pathlib import Path
 
 from pseudonymed import __version__
+from pseudonymed.core.text import english, say
 from pseudonymed.detection import lexicon
 
 SOURCE_HOSPITALS_AT = "Kliniken AT (BMASGPK)"
@@ -61,8 +62,13 @@ class LoadReport:
     state: str
     origin: str
 
-    def description(self) -> str:
-        """One German sentence with the count, the rows without a Gemeinde, date and origin."""
+    def description(self, language: str = "de") -> str:
+        """One sentence with the count, the rows without a Gemeinde, date and origin."""
+        if english(language):
+            part = (f", {self.without_municipality} without a municipality"
+                    if self.without_municipality else "")
+            return (f"{self.source}: {self.count} entries loaded{part}"
+                    f" (as of {self.state or 'unknown'}, {self.origin}).")
         part = f", {self.without_municipality} ohne Gemeinde" if self.without_municipality else ""
         return (f"{self.source}: {self.count} Einträge geladen{part}"
                 f" (Stand {self.state or 'unbekannt'}, {self.origin}).")
@@ -71,7 +77,7 @@ class LoadReport:
 def fetch(url: str, time: int = 60) -> bytes:
     """Plain HTTPS GET with PseudonyMed's own user agent; nothing else is sent."""
     if not url.startswith("https://"):
-        raise ExtraDataError(f"nur https erlaubt: {url}")
+        raise ExtraDataError(say(f"nur https erlaubt: {url}", f"only https allowed: {url}"))
     req = urllib.request.Request(url, headers={"User-Agent": AGENT})
     with urllib.request.urlopen(req, timeout=time) as response:
         return response.read()
@@ -146,7 +152,8 @@ def find_workbook(html: str, base: str = PAGE_HOSPITALS_AT) -> str:
                                               urllib.parse.unquote(u),
                                               flags=re.IGNORECASE)] or hrefs
     if not matching:
-        raise ExtraDataError("Auf der Seite des Ministeriums wurde keine Excel-Mappe gefunden.")
+        raise ExtraDataError(say("Auf der Seite des Ministeriums wurde keine Excel-Mappe gefunden.",
+                                 "No Excel workbook was found on the ministry's page."))
     return urllib.parse.urljoin(base, matching[0].replace("&amp;", "&"))
 
 
@@ -328,7 +335,9 @@ def _header_columns(header: list[str]) -> _Columns:
     owner = next((i for i, k in enumerate(header) if "träger" in k.casefold()
                   and "nr" not in k.casefold()), None)
     if num is None or name is None:
-        raise ExtraDataError("Die Mappe hat nicht die erwarteten Spalten (KA-Nr., Bezeichnung).")
+        raise ExtraDataError(say(
+            "Die Mappe hat nicht die erwarteten Spalten (KA-Nr., Bezeichnung).",
+            "The workbook lacks the expected columns (KA-Nr., Bezeichnung)."))
     return _Columns(num, name, sector, care_area, district, address, beds, country, owner)
 
 
@@ -417,7 +426,8 @@ def hospitals_at_rows(data: bytes) -> tuple[list[lexicon.Row], int]:
     sheets = xlsx_sheets(data)
     total = _sheet(sheets, "ka gesamt")
     if not total:
-        raise ExtraDataError("Die Mappe hat kein Blatt „KA gesamt“.")
+        raise ExtraDataError(say("Die Mappe hat kein Blatt „KA gesamt“.",
+                                 "The workbook has no sheet “KA gesamt”."))
     columns = _header_columns(total[0])
     sites = _sites(_sheet(sheets, "rohdaten"))
     tables = _at_tables()
@@ -444,7 +454,8 @@ def load_clinics_at(connection: sqlite3.Connection, file: Path | None = None,
         data, origin = Path(file).read_bytes(), str(file)
     lines, without = hospitals_at_rows(data)
     if not lines:
-        raise ExtraDataError("Die Mappe enthält keine Krankenanstalten.")
+        raise ExtraDataError(say("Die Mappe enthält keine Krankenanstalten.",
+                                 "The workbook holds no hospitals."))
     date = re.search(r"(\d{4}-\d{2}-\d{2})", urllib.parse.unquote(origin))
     state = date.group(1) if date else ""
     connection.executescript(lexicon.SCHEMA)

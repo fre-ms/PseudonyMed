@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.pseudonyms import backup as backup_mod
+from pseudonymed.pseudonyms import statistics as stats_mod
 from pseudonymed.pseudonyms.store import PseudonymStore, default_path
 from tests.test_gui import qapp  # noqa: F401
 
@@ -88,7 +89,7 @@ def test_backup_with_vocabulary(fresh: Path, tmp_path: Path) -> None:
         pass
     with vocab_mod.Vocabulary() as v:
         v.add(["Sicherungsbegriff"], "Test")
-    st = backup_mod.statistics()
+    st = stats_mod.statistics()
     assert st.vocabulary_terms > 39000 and dict(st.vocabulary_categories)["Test"] == 1
     assert "Vokabular (Begriffe)" in dict(st.lines())
     archive = backup_mod.export(tmp_path / "s.zip")

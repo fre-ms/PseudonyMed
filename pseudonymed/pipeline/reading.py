@@ -15,6 +15,7 @@ from optdoc import structure as structure_module
 from optdoc.loading import HEIC_SUFFIXES, IMAGE_SUFFIXES
 from optdoc.pagetext import PageText, read_text_layer
 
+from pseudonymed.core.text import say
 from pseudonymed.document import optdoc_adapter
 from pseudonymed.document.optdoc_adapter import open_file
 from pseudonymed.pipeline.options import PipelineOptions
@@ -210,7 +211,7 @@ class Reading:
         structured) resets it."""
         s = self.pages[number]
         if s.ocr is None:
-            raise ValueError("Diese Seite hat keinen OCR-Text.")
+            raise ValueError(say("Diese Seite hat keinen OCR-Text.", "This page has no OCR text."))
         s.correction = None if unchanged(s, text) else text
 
     def close(self) -> None:
@@ -224,23 +225,32 @@ def _reading_notes(
 ) -> tuple[list[str], list[str]]:
     """What the reading has to tell: the clean-ups applied, pages nobody could read,
     the pages OCR read and how sure it was.  Returns warnings and hints."""
-    notes = [f"Seite {number + 1} vor der OCR aufbereitet:"
-             f" {optdoc_adapter.description(plan[number])}." for number in sorted(plan)]
+    notes: list[str] = [say(f"Seite {number + 1} vor der OCR aufbereitet:"
+                            f" {optdoc_adapter.description(plan[number])}.",
+                            f"Page {number + 1} cleaned up before the OCR:"
+                            f" {optdoc_adapter.description(plan[number], 'en')}.")
+                        for number in sorted(plan)]
     warnings: list[str] = []
     if without_text:
-        warnings.append(
-            "Seite(n) ohne Textebene und ohne OCR: " + ", ".join(map(str, without_text))
-            + " – OCR-Backend installieren (Extra 'ocr' oder Tesseract) oder --ocr prüfen."
-        )
+        pages_ = ", ".join(map(str, without_text))
+        warnings.append(say(
+            f"Seite(n) ohne Textebene und ohne OCR: {pages_} – OCR-Backend installieren"
+            " (Extra 'ocr' oder Tesseract) oder --ocr prüfen.",
+            f"Page(s) without text layer and without OCR: {pages_} – install an OCR engine"
+            " (extra 'ocr' or Tesseract) or check --ocr."))
     read_in = [(s.number + 1, s.ocr) for s in pages if s.ocr is not None]
     if read_in:
         uncertain = sum(ocr.uncertain_words for _, ocr in read_in)
-        notes.append(
-            f"Scan/Foto: Seite(n) {', '.join(str(n) for n, _ in read_in)} per OCR gelesen"
-            f" ({backend.name if backend else '?'}, {uncertain} unsichere Wörter)."
-        )
-        notes.append("OCR-Seiten: Handschrift wird nicht erkannt; erkannten Text und"
-                     " Vorschaubilder vor der Weitergabe prüfen.")
+        numbers = ", ".join(str(n) for n, _ in read_in)
+        name = backend.name if backend else "?"
+        notes.append(say(
+            f"Scan/Foto: Seite(n) {numbers} per OCR gelesen ({name}, {uncertain} unsichere"
+            " Wörter).",
+            f"Scan/photo: page(s) {numbers} read by OCR ({name}, {uncertain} uncertain words)."))
+        notes.append(say("OCR-Seiten: Handschrift wird nicht erkannt; erkannten Text und"
+                         " Vorschaubilder vor der Weitergabe prüfen.",
+                         "OCR pages: handwriting is not recognised; check the recognised text"
+                         " and the previews before passing anything on."))
     return warnings, notes
 
 

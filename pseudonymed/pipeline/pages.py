@@ -10,6 +10,7 @@ from optdoc import structure as structure_module
 from optdoc.pagetext import Box, PageText
 
 from pseudonymed.core.model import Hit
+from pseudonymed.core.text import say
 from pseudonymed.document import text_file as text_module
 
 _TRAILING_PUNCTUATION = ".,;:!?)]}"
@@ -87,7 +88,7 @@ def trim_span(text: str, start: int, end: int) -> tuple[int, int]:
     while end > start and text[end - 1].isspace():
         end -= 1
     if end <= start:
-        raise ValueError("Leere Auswahl.")
+        raise ValueError(say("Leere Auswahl.", "Empty selection."))
     return start, end
 
 

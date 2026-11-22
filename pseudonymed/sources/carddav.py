@@ -19,6 +19,7 @@ from xml.sax.saxutils import escape
 
 from pseudonymed import TOOL
 from pseudonymed.core.model import Patient, normalise, parse_date
+from pseudonymed.core.text import say
 from pseudonymed.detection.variants import without_accents
 from pseudonymed.sources.vcf import VCard, parse_vcards, patient_from_vcard
 
@@ -114,9 +115,11 @@ class CardDAVClient:
         self.base = url.strip().rstrip("/")
         parts = urlsplit(self.base)
         if parts.scheme != "https" and parts.hostname not in ("localhost", "127.0.0.1", "::1"):
-            raise CardDAVError("Nur https-Adressen werden akzeptiert (Ausnahme: localhost).")
+            raise CardDAVError(say("Nur https-Adressen werden akzeptiert (Ausnahme: localhost).",
+                                   "Only https addresses are accepted (exception: localhost)."))
         if not parts.netloc:
-            raise CardDAVError(f"Ungültige Server-Adresse: {url!r}")
+            raise CardDAVError(say(f"Ungültige Server-Adresse: {url!r}",
+                                   f"Invalid server address: {url!r}"))
         self.user = user
         self.timeout = timeout
         token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
@@ -145,20 +148,24 @@ class CardDAVClient:
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 raise CardDAVError(
-                    "Anmeldung abgelehnt (401): Benutzername oder App-Passwort prüfen."
+                    say("Anmeldung abgelehnt (401): Benutzername oder App-Passwort prüfen.",
+                        "Login refused (401): check the user name or the app password.")
                 ) from e
             if e.code == 404:
-                raise CardDAVError(f"Nicht gefunden (404): {url}") from e
+                raise CardDAVError(say(f"Nicht gefunden (404): {url}",
+                                       f"Not found (404): {url}")) from e
             raise CardDAVError(f"{method} {url}: HTTP {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            raise CardDAVError(f"Server nicht erreichbar: {e.reason}") from e
+            raise CardDAVError(say(f"Server nicht erreichbar: {e.reason}",
+                                   f"Server not reachable: {e.reason}")) from e
 
     @staticmethod
     def _responses(data: bytes) -> list[ET.Element]:
         try:
             root = ET.fromstring(data)
         except ET.ParseError as e:
-            raise CardDAVError(f"Unlesbare Antwort des Servers: {e}") from e
+            raise CardDAVError(say(f"Unlesbare Antwort des Servers: {e}",
+                                   f"Unreadable answer from the server: {e}")) from e
         return root.findall("d:response", NS)
 
     def address_books(self) -> list[AddressBook]:
@@ -179,18 +186,21 @@ class CardDAVClient:
         """The address book named by display name or uri; the only one when the name is empty."""
         books = self.address_books()
         if not books:
-            raise CardDAVError("Der Server meldet kein Adressbuch für diesen Benutzer.")
+            raise CardDAVError(say("Der Server meldet kein Adressbuch für diesen Benutzer.",
+                                   "The server reports no address book for this user."))
         if not name_or_uri:
             if len(books) == 1:
                 return books[0]
             names = ", ".join(f"{b.name} ({b.uri})" for b in books)
-            raise CardDAVError(f"Mehrere Adressbücher, bitte eines wählen: {names}")
+            raise CardDAVError(say(f"Mehrere Adressbücher, bitte eines wählen: {names}",
+                                   f"Several address books, please choose one: {names}"))
         wanted = name_or_uri.casefold()
         for b in books:
             if wanted in (b.uri.casefold(), b.name.casefold()):
                 return b
         names = ", ".join(f"{b.name} ({b.uri})" for b in books)
-        raise CardDAVError(f"Adressbuch {name_or_uri!r} nicht gefunden. Vorhanden: {names}")
+        raise CardDAVError(say(f"Adressbuch {name_or_uri!r} nicht gefunden. Vorhanden: {names}",
+                               f"Address book {name_or_uri!r} not found. Available: {names}"))
 
     def _contacts(self, data: bytes) -> list[Contact]:
         contacts: list[Contact] = []

@@ -25,6 +25,7 @@ from typing import Any, ClassVar
 from pseudonymed import TOOL
 from pseudonymed.core.model import Patient
 from pseudonymed.core.stored import as_stored, field_values
+from pseudonymed.core.text import english, say
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
@@ -80,7 +81,8 @@ class Capsule:
         version = _version_of(raw)
         fields = _fields_of(raw)
         if not isinstance(fields.get("zuordnungen"), dict) or not fields.get("kennung"):
-            raise CapsuleError("Die Kapsel enthält keine Zuordnungen.")
+            raise CapsuleError(say("Die Kapsel enthält keine Zuordnungen.",
+                                   "The capsule holds no mappings."))
         return cls(version=version, **field_values(cls, fields))
 
     def info(self) -> dict[str, Any]:
@@ -102,12 +104,17 @@ class Capsule:
                        sex=p.get("geschlecht", ""), title=p.get("titel", ""),
                        birth_name=p.get("geburtsname", ""), birth_date=born)
 
-    def description(self) -> str:
+    def description(self, language: str = "de") -> str:
         """One line for the user: name, birth date, identifier, source file, mapping size."""
         p = self.patient
         born = p.get("geburtsdatum", "")
-        parts = [f"{p.get('nachname', '')}, {p.get('vorname', '')}".strip(", "),
-                 f"geb. {born}" if born else "", f"Kennung {self.code}",
+        name = f"{p.get('nachname', '')}, {p.get('vorname', '')}".strip(", ")
+        if english(language):
+            parts = [name, f"born {born}" if born else "", f"code {self.code}",
+                     f"from {self.source}" if self.source else "",
+                     f"{len(self.mappings)} mappings"]
+            return " · ".join(t for t in parts if t)
+        parts = [name, f"geb. {born}" if born else "", f"Kennung {self.code}",
                  f"aus {self.source}" if self.source else "",
                  f"{len(self.mappings)} Zuordnungen"]
         return " · ".join(t for t in parts if t)
@@ -118,7 +125,8 @@ def _load_json(data: bytes) -> Any:
     try:
         return json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise CapsuleError("Der Inhalt ist keine PseudonyMed-Kapsel.") from e
+        raise CapsuleError(say("Der Inhalt ist keine PseudonyMed-Kapsel.",
+                               "The content is not a PseudonyMed capsule.")) from e
 
 
 def _version_of(raw: Any) -> int:
@@ -128,10 +136,12 @@ def _version_of(raw: Any) -> int:
     mark = next((m for m in (_MARK, _FORMER_MARK) if isinstance(raw, dict) and m in raw),
                 None)
     if mark is None:
-        raise CapsuleError("Der Inhalt ist keine PseudonyMed-Kapsel.")
+        raise CapsuleError(say("Der Inhalt ist keine PseudonyMed-Kapsel.",
+                               "The content is not a PseudonyMed capsule."))
     version = int(raw.pop(mark))
     if version > VERSION:
-        raise CapsuleError(f"Kapsel-Version {version} ist neuer als dieses PseudonyMed.")
+        raise CapsuleError(say(f"Kapsel-Version {version} ist neuer als dieses PseudonyMed.",
+                               f"Capsule version {version} is newer than this PseudonyMed."))
     return version
 
 
@@ -177,6 +187,7 @@ def open_file(source: Path | bytes, private_key: str | Path | None = None,
     """Decrypt and parse a capsule file (or its bytes)."""
     data = source if isinstance(source, bytes) else Path(source).read_bytes()
     if not pgp_module.is_message(data):
-        raise CapsuleError("Die Datei ist keine verschlüsselte Kapsel (PGP MESSAGE).")
+        raise CapsuleError(say("Die Datei ist keine verschlüsselte Kapsel (PGP MESSAGE).",
+                               "The file is not an encrypted capsule (PGP MESSAGE)."))
     decrypted = pgp_module.decrypt(data, private_key, passphrase, gnupg_home)
     return Capsule.from_json(decrypted)

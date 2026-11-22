@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from pseudonymed.config import load_settings, save_settings
 from pseudonymed.gui.session import Session
+from pseudonymed.gui.translation import interface_language, shown, shown_error
 from pseudonymed.pseudonyms import capsule as capsule_module
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms.capsule import Capsule
@@ -192,15 +193,16 @@ class ReidentifyPage(QWidget):
         try:
             k = self._decrypt_capsule(path, passphrase)
         except (pgp_module.PGPError, capsule_module.CapsuleError, OSError) as e:
-            self.capsule_info.setText(self.tr("Kapsel nicht lesbar: {fehler}").format(fehler=e))
+            self.capsule_info.setText(self.tr("Kapsel nicht lesbar: {fehler}").format(
+                fehler=shown_error(e)))
             if self.synchronous:
-                raise RuntimeError(str(e)) from e
+                raise RuntimeError(shown_error(e)) from e
             return None
         if k is None:
             return None
         self.capsule = k
         self.capsule_info.setText(self.tr("Kapsel geöffnet: {beschreibung}.").format(
-            beschreibung=k.description()) + self._local_matching(k))
+            beschreibung=k.description(interface_language())) + self._local_matching(k))
         self.person.setEnabled(False)
         self.close_capsule_button.setEnabled(True)
         return k
@@ -254,7 +256,7 @@ class ReidentifyPage(QWidget):
                        form=self.form.currentData(), known_codes=source.known)
         self.output.setPlainText(r.text)
         if r.remaining:
-            parts = [f"{rest} ({r.notes[rest]})" if rest in r.notes else rest
+            parts = [f"{rest} ({shown(r.notes[rest])})" if rest in r.notes else rest
                      for rest in r.remaining]
             self.note.setText(self.tr("{n} Ersetzungen; nicht aufgelöst: ").format(n=r.replaced)
                               + ", ".join(parts))

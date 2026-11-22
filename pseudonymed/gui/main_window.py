@@ -19,6 +19,7 @@ from pseudonymed.gui.patient_page import PatientPage
 from pseudonymed.gui.reidentify_page import ReidentifyPage
 from pseudonymed.gui.review_page import ReviewPage
 from pseudonymed.gui.session import Session
+from pseudonymed.gui.translation import interface_language
 from pseudonymed.gui.vocabulary_page import VocabularyPage
 
 
@@ -31,6 +32,7 @@ class MainWindow(QMainWindow):
         """Build the eleven pages, wrap each in a scroll area and connect the steps."""
         super().__init__()
         self.session = session or Session()
+        self.session.language = interface_language()  # reports and vocabulary files follow it
         self.setWindowTitle(TOOL)
         self.setWindowIcon(app_icon())
         self.resize(1200, 820)

@@ -4,118 +4,118 @@
 <context>
     <name>AddressBookDialog</name>
     <message>
-        <location filename="../address_book_dialog.py" line="42"/>
+        <location filename="../address_book_dialog.py" line="43"/>
         <source>Adressbücher einrichten</source>
         <translation>Set up address books</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="46"/>
+        <location filename="../address_book_dialog.py" line="47"/>
         <source>Lokales Adressbuch</source>
         <translation>Local address book</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="51"/>
+        <location filename="../address_book_dialog.py" line="52"/>
         <source>vCard-Datei (.vcf, auch mit vielen Karten) oder Ordner mit vCard-Dateien</source>
         <translation>vCard file (.vcf, may hold many cards) or a folder of vCard files</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="52"/>
+        <location filename="../address_book_dialog.py" line="53"/>
         <source>Datei …</source>
         <translation>File …</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="54"/>
+        <location filename="../address_book_dialog.py" line="55"/>
         <source>Ordner …</source>
         <translation>Folder …</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="61"/>
+        <location filename="../address_book_dialog.py" line="62"/>
         <source>Exportieren Sie Kontakte aus Apple Kontakte, Thunderbird, Outlook oder Nextcloud als vCard; die Datei bleibt auf diesem Rechner.</source>
         <translation>Export contacts from Apple Contacts, Thunderbird, Outlook or Nextcloud as vCard; the file stays on this machine.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="68"/>
+        <location filename="../address_book_dialog.py" line="69"/>
         <source>Nextcloud (CardDAV)</source>
         <translation>Nextcloud (CardDAV)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="72"/>
+        <location filename="../address_book_dialog.py" line="73"/>
         <source>Adresse</source>
         <translation>Address</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="74"/>
+        <location filename="../address_book_dialog.py" line="75"/>
         <source>Benutzer</source>
         <translation>User</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="78"/>
+        <location filename="../address_book_dialog.py" line="79"/>
         <source>App-Passwort (Nextcloud → Einstellungen → Sicherheit → Geräte &amp; Sitzungen)</source>
         <translation>App password (Nextcloud → Settings → Security → Devices &amp; sessions)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="79"/>
+        <location filename="../address_book_dialog.py" line="80"/>
         <source>App-Passwort</source>
         <translation>App password</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="85"/>
+        <location filename="../address_book_dialog.py" line="86"/>
         <source>Adressbücher laden</source>
         <translation>Load address books</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="89"/>
+        <location filename="../address_book_dialog.py" line="90"/>
         <source>Adressbuch</source>
         <translation>Address book</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="91"/>
+        <location filename="../address_book_dialog.py" line="92"/>
         <source>Das App-Passwort kommt in den Schlüsselbund des Betriebssystems ({bund}).</source>
         <translation>The app password goes into the operating system&apos;s keyring ({bund}).</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="93"/>
+        <location filename="../address_book_dialog.py" line="94"/>
         <source>Kein Schlüsselbund verfügbar: das App-Passwort wird in der Konfigurationsdatei abgelegt (nur für Sie lesbar).</source>
         <translation>No keyring available: the app password is kept in the configuration file (readable by you only).</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="111"/>
+        <location filename="../address_book_dialog.py" line="112"/>
         <source>vCard-Datei</source>
         <translation>vCard file</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="112"/>
+        <location filename="../address_book_dialog.py" line="113"/>
         <source>vCard (*.vcf *.vcard);;Alle Dateien (*)</source>
         <translation>vCard (*.vcf *.vcard);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="118"/>
+        <location filename="../address_book_dialog.py" line="119"/>
         <source>Ordner mit vCard-Dateien</source>
         <translation>Folder of vCard files</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="135"/>
+        <location filename="../address_book_dialog.py" line="136"/>
         <source>Adresse, Benutzer und App-Passwort eingeben.</source>
         <translation>Enter address, user and app password.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="140"/>
-        <location filename="../address_book_dialog.py" line="177"/>
+        <location filename="../address_book_dialog.py" line="141"/>
+        <location filename="../address_book_dialog.py" line="179"/>
         <source>Verbindung fehlgeschlagen: {fehler}</source>
         <translation>Connection failed: {fehler}</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="151"/>
+        <location filename="../address_book_dialog.py" line="153"/>
         <source>{n} Adressbuch/Adressbücher gefunden; bitte wählen.</source>
         <translation>{n} address book(s) found; please choose.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="162"/>
+        <location filename="../address_book_dialog.py" line="164"/>
         <source>{pfad}: keine vCard-Datei(en) gefunden.</source>
         <translation>{pfad}: no vCard file(s) found.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="171"/>
+        <location filename="../address_book_dialog.py" line="173"/>
         <source>Bitte das App-Passwort eingeben.</source>
         <translation>Please enter the app password.</translation>
     </message>
@@ -254,9 +254,9 @@
     </message>
     <message>
         <location filename="../analysis_page.py" line="182"/>
-        <location filename="../analysis_page.py" line="319"/>
-        <location filename="../analysis_page.py" line="323"/>
-        <location filename="../analysis_page.py" line="326"/>
+        <location filename="../analysis_page.py" line="320"/>
+        <location filename="../analysis_page.py" line="324"/>
+        <location filename="../analysis_page.py" line="327"/>
         <source>Analysieren</source>
         <translation>Analyse</translation>
     </message>
@@ -296,7 +296,7 @@
         <translation>Key not usable: {fehler}</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="280"/>
+        <location filename="../analysis_page.py" line="281"/>
         <source> ACHTUNG: Der Fingerabdruck weicht vom früher geprüften ab ({alt}). Nur weiterverwenden, wenn der Empfänger den neuen Schlüssel bestätigt hat.</source>
         <translation> WARNING: the fingerprint differs from the one checked before ({alt}). Go on only if the recipient has confirmed the new key.</translation>
     </message>
@@ -306,67 +306,67 @@
         <translation>Recipient: {beschreibung}. Compare the fingerprint with the recipient by a second channel (website, letterhead, telephone).</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="307"/>
+        <location filename="../analysis_page.py" line="308"/>
         <source>Empfänger</source>
         <translation>Recipient</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="308"/>
+        <location filename="../analysis_page.py" line="309"/>
         <source>Für einen Empfänger braucht es dessen öffentlichen Schlüssel.</source>
         <translation>A recipient needs their public key.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="320"/>
+        <location filename="../analysis_page.py" line="321"/>
         <source>Bitte zuerst einen Patienten übernehmen.</source>
         <translation>Please choose a patient first.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="323"/>
+        <location filename="../analysis_page.py" line="324"/>
         <source>Bitte zuerst Dokumente hinzufügen.</source>
         <translation>Please add documents first.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="327"/>
+        <location filename="../analysis_page.py" line="328"/>
         <source>Die Dokumente werden noch geladen; bitte einen Moment warten.</source>
         <translation>The documents are still loading; please wait a moment.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="344"/>
+        <location filename="../analysis_page.py" line="345"/>
         <source>Fertig: {n} Dokument(e) analysiert.</source>
         <translation>Done: {n} document(s) analysed.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="352"/>
+        <location filename="../analysis_page.py" line="353"/>
         <source>Analysiere {nummer} von {gesamt}: {name} …</source>
         <translation>Analysing {nummer} of {gesamt}: {name} …</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="383"/>
+        <location filename="../analysis_page.py" line="384"/>
         <source>Abgebrochen.</source>
         <translation>Cancelled.</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="396"/>
+        <location filename="../analysis_page.py" line="397"/>
         <source>{kennung}: {nachname}, {vorname}, geb. {geb} (Übereinstimmung {score})</source>
         <translation>{kennung}: {nachname}, {vorname}, born {geb} (match {score})</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="400"/>
+        <location filename="../analysis_page.py" line="401"/>
         <source>Ähnliche Person im Pseudonymspeicher</source>
         <translation>Similar person in the pseudonym store</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="401"/>
+        <location filename="../analysis_page.py" line="402"/>
         <source>Diese Person ähnelt einem vorhandenen Eintrag. Dieselbe Person?</source>
         <translation>This person resembles an existing entry. The same person?</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="403"/>
+        <location filename="../analysis_page.py" line="404"/>
         <source>Ja, {kennung}</source>
         <translation>Yes, {kennung}</translation>
     </message>
     <message>
-        <location filename="../analysis_page.py" line="405"/>
+        <location filename="../analysis_page.py" line="406"/>
         <source>Nein, neue Person</source>
         <translation>No, a new person</translation>
     </message>
@@ -682,27 +682,27 @@
         <translation>All documents of this patient together: {kurz}; {schwelle}.</translation>
     </message>
     <message>
-        <location filename="../control_page.py" line="271"/>
+        <location filename="../control_page.py" line="272"/>
         <source> Größter Beitrag: {merkmal} ({bits:.1f} Bit).</source>
         <translation> Largest contribution: {merkmal} ({bits:.1f} bits).</translation>
     </message>
     <message>
-        <location filename="../control_page.py" line="274"/>
+        <location filename="../control_page.py" line="275"/>
         <source> Einschließlich {n} früher freigegebener Dokument(e).</source>
         <translation> Including {n} earlier released document(s).</translation>
     </message>
     <message>
-        <location filename="../control_page.py" line="294"/>
+        <location filename="../control_page.py" line="295"/>
         <source>bestanden</source>
         <translation>passed</translation>
     </message>
     <message>
-        <location filename="../control_page.py" line="294"/>
+        <location filename="../control_page.py" line="295"/>
         <source>NICHT bestanden</source>
         <translation>NOT passed</translation>
     </message>
     <message>
-        <location filename="../control_page.py" line="333"/>
+        <location filename="../control_page.py" line="335"/>
         <source> (nicht gezählt)</source>
         <translation> (not counted)</translation>
     </message>
@@ -710,336 +710,336 @@
 <context>
     <name>DatabasePage</name>
     <message>
-        <location filename="../database_page.py" line="65"/>
+        <location filename="../database_page.py" line="66"/>
         <source>Datenbank und Schlüssel: alles, was zur Rückersetzung nötig ist. Sichern Sie beides regelmäßig; ohne den Schlüssel sind die Pseudonyme nicht mehr auflösbar.</source>
         <translation>Database and key: everything re-identification needs. Back both up regularly; without the key the pseudonyms can no longer be resolved.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="67"/>
+        <location filename="../database_page.py" line="68"/>
         <source>Aktualisieren</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="75"/>
+        <location filename="../database_page.py" line="76"/>
         <source>Merkmal</source>
         <translation>Item</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="75"/>
+        <location filename="../database_page.py" line="76"/>
         <source>Wert</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="86"/>
-        <location filename="../database_page.py" line="340"/>
+        <location filename="../database_page.py" line="87"/>
+        <location filename="../database_page.py" line="341"/>
         <source>Speicherort</source>
         <translation>Storage location</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="94"/>
-        <location filename="../database_page.py" line="323"/>
+        <location filename="../database_page.py" line="95"/>
+        <location filename="../database_page.py" line="324"/>
         <source>Datenbank</source>
         <translation>Database</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="101"/>
-        <location filename="../database_page.py" line="331"/>
+        <location filename="../database_page.py" line="102"/>
+        <location filename="../database_page.py" line="332"/>
         <source>Schlüsseldatei</source>
         <translation>Key file</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="103"/>
+        <location filename="../database_page.py" line="104"/>
         <source>Vorhandene Dateien an den neuen Ort kopieren (die alten werden umbenannt)</source>
         <translation>Copy the existing files to the new place (the old ones are renamed)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="108"/>
+        <location filename="../database_page.py" line="109"/>
         <source>Beide Dateien dürfen in beliebigen Ordnern liegen, auch getrennt; wer die Datenbank ohne den Schlüssel hat, kann nichts auflösen.</source>
         <translation>Both files may sit in any folders, even apart; whoever has the database without the key can resolve nothing.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="111"/>
+        <location filename="../database_page.py" line="112"/>
         <source>Speicherort übernehmen</source>
         <translation>Apply storage location</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="122"/>
+        <location filename="../database_page.py" line="123"/>
         <source>Sichern (Export)</source>
         <translation>Back up (export)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="126"/>
+        <location filename="../database_page.py" line="127"/>
         <source>Zielordner (Dateiname wird vergeben)</source>
         <translation>Target folder (the file name is chosen for you)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="131"/>
+        <location filename="../database_page.py" line="132"/>
         <source>Ziel</source>
         <translation>Target</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="132"/>
+        <location filename="../database_page.py" line="133"/>
         <source>Konfiguration (konfig.toml) einschließen</source>
         <translation>Include the configuration (konfig.toml)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="134"/>
+        <location filename="../database_page.py" line="135"/>
         <source>Nutzervokabular einschließen</source>
         <translation>Include your vocabulary</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="143"/>
+        <location filename="../database_page.py" line="144"/>
         <source>Wiederholung</source>
         <translation>Repeat</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="146"/>
-        <location filename="../database_page.py" line="184"/>
+        <location filename="../database_page.py" line="147"/>
+        <location filename="../database_page.py" line="185"/>
         <source>Passphrase</source>
         <translation>Passphrase</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="148"/>
+        <location filename="../database_page.py" line="149"/>
         <source>Unverschlüsselt sichern (nicht empfohlen: Archiv enthält Schlüssel und Klardaten)</source>
         <translation>Back up unencrypted (not recommended: the archive holds the key and clear data)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="156"/>
+        <location filename="../database_page.py" line="157"/>
         <source>Verschlüsselung braucht das Extra &apos;pgp&apos; (pysequoia) oder GnuPG.</source>
         <translation>Encryption needs the extra &apos;pgp&apos; (pysequoia) or GnuPG.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="160"/>
-        <location filename="../database_page.py" line="368"/>
-        <location filename="../database_page.py" line="374"/>
+        <location filename="../database_page.py" line="161"/>
+        <location filename="../database_page.py" line="369"/>
+        <location filename="../database_page.py" line="375"/>
         <source>Sichern</source>
         <translation>Back up</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="169"/>
+        <location filename="../database_page.py" line="170"/>
         <source>Wiederherstellen (Import)</source>
         <translation>Restore (import)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="173"/>
+        <location filename="../database_page.py" line="174"/>
         <source>Sicherungsarchiv (.zip oder .zip.gpg)</source>
         <translation>Backup archive (.zip or .zip.gpg)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="176"/>
+        <location filename="../database_page.py" line="177"/>
         <source>Prüfen</source>
         <translation>Check</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="181"/>
+        <location filename="../database_page.py" line="182"/>
         <source>Archiv</source>
         <translation>Archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="189"/>
+        <location filename="../database_page.py" line="190"/>
         <source>Ersetzen: Datenbank und Schlüssel aus dem Archiv übernehmen (die jetzigen werden vorher daneben gesichert)</source>
         <translation>Replace: take database and key from the archive (the current ones are set aside first)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="193"/>
+        <location filename="../database_page.py" line="194"/>
         <source>Zusammenführen: Einträge des Archivs ergänzen (nur bei gleichem Schlüssel)</source>
         <translation>Merge: add the entries of the archive (same key only)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="196"/>
+        <location filename="../database_page.py" line="197"/>
         <source>Konfiguration aus dem Archiv übernehmen</source>
         <translation>Take the configuration from the archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="198"/>
+        <location filename="../database_page.py" line="199"/>
         <source>Nutzervokabular aus dem Archiv übernehmen</source>
         <translation>Take the vocabulary from the archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="205"/>
-        <location filename="../database_page.py" line="451"/>
-        <location filename="../database_page.py" line="454"/>
-        <location filename="../database_page.py" line="483"/>
+        <location filename="../database_page.py" line="206"/>
+        <location filename="../database_page.py" line="452"/>
+        <location filename="../database_page.py" line="455"/>
+        <location filename="../database_page.py" line="484"/>
         <source>Importieren</source>
         <translation>Import</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="215"/>
+        <location filename="../database_page.py" line="216"/>
         <source>Zusatzdaten (nicht mitgeliefert)</source>
         <translation>Additional data (not bundled)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="218"/>
+        <location filename="../database_page.py" line="219"/>
         <source>Krankenanstalten in Österreich: Das Sozialministerium gestattet den Nachdruck seiner Liste nur außer zu kommerziellen Zwecken, deshalb liefert PseudonyMed sie nicht mit. Auf Wunsch lädt PseudonyMed die aktuelle Liste direkt beim Ministerium in Ihre lokale Datenbank und gibt sie nicht weiter. Sie dient später der Einschätzung, welchen Ort ein stehen gelassener Klinikname verrät.</source>
         <translation>Hospitals in Austria: the ministry of health permits reprinting its list only for non-commercial purposes, so PseudonyMed does not bundle it. On request PseudonyMed fetches the current list straight from the ministry into your local database and passes it on to no one. It will later help to judge which place a hospital name left in the text gives away.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="228"/>
+        <location filename="../database_page.py" line="229"/>
         <source>Beim Ministerium laden</source>
         <translation>Fetch from the ministry</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="230"/>
+        <location filename="../database_page.py" line="231"/>
         <source>Aus Datei …</source>
         <translation>From file …</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="242"/>
+        <location filename="../database_page.py" line="243"/>
         <source>Liste der Krankenanstalten (Excel-Mappe des Ministeriums)</source>
         <translation>List of hospitals (the ministry&apos;s Excel workbook)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="243"/>
+        <location filename="../database_page.py" line="244"/>
         <source>Excel-Mappe (*.xlsx)</source>
         <translation>Excel workbook (*.xlsx)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="278"/>
+        <location filename="../database_page.py" line="279"/>
         <source>Quelle: BMASGPK, Liste der Krankenanstalten in Österreich. Nachdruck mit Quellenangabe außer zu kommerziellen Zwecken gestattet. Die Liste kommt nur in Ihre lokale Datenbank.</source>
         <translation>Source: BMASGPK, list of hospitals in Austria. Reprinting with attribution is permitted except for commercial purposes. The list goes into your local database only.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="281"/>
+        <location filename="../database_page.py" line="282"/>
         <source>Jetzt beim Ministerium laden?</source>
         <translation>Fetch it from the ministry now?</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="282"/>
+        <location filename="../database_page.py" line="283"/>
         <source>Jetzt aus der gewählten Datei laden?</source>
         <translation>Load it from the chosen file now?</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="283"/>
+        <location filename="../database_page.py" line="284"/>
         <source>Zusatzdaten</source>
         <translation>Additional data</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="264"/>
+        <location filename="../database_page.py" line="265"/>
         <source>Laden fehlgeschlagen: {fehler}</source>
         <translation>Loading failed: {fehler}</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="270"/>
+        <location filename="../database_page.py" line="271"/>
         <source>{anzahl} Einträge geladen, {ohne} ohne Gemeinde (Stand {stand}).</source>
         <translation>{anzahl} entries loaded, {ohne} without a municipality (as of {stand}).</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="325"/>
+        <location filename="../database_page.py" line="326"/>
         <source>SQLite (*.sqlite)</source>
         <translation>SQLite (*.sqlite)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="332"/>
+        <location filename="../database_page.py" line="333"/>
         <source>Text (*.txt)</source>
         <translation>Text (*.txt)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="341"/>
+        <location filename="../database_page.py" line="342"/>
         <source>Es gibt analysierte, noch nicht exportierte Dokumente. Bitte zuerst exportieren oder entfernen.</source>
         <translation>There are analysed documents not yet exported. Export or remove them first.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="350"/>
+        <location filename="../database_page.py" line="351"/>
         <source>Speicherort nicht übernommen: {fehler}</source>
         <translation>Storage location not applied: {fehler}</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="359"/>
+        <location filename="../database_page.py" line="360"/>
         <source>Zielordner der Sicherung</source>
         <translation>Target folder of the backup</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="368"/>
+        <location filename="../database_page.py" line="369"/>
         <source>Bitte einen Zielordner wählen.</source>
         <translation>Please choose a target folder.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="398"/>
+        <location filename="../database_page.py" line="399"/>
         <source>Bitte eine Passphrase mit mindestens 8 Zeichen eingeben oder „Unverschlüsselt“ wählen.</source>
         <translation>Please enter a passphrase of at least 8 characters or choose “unencrypted”.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="401"/>
+        <location filename="../database_page.py" line="402"/>
         <source>Die Wiederholung stimmt nicht.</source>
         <translation>The repeat does not match.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="384"/>
+        <location filename="../database_page.py" line="385"/>
         <source>Sicherung fehlgeschlagen: {fehler}</source>
         <translation>Backup failed: {fehler}</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="386"/>
+        <location filename="../database_page.py" line="387"/>
         <source>Gesichert: {pfad}</source>
         <translation>Backed up: {pfad}</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="387"/>
+        <location filename="../database_page.py" line="388"/>
         <source> (verschlüsselt; gpg --decrypt öffnet das Archiv auch ohne PseudonyMed)</source>
         <translation> (encrypted; gpg --decrypt opens the archive without PseudonyMed as well)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="388"/>
+        <location filename="../database_page.py" line="389"/>
         <source> (UNVERSCHLÜSSELT, enthält Schlüssel und Klardaten)</source>
         <translation> (UNENCRYPTED, holds the key and clear data)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="408"/>
+        <location filename="../database_page.py" line="409"/>
         <source>Sicherungsarchiv</source>
         <translation>Backup archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="409"/>
+        <location filename="../database_page.py" line="410"/>
         <source>PseudonyMed-Sicherungen (*.zip *.gpg);;Alle Dateien (*)</source>
         <translation>PseudonyMed backups (*.zip *.gpg);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="421"/>
+        <location filename="../database_page.py" line="422"/>
         <source>Bitte ein Archiv wählen.</source>
         <translation>Please choose an archive.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="427"/>
+        <location filename="../database_page.py" line="428"/>
         <source>Archiv nicht lesbar: {fehler}</source>
         <translation>Archive not readable: {fehler}</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="439"/>
+        <location filename="../database_page.py" line="440"/>
         <source>Archiv: {beschreibung}. </source>
         <translation>Archive: {beschreibung}. </translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="441"/>
+        <location filename="../database_page.py" line="442"/>
         <source>Gleicher Schlüssel wie lokal: Zusammenführen möglich.</source>
         <translation>Same key as the local one: merging is possible.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="442"/>
+        <location filename="../database_page.py" line="443"/>
         <source>Anderer Schlüssel als lokal (oder noch keiner): nur Ersetzen.</source>
         <translation>A different key from the local one (or none yet): replace only.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="451"/>
+        <location filename="../database_page.py" line="452"/>
         <source>Bitte zuerst ein Archiv prüfen.</source>
         <translation>Please check an archive first.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="455"/>
+        <location filename="../database_page.py" line="456"/>
         <source>Es gibt analysierte, noch nicht exportierte Dokumente. Bitte zuerst exportieren oder entfernen, dann importieren.</source>
         <translation>There are analysed documents not yet exported. Export or remove them first, then import.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="480"/>
+        <location filename="../database_page.py" line="481"/>
         <source>Datenbank und Schlüssel durch das Archiv ersetzen? Die jetzigen werden vorher daneben gesichert.</source>
         <translation>Replace database and key by the archive? The current ones are set aside first.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="482"/>
+        <location filename="../database_page.py" line="483"/>
         <source>Einträge des Archivs in die lokale Datenbank übernehmen?</source>
         <translation>Add the entries of the archive to the local database?</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="468"/>
+        <location filename="../database_page.py" line="469"/>
         <source>Import fehlgeschlagen: {fehler}</source>
         <translation>Import failed: {fehler}</translation>
     </message>
@@ -1394,27 +1394,27 @@
 <context>
     <name>IdentifiersModel</name>
     <message>
-        <location filename="../identifiers_page.py" line="36"/>
+        <location filename="../identifiers_page.py" line="37"/>
         <source>Begriff</source>
         <translation>Term</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="36"/>
+        <location filename="../identifiers_page.py" line="37"/>
         <source>Klasse</source>
         <translation>Class</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="36"/>
+        <location filename="../identifiers_page.py" line="37"/>
         <source>Angaben</source>
         <translation>Details</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="37"/>
+        <location filename="../identifiers_page.py" line="38"/>
         <source>Quelle</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="52"/>
+        <location filename="../identifiers_page.py" line="53"/>
         <source>eigene</source>
         <translation>own</translation>
     </message>
@@ -1422,132 +1422,132 @@
 <context>
     <name>IdentifiersPage</name>
     <message>
-        <location filename="../identifiers_page.py" line="77"/>
+        <location filename="../identifiers_page.py" line="78"/>
         <source>Identifikatoren außerhalb der Patientendaten: Kliniken, Berufe, Studien, Titel und Ihre eigenen (Arbeitgeber, Vereine, Einrichtungen). Wie die Patientendaten werden sie standardmäßig geschwärzt; in der Sichtprüfung lässt sich jeder Treffer verwerfen. Kliniken und eigene Einträge zählen überall, Berufe nur mit Hinweis wie „arbeitet als“ oder „von Beruf“, Studienkürzel nur neben „Studie“ (Registernummern wie NCT immer), Titel nur vor oder nach einem erkannten Namen. Der Erwerbsstatus (berentet, arbeitslos) bleibt nach der GeMTeX-Leitlinie stehen.</source>
         <translation>Identifiers beyond the patient data: hospitals, professions, studies, titles and your own (employers, clubs, institutions). Like the patient data they are redacted by default; the visual review can discard any hit. Hospitals and your own entries count wherever they stand, professions only with a cue such as ‘arbeitet als’ or ‘von Beruf’, study acronyms only next to ‘Studie’ (registry numbers such as NCT always), titles only before or after a name that was found. Employment status (retired, unemployed) stays, following the GeMTeX guideline.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="89"/>
+        <location filename="../identifiers_page.py" line="90"/>
         <source>Suchen …</source>
         <translation>Search …</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="95"/>
+        <location filename="../identifiers_page.py" line="96"/>
         <source>Klasse</source>
         <translation>Class</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="109"/>
+        <location filename="../identifiers_page.py" line="110"/>
         <source>Neuer Identifikator (auch mehrere Wörter)</source>
         <translation>New identifier (several words allowed)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="115"/>
+        <location filename="../identifiers_page.py" line="116"/>
         <source>Hinzufügen</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="125"/>
+        <location filename="../identifiers_page.py" line="126"/>
         <source>CSV (begriff,klasse; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder eine Liste mit einem Identifikator je Zeile</source>
         <translation>CSV (begriff,klasse; header line optional; comma, semicolon or tab) or a list with one identifier per line</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="130"/>
+        <location filename="../identifiers_page.py" line="131"/>
         <source>Gelöschte wiederherstellen</source>
         <translation>Restore deleted</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="132"/>
+        <location filename="../identifiers_page.py" line="133"/>
         <source>Gelöschte mitgelieferte Einträge zurückholen; selbst geladene Zusatzdaten (Kliniken Österreich) bitte in „11 Datenbank“ neu laden</source>
         <translation>Bring back deleted bundled entries; please load additional data you fetched yourself (Austrian hospitals) again in ‘11 Database’</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="178"/>
+        <location filename="../identifiers_page.py" line="179"/>
         <source>{n} von {gesamt} Einträgen</source>
         <translation>{n} of {gesamt} entries</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="202"/>
+        <location filename="../identifiers_page.py" line="203"/>
         <source>Geändert: {begriff}</source>
         <translation>Changed: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="205"/>
+        <location filename="../identifiers_page.py" line="206"/>
         <source>Nicht geändert: {begriff} (zu kurz oder schon vorhanden)</source>
         <translation>Not changed: {begriff} (too short or already present)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="214"/>
+        <location filename="../identifiers_page.py" line="215"/>
         <source>Identifikatoren haben mindestens drei Zeichen.</source>
         <translation>Identifiers have at least three characters.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="219"/>
+        <location filename="../identifiers_page.py" line="220"/>
         <source>Hinzugefügt: {begriff}</source>
         <translation>Added: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="220"/>
+        <location filename="../identifiers_page.py" line="221"/>
         <source>Schon vorhanden: {begriff}</source>
         <translation>Already present: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="230"/>
+        <location filename="../identifiers_page.py" line="231"/>
         <source>Nichts ausgewählt.</source>
         <translation>Nothing selected.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="233"/>
+        <location filename="../identifiers_page.py" line="234"/>
         <source>Löschen</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="234"/>
+        <location filename="../identifiers_page.py" line="235"/>
         <source>{n} Identifikator(en) löschen? Mitgelieferte Einträge bleiben auch nach Updates gelöscht, bis Sie sie wiederherstellen.</source>
         <translation>Delete {n} identifier(s)? Bundled entries stay deleted across updates until you restore them.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="241"/>
+        <location filename="../identifiers_page.py" line="242"/>
         <source>{n} Identifikator(en) gelöscht.</source>
         <translation>{n} identifier(s) deleted.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="250"/>
+        <location filename="../identifiers_page.py" line="251"/>
         <source>{n} gelöschte Einträge wiederhergestellt.</source>
         <translation>{n} deleted entries restored.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="257"/>
+        <location filename="../identifiers_page.py" line="258"/>
         <source>Identifikatoren als CSV</source>
         <translation>Identifiers as CSV</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="258"/>
+        <location filename="../identifiers_page.py" line="259"/>
         <source>CSV (*.csv)</source>
         <translation>CSV (*.csv)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="267"/>
+        <location filename="../identifiers_page.py" line="268"/>
         <source>{n} Einträge nach {pfad} geschrieben.</source>
         <translation>{n} entries written to {pfad}.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="274"/>
+        <location filename="../identifiers_page.py" line="275"/>
         <source>Identifikatoren importieren</source>
         <translation>Import identifiers</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="275"/>
+        <location filename="../identifiers_page.py" line="276"/>
         <source>CSV und Listen (*.csv *.txt);;Alle Dateien (*)</source>
         <translation>CSV and lists (*.csv *.txt);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="288"/>
+        <location filename="../identifiers_page.py" line="289"/>
         <source>Identifikatoren</source>
         <translation>Identifiers</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="292"/>
+        <location filename="../identifiers_page.py" line="293"/>
         <source>{neu} neue von {gelesen} Identifikatoren aus {name} übernommen.</source>
         <translation>{neu} new of {gelesen} identifiers taken over from {name}.</translation>
     </message>
@@ -1555,7 +1555,7 @@
 <context>
     <name>Language</name>
     <message>
-        <location filename="../translation.py" line="54"/>
+        <location filename="../translation.py" line="56"/>
         <source>de</source>
         <comment>language code of the interface</comment>
         <translation>en</translation>
@@ -1592,73 +1592,73 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../main_window.py" line="57"/>
+        <location filename="../main_window.py" line="59"/>
         <source>1 Patientendaten</source>
         <translation>1 Patient data</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="58"/>
+        <location filename="../main_window.py" line="60"/>
         <source>2 Identifikatoren</source>
         <translation>2 Identifiers</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="59"/>
+        <location filename="../main_window.py" line="61"/>
         <source>3 Fachvokabular</source>
         <translation>3 Medical vocabulary</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="60"/>
+        <location filename="../main_window.py" line="62"/>
         <source>4 Dokumente</source>
         <translation>4 Documents</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="61"/>
+        <location filename="../main_window.py" line="63"/>
         <source>5 Texterkennung</source>
         <translation>5 Text recognition</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="62"/>
+        <location filename="../main_window.py" line="64"/>
         <source>6 Analyse</source>
         <translation>6 Analysis</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="63"/>
+        <location filename="../main_window.py" line="65"/>
         <source>7 Sichtprüfung</source>
         <translation>7 Visual review</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="64"/>
+        <location filename="../main_window.py" line="66"/>
         <source>8 Kontrolle</source>
         <translation>8 Control</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="65"/>
+        <location filename="../main_window.py" line="67"/>
         <source>9 Export</source>
         <translation>9 Export</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="66"/>
+        <location filename="../main_window.py" line="68"/>
         <source>10 Reidentifikation</source>
         <translation>10 Re-identification</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="67"/>
+        <location filename="../main_window.py" line="69"/>
         <source>11 Datenbank</source>
         <translation>11 Database</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="86"/>
+        <location filename="../main_window.py" line="88"/>
         <source>Alles bleibt auf diesem Rechner; nur das Adressbuch wird über das Netz gelesen.</source>
         <translation>Everything stays on this computer; only the address book is read over the network.</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="91"/>
-        <location filename="../main_window.py" line="102"/>
+        <location filename="../main_window.py" line="93"/>
+        <location filename="../main_window.py" line="104"/>
         <source>Sprache</source>
         <translation>Language</translation>
     </message>
     <message>
-        <location filename="../main_window.py" line="103"/>
+        <location filename="../main_window.py" line="105"/>
         <source>Die Sprache gilt ab dem nächsten Start von PseudonyMed.</source>
         <translation>The language applies from the next start of PseudonyMed.</translation>
     </message>
@@ -1843,275 +1843,275 @@
 <context>
     <name>PatientPage</name>
     <message>
-        <location filename="../patient_page.py" line="124"/>
+        <location filename="../patient_page.py" line="125"/>
         <source>Quelle</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="127"/>
+        <location filename="../patient_page.py" line="128"/>
         <source>Name, Geburtsjahr oder Geburtsdatum …</source>
         <translation>Name, year or date of birth …</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="129"/>
+        <location filename="../patient_page.py" line="130"/>
         <source>Im Adressbuch suchen</source>
         <translation>Search the address book</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="135"/>
+        <location filename="../patient_page.py" line="136"/>
         <source>Patientendatei …</source>
         <translation>Patient file …</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="143"/>
+        <location filename="../patient_page.py" line="144"/>
         <source>vCard …</source>
         <translation>vCard …</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="168"/>
+        <location filename="../patient_page.py" line="169"/>
         <source>Identifikatoren (werden geschwärzt)</source>
         <translation>Identifiers (these will be redacted)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="176"/>
+        <location filename="../patient_page.py" line="177"/>
         <source>Nachname</source>
         <translation>Surname</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="175"/>
+        <location filename="../patient_page.py" line="176"/>
         <source>Vorname(n)</source>
         <translation>First name(s)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="177"/>
+        <location filename="../patient_page.py" line="178"/>
         <source>Geburtsname</source>
         <translation>Birth name</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="175"/>
+        <location filename="../patient_page.py" line="176"/>
         <source>Titel</source>
         <translation>Title</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="131"/>
+        <location filename="../patient_page.py" line="132"/>
         <source>Adressbücher einrichten …</source>
         <translation>Set up address books …</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="133"/>
+        <location filename="../patient_page.py" line="134"/>
         <source>Lokale vCard-Datei oder -Ordner und Nextcloud (CardDAV)</source>
         <translation>Local vCard file or folder and Nextcloud (CardDAV)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="137"/>
+        <location filename="../patient_page.py" line="138"/>
         <source>JSON- oder TOML-Datei mit den Identifikatoren, wie &apos;pseudonymed kontakte export&apos; sie schreibt; eine leere Vorlage gibt „Vorlage speichern …“.</source>
         <translation>JSON or TOML file with the identifiers as &apos;pseudonymed kontakte export&apos; writes them; “Save template …” gives an empty one.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="140"/>
+        <location filename="../patient_page.py" line="141"/>
         <source>Vorlage speichern …</source>
         <translation>Save template …</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="141"/>
+        <location filename="../patient_page.py" line="142"/>
         <source>Leere Patientendatei (JSON) zum Ausfüllen</source>
         <translation>Empty patient file (JSON) to fill in</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="144"/>
+        <location filename="../patient_page.py" line="145"/>
         <source>Eine einzelne vCard-Datei (.vcf) laden</source>
         <translation>Load a single vCard file (.vcf)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="156"/>
+        <location filename="../patient_page.py" line="157"/>
         <source>Treffer (anklicken übernimmt die Daten)</source>
         <translation>Hits (click to take the data)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="178"/>
+        <location filename="../patient_page.py" line="179"/>
         <source>Geburtsdatum (TT.MM.JJJJ)</source>
         <translation>Date of birth (DD.MM.YYYY)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="180"/>
+        <location filename="../patient_page.py" line="181"/>
         <source>PLZ</source>
         <translation>Postcode</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="180"/>
+        <location filename="../patient_page.py" line="181"/>
         <source>Ort</source>
         <translation>Town</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="182"/>
+        <location filename="../patient_page.py" line="183"/>
         <source>Telefon (mehrere mit ;)</source>
         <translation>Telephone (several with ;)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="183"/>
+        <location filename="../patient_page.py" line="184"/>
         <source>Versichertennummer</source>
         <translation>Insurance number</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="184"/>
+        <location filename="../patient_page.py" line="185"/>
         <source>Patienten-ID</source>
         <translation>Patient ID</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="185"/>
+        <location filename="../patient_page.py" line="186"/>
         <source>Aktenzeichen (mehrere mit ;)</source>
         <translation>File number (several with ;)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="194"/>
+        <location filename="../patient_page.py" line="195"/>
         <source>Weitere Personen und Begriffe (eine je Zeile; Textdatei hierher ziehen)</source>
         <translation>Further people and terms (one per line; drop a text file here)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="198"/>
+        <location filename="../patient_page.py" line="199"/>
         <source>Angehörige: Vorname Nachname
 (Textdatei mit einem Namen je Zeile hierher ziehen)</source>
         <translation>Relatives: first name surname
 (drop a text file with one name per line here)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="201"/>
+        <location filename="../patient_page.py" line="202"/>
         <source>Zuweiser: Dr. med. Vorname Nachname
 (Textdatei hierher ziehen)</source>
         <translation>Referrers: Dr med first name surname
 (drop a text file here)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="204"/>
+        <location filename="../patient_page.py" line="205"/>
         <source>Begriffe: weitere Namen, Praxen, Nummern
 (Textdatei hierher ziehen)</source>
         <translation>Terms: further names, practices, numbers
 (drop a text file here)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="261"/>
+        <location filename="../patient_page.py" line="263"/>
         <source>Patientendatei JSON/TOML (*.json *.toml);;Alle Dateien (*)</source>
         <translation>Patient file JSON/TOML (*.json *.toml);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="270"/>
+        <location filename="../patient_page.py" line="272"/>
         <source>Vorlage speichern</source>
         <translation>Save template</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="271"/>
+        <location filename="../patient_page.py" line="273"/>
         <source>JSON (*.json)</source>
         <translation>JSON (*.json)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="274"/>
+        <location filename="../patient_page.py" line="276"/>
         <source>Vorlage geschrieben: {pfad}</source>
         <translation>Template written: {pfad}</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="171"/>
+        <location filename="../patient_page.py" line="172"/>
         <source>unbekannt</source>
         <translation>unknown</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="171"/>
+        <location filename="../patient_page.py" line="172"/>
         <source>Herr</source>
         <translation>Mr</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="172"/>
+        <location filename="../patient_page.py" line="173"/>
         <source>Frau</source>
         <translation>Ms</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="173"/>
+        <location filename="../patient_page.py" line="174"/>
         <source>Anrede</source>
         <translation>Salutation</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="179"/>
+        <location filename="../patient_page.py" line="180"/>
         <source>Straße</source>
         <translation>Street</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="179"/>
+        <location filename="../patient_page.py" line="180"/>
         <source>Hausnummer</source>
         <translation>House number</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="181"/>
+        <location filename="../patient_page.py" line="182"/>
         <source>E-Mail (mehrere mit ;)</source>
         <translation>E-mail (several with ;)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="215"/>
+        <location filename="../patient_page.py" line="216"/>
         <source>Patient übernehmen</source>
         <translation>Use this patient</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="234"/>
+        <location filename="../patient_page.py" line="235"/>
         <source>Adressbücher gespeichert.</source>
         <translation>Address books saved.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="244"/>
+        <location filename="../patient_page.py" line="245"/>
         <source>Kein Adressbuch eingerichtet: lokale vCard-Datei oder Nextcloud unter „Adressbücher einrichten …“.</source>
         <translation>No address book set up: a local vCard file or Nextcloud under “Set up address books …”.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="253"/>
+        <location filename="../patient_page.py" line="254"/>
         <source>Adressbuch</source>
         <translation>Address book</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="260"/>
-        <location filename="../patient_page.py" line="266"/>
+        <location filename="../patient_page.py" line="262"/>
+        <location filename="../patient_page.py" line="268"/>
         <source>Patientendatei</source>
         <translation>Patient file</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="278"/>
+        <location filename="../patient_page.py" line="280"/>
         <source>vCard</source>
         <translation>vCard</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="278"/>
+        <location filename="../patient_page.py" line="280"/>
         <source>vCard (*.vcf)</source>
         <translation>vCard (*.vcf)</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="291"/>
+        <location filename="../patient_page.py" line="293"/>
         <source>{nachname}, {vorname}  geb. {geb}  {ort}</source>
         <translation>{nachname}, {vorname}  born {geb}  {ort}</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="296"/>
+        <location filename="../patient_page.py" line="298"/>
         <source>Kein Treffer.</source>
         <translation>No match.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="325"/>
+        <location filename="../patient_page.py" line="327"/>
         <source>Notizen der Karte: </source>
         <translation>Notes on the card: </translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="364"/>
-        <location filename="../patient_page.py" line="367"/>
+        <location filename="../patient_page.py" line="366"/>
+        <location filename="../patient_page.py" line="369"/>
         <source>Patient</source>
         <translation>Patient</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="364"/>
+        <location filename="../patient_page.py" line="366"/>
         <source>Der Nachname fehlt.</source>
         <translation>The surname is missing.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="368"/>
+        <location filename="../patient_page.py" line="370"/>
         <source>Das Geburtsdatum ist nicht lesbar (TT.MM.JJJJ).</source>
         <translation>The date of birth is not readable (DD.MM.YYYY).</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="372"/>
+        <location filename="../patient_page.py" line="374"/>
         <source>Übernommen: {name}</source>
         <translation>In use: {name}</translation>
     </message>
@@ -2119,167 +2119,167 @@
 <context>
     <name>ReidentifyPage</name>
     <message>
-        <location filename="../reidentify_page.py" line="63"/>
+        <location filename="../reidentify_page.py" line="64"/>
         <source>Schlüsselkapsel eines Absenders</source>
         <translation>A sender&apos;s key capsule</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="66"/>
+        <location filename="../reidentify_page.py" line="67"/>
         <source>Kapsel öffnen …</source>
         <translation>Open capsule …</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="68"/>
+        <location filename="../reidentify_page.py" line="69"/>
         <source>Kapsel schließen</source>
         <translation>Close capsule</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="73"/>
+        <location filename="../reidentify_page.py" line="74"/>
         <source>Privater Schlüssel (Datei; leer = GnuPG-Schlüsselbund)</source>
         <translation>Private key (file; empty = GnuPG keyring)</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="82"/>
+        <location filename="../reidentify_page.py" line="83"/>
         <source>Eine Kapsel (&lt;name&gt;_pseudonym.kapsel.asc) kommt vom Absender eines pseudonymisierten Dokuments und enthält die Zuordnung, verschlüsselt für Ihren Schlüssel.</source>
         <translation>A capsule (&lt;name&gt;_pseudonym.kapsel.asc) comes from the sender of a pseudonymised document and holds the mapping, encrypted to your key.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="88"/>
+        <location filename="../reidentify_page.py" line="89"/>
         <source>Extra &apos;pgp&apos; (pysequoia) oder GnuPG installieren.</source>
         <translation>Install the extra &apos;pgp&apos; (pysequoia) or GnuPG.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="94"/>
+        <location filename="../reidentify_page.py" line="95"/>
         <source>Person:</source>
         <translation>Person:</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="98"/>
+        <location filename="../reidentify_page.py" line="99"/>
         <source>voller Name</source>
         <translation>full name</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="99"/>
+        <location filename="../reidentify_page.py" line="100"/>
         <source>Herr/Frau Nachname</source>
         <translation>Mr/Ms surname</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="101"/>
+        <location filename="../reidentify_page.py" line="102"/>
         <source>Liste aktualisieren</source>
         <translation>Refresh list</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="109"/>
+        <location filename="../reidentify_page.py" line="110"/>
         <source>Text des Sprachmodells hier einfügen …</source>
         <translation>Paste the language model&apos;s text here …</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="112"/>
+        <location filename="../reidentify_page.py" line="113"/>
         <source>Datei laden …</source>
         <translation>Load file …</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="114"/>
+        <location filename="../reidentify_page.py" line="115"/>
         <source>Rückersetzen</source>
         <translation>Re-identify</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="129"/>
+        <location filename="../reidentify_page.py" line="130"/>
         <source>Kopieren</source>
         <translation>Copy</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="131"/>
+        <location filename="../reidentify_page.py" line="132"/>
         <source>Speichern …</source>
         <translation>Save …</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="155"/>
+        <location filename="../reidentify_page.py" line="156"/>
         <source>Text</source>
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="156"/>
+        <location filename="../reidentify_page.py" line="157"/>
         <source>Text (*.txt *.md);;Alle (*)</source>
         <translation>Text (*.txt *.md);;All (*)</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="165"/>
+        <location filename="../reidentify_page.py" line="166"/>
         <source>Privater Schlüssel</source>
         <translation>Private key</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="166"/>
+        <location filename="../reidentify_page.py" line="167"/>
         <source>OpenPGP-Schlüssel (*.asc *.gpg *.pgp);;Alle Dateien (*)</source>
         <translation>OpenPGP keys (*.asc *.gpg *.pgp);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="184"/>
+        <location filename="../reidentify_page.py" line="185"/>
         <source>Schlüsselkapsel</source>
         <translation>Key capsule</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="185"/>
+        <location filename="../reidentify_page.py" line="186"/>
         <source>Kapseln (*.kapsel.asc *.asc);;Alle Dateien (*)</source>
         <translation>Capsules (*.kapsel.asc *.asc);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="220"/>
+        <location filename="../reidentify_page.py" line="222"/>
         <source>Passphrase</source>
         <translation>Passphrase</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="221"/>
+        <location filename="../reidentify_page.py" line="223"/>
         <source>Passphrase des privaten Schlüssels:</source>
         <translation>Passphrase of the private key:</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="195"/>
+        <location filename="../reidentify_page.py" line="196"/>
         <source>Kapsel nicht lesbar: {fehler}</source>
         <translation>Capsule not readable: {fehler}</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="236"/>
+        <location filename="../reidentify_page.py" line="238"/>
         <source> Entspricht dem lokalen Eintrag {kennung}.</source>
         <translation> Matches the local entry {kennung}.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="238"/>
+        <location filename="../reidentify_page.py" line="240"/>
         <source> Kein passender Eintrag in der lokalen Datenbank.</source>
         <translation> No matching entry in the local database.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="202"/>
+        <location filename="../reidentify_page.py" line="204"/>
         <source>Kapsel geöffnet: {beschreibung}.</source>
         <translation>Capsule opened: {beschreibung}.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="245"/>
+        <location filename="../reidentify_page.py" line="247"/>
         <source>Kapsel geschlossen; wieder lokale Datenbank.</source>
         <translation>Capsule closed; back to the local database.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="251"/>
+        <location filename="../reidentify_page.py" line="253"/>
         <source>Keine Person gewählt.</source>
         <translation>No person chosen.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="259"/>
+        <location filename="../reidentify_page.py" line="261"/>
         <source>{n} Ersetzungen; nicht aufgelöst: </source>
         <translation>{n} replacements; unresolved: </translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="262"/>
+        <location filename="../reidentify_page.py" line="264"/>
         <source>{n} Ersetzungen, nichts offen.</source>
         <translation>{n} replacements, nothing left.</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="283"/>
+        <location filename="../reidentify_page.py" line="285"/>
         <source>Speichern</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../reidentify_page.py" line="284"/>
+        <location filename="../reidentify_page.py" line="286"/>
         <source>Text (*.txt)</source>
         <translation>Text (*.txt)</translation>
     </message>
@@ -2287,156 +2287,156 @@
 <context>
     <name>ReviewPage</name>
     <message>
-        <location filename="../review_page.py" line="71"/>
+        <location filename="../review_page.py" line="72"/>
         <source>Dokument / Seite</source>
         <translation>Document / page</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="122"/>
+        <location filename="../review_page.py" line="123"/>
         <source>Seite</source>
         <translation>Page</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="122"/>
+        <location filename="../review_page.py" line="123"/>
         <source>Regel</source>
         <translation>Rule</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="123"/>
+        <location filename="../review_page.py" line="124"/>
         <source>Pseudonym</source>
         <translation>Pseudonym</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="123"/>
+        <location filename="../review_page.py" line="124"/>
         <source>Quelle</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="133"/>
+        <location filename="../review_page.py" line="134"/>
         <source>Fachbegriffe markieren</source>
         <translation>Mark medical terms</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="138"/>
+        <location filename="../review_page.py" line="139"/>
         <source>Verworfene Treffer für diesen Patienten merken (beim Export gespeichert)</source>
         <translation>Remember discarded hits for this patient (stored on export)</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="156"/>
-        <location filename="../review_page.py" line="301"/>
+        <location filename="../review_page.py" line="157"/>
+        <location filename="../review_page.py" line="302"/>
         <source>Treffer verwerfen</source>
         <translation>Discard hit</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="165"/>
+        <location filename="../review_page.py" line="166"/>
         <source>Maske zeichnen</source>
         <translation>Draw mask</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="168"/>
+        <location filename="../review_page.py" line="169"/>
         <source>Eingeschaltet: Ziehen schwärzt den Bereich schwarz, ohne Ersatztext; Text und Bild darunter verschwinden.</source>
         <translation>When on, dragging blacks out the area without a label; text and image under it disappear.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="214"/>
+        <location filename="../review_page.py" line="215"/>
         <source>Text</source>
         <translation>Text</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="216"/>
+        <location filename="../review_page.py" line="217"/>
         <source>Seite {nummer}</source>
         <translation>Page {nummer}</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="300"/>
+        <location filename="../review_page.py" line="301"/>
         <source>Treffer wiederherstellen</source>
         <translation>Restore hit</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="332"/>
+        <location filename="../review_page.py" line="333"/>
         <source>{n} Fachbegriffe markiert</source>
         <translation>{n} medical terms marked</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="145"/>
-        <location filename="../review_page.py" line="384"/>
-        <location filename="../review_page.py" line="415"/>
-        <location filename="../review_page.py" line="450"/>
+        <location filename="../review_page.py" line="146"/>
+        <location filename="../review_page.py" line="385"/>
+        <location filename="../review_page.py" line="417"/>
+        <location filename="../review_page.py" line="452"/>
         <source>[geschwärzt]</source>
         <translation>[redacted]</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="106"/>
+        <location filename="../review_page.py" line="107"/>
         <source>Rot: wird geschwärzt (gestrichelt: Vorschlag von NER oder unscharfer Suche) · Gelb: unsicher gelesen (unlesbare Zeilen werden vorsorglich geschwärzt) · Grün: bleibt stehen (Fachbegriff, verworfener Treffer; Klick stellt ihn wieder her). Klick auf ein Wort wählt es (blau), Strg/Cmd + Klick erweitert die Auswahl bis dorthin, „Auswahl aufnehmen“ macht daraus einen Treffer; so kommen auch Fachbegriffe oder Wörter in die Liste, die die Analyse nicht gefunden hat. Ziehen zeichnet einen Kasten mit dem Ersatztext aus dem Feld, mit „Maske zeichnen“ eine schwarze Maske; Umschalt + Ziehen verschiebt den Ausschnitt, Strg/Cmd + Rad zoomt. In Textdateien nimmt „Auswahl aufnehmen“ den ausgewählten Text auf. Die Quelle jedes Treffers steht in der Tabelle.</source>
         <translation>Red: will be redacted (dashed: suggested by NER or the fuzzy search) · Yellow: read uncertainly (unreadable lines are blanked as a precaution) · Green: stays (medical term, discarded hit; a click takes it back). A click on a word selects it (blue), Ctrl/Cmd + click extends the selection to there, ‘Take up selection’ makes a hit of it; that is how medical terms or words the analysis did not find get into the list. Dragging draws a box with the replacement text from the field, with ‘Draw mask’ a black mask; Shift + drag pans, Ctrl/Cmd + wheel zooms. In text files ‘Take up selection’ takes up the selected text. The source of every hit is in the table.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="144"/>
+        <location filename="../review_page.py" line="145"/>
         <source>Ersatztext für Kästen und Aufnahmen</source>
         <translation>Replacement text for boxes and take-ups</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="147"/>
+        <location filename="../review_page.py" line="148"/>
         <source>Für Kästen der Text, der hineingeschrieben wird. Für aufgenommene Wörter gilt: bleibt hier „[geschwärzt]“ stehen, bekommt das Wort einen eigenen Code ([Begriff …]), den die Reidentifikation zurücksetzt.</source>
         <translation>For boxes, the text written into them. For words taken up: with ‘[geschwärzt]’ left here, the word gets a code of its own ([Begriff …]) that the re-identification puts back.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="159"/>
+        <location filename="../review_page.py" line="160"/>
         <source>Auswahl aufnehmen</source>
         <translation>Take up selection</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="161"/>
+        <location filename="../review_page.py" line="162"/>
         <source>Die gewählten Wörter (Seite) oder den markierten Text (Textdatei) in die Trefferliste aufnehmen.</source>
         <translation>Take the picked words (page) or the selected text (text file) into the hit list.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="183"/>
+        <location filename="../review_page.py" line="184"/>
         <source>Arbeitsstand speichern …</source>
         <translation>Save working state …</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="185"/>
+        <location filename="../review_page.py" line="186"/>
         <source>Das aufbereitete Dokument und eine Konfigurationsdatei schreiben, aus denen sich die Sichtprüfung später wieder aufnehmen und abwandeln lässt (Aufbereitung, Texterkennung, Treffer, Entscheidungen). Beide Dateien enthalten Klardaten.</source>
         <translation>Write the prepared document and a configuration file from which the review can be resumed and varied later (clean-up, text recognition, hits, decisions). Both files contain clear data.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="386"/>
+        <location filename="../review_page.py" line="387"/>
         <source>Kasten nicht gesetzt: {fehler}</source>
         <translation>Box not set: {fehler}</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="391"/>
+        <location filename="../review_page.py" line="393"/>
         <source>{n} Kasten gesetzt: {pseudonym}</source>
         <translation>{n} box(es) set: {pseudonym}</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="426"/>
+        <location filename="../review_page.py" line="428"/>
         <source>Erst ein Wort anklicken oder Text markieren.</source>
         <translation>Click a word or select text first.</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="436"/>
+        <location filename="../review_page.py" line="438"/>
         <source>Aufgenommen: {pseudonym}</source>
         <translation>Taken up: {pseudonym}</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="462"/>
+        <location filename="../review_page.py" line="464"/>
         <source>Arbeitsstand speichern</source>
         <translation>Save working state</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="463"/>
+        <location filename="../review_page.py" line="465"/>
         <source>Arbeitsstand (*.arbeitsstand.json)</source>
         <translation>Working state (*.arbeitsstand.json)</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="477"/>
+        <location filename="../review_page.py" line="479"/>
         <source>Arbeitsstand</source>
         <translation>Working state</translation>
     </message>
     <message>
-        <location filename="../review_page.py" line="480"/>
+        <location filename="../review_page.py" line="482"/>
         <source>Arbeitsstand gespeichert: {dokument} und {konfiguration} (beide mit Klardaten, wie das Original aufbewahren).</source>
         <translation>Working state saved: {dokument} and {konfiguration} (both with clear data, keep them like the original).</translation>
     </message>
@@ -2444,17 +2444,17 @@
 <context>
     <name>VocabularyModel</name>
     <message>
-        <location filename="../vocabulary_page.py" line="35"/>
+        <location filename="../vocabulary_page.py" line="36"/>
         <source>Begriff</source>
         <translation>Term</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="35"/>
+        <location filename="../vocabulary_page.py" line="36"/>
         <source>Kategorie</source>
         <translation>Category</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="35"/>
+        <location filename="../vocabulary_page.py" line="36"/>
         <source>Angelegt</source>
         <translation>Added</translation>
     </message>
@@ -2462,133 +2462,133 @@
 <context>
     <name>VocabularyPage</name>
     <message>
-        <location filename="../vocabulary_page.py" line="74"/>
+        <location filename="../vocabulary_page.py" line="75"/>
         <source>Begriffe, die NER und die unscharfe Suche nie schwärzen dürfen: Fachbegriffe, Körperteile, Befundwörter, Eponyme und Ihre eigenen. Spaltenkopf anklicken sortiert; Doppelklick ändert Begriff oder Kategorie.</source>
         <translation>Terms NER and the fuzzy search must never redact: medical terms, body parts, findings words, eponyms and your own. Click a column header to sort; double-click changes a term or category.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="82"/>
+        <location filename="../vocabulary_page.py" line="83"/>
         <source>Suchen …</source>
         <translation>Search …</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="88"/>
+        <location filename="../vocabulary_page.py" line="89"/>
         <source>Kategorie</source>
         <translation>Category</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="101"/>
+        <location filename="../vocabulary_page.py" line="102"/>
         <source>Neuer Begriff (auch mehrere Wörter)</source>
         <translation>New term (several words allowed)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="105"/>
+        <location filename="../vocabulary_page.py" line="106"/>
         <source>Hinzufügen</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="115"/>
+        <location filename="../vocabulary_page.py" line="116"/>
         <source>CSV (begriff,kategorie; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder eine Liste mit einem Begriff je Zeile, etwa die beim Export geschriebene .vokabular.txt</source>
         <translation>CSV (begriff,kategorie; header optional; comma, semicolon or tab) or a list with one term per line, such as the .vokabular.txt written on export</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="121"/>
+        <location filename="../vocabulary_page.py" line="122"/>
         <source>Mitgelieferte Listen erneut einspielen</source>
         <translation>Load the bundled lists again</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="122"/>
+        <location filename="../vocabulary_page.py" line="123"/>
         <source>Fehlende Begriffe der mitgelieferten Listen wieder aufnehmen</source>
         <translation>Take missing terms of the bundled lists back in</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="149"/>
-        <location filename="../vocabulary_page.py" line="170"/>
+        <location filename="../vocabulary_page.py" line="150"/>
+        <location filename="../vocabulary_page.py" line="171"/>
         <source>{n} von {gesamt} Begriffen</source>
         <translation>{n} of {gesamt} terms</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="188"/>
+        <location filename="../vocabulary_page.py" line="189"/>
         <source>Geändert: {begriff}</source>
         <translation>Changed: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="191"/>
+        <location filename="../vocabulary_page.py" line="192"/>
         <source>Nicht geändert: {begriff} (zu kurz oder schon vorhanden)</source>
         <translation>Not changed: {begriff} (too short or already there)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="201"/>
+        <location filename="../vocabulary_page.py" line="202"/>
         <source>Begriffe haben mindestens drei Zeichen.</source>
         <translation>Terms have at least three characters.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="206"/>
+        <location filename="../vocabulary_page.py" line="207"/>
         <source>Hinzugefügt: {begriff}</source>
         <translation>Added: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="207"/>
+        <location filename="../vocabulary_page.py" line="208"/>
         <source>Schon vorhanden: {begriff}</source>
         <translation>Already there: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="217"/>
+        <location filename="../vocabulary_page.py" line="218"/>
         <source>Nichts ausgewählt.</source>
         <translation>Nothing selected.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="220"/>
+        <location filename="../vocabulary_page.py" line="221"/>
         <source>Löschen</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="221"/>
+        <location filename="../vocabulary_page.py" line="222"/>
         <source>{n} Begriff(e) aus dem Vokabular löschen?</source>
         <translation>Delete {n} term(s) from the vocabulary?</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="227"/>
+        <location filename="../vocabulary_page.py" line="228"/>
         <source>{n} Begriff(e) gelöscht.</source>
         <translation>{n} term(s) deleted.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="234"/>
+        <location filename="../vocabulary_page.py" line="235"/>
         <source>Vokabular als CSV</source>
         <translation>Vocabulary as CSV</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="235"/>
+        <location filename="../vocabulary_page.py" line="236"/>
         <source>CSV (*.csv)</source>
         <translation>CSV (*.csv)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="244"/>
+        <location filename="../vocabulary_page.py" line="245"/>
         <source>{n} Begriffe nach {pfad} geschrieben.</source>
         <translation>{n} terms written to {pfad}.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="251"/>
+        <location filename="../vocabulary_page.py" line="252"/>
         <source>Vokabular importieren</source>
         <translation>Import vocabulary</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="252"/>
+        <location filename="../vocabulary_page.py" line="253"/>
         <source>CSV und Listen (*.csv *.txt);;Alle Dateien (*)</source>
         <translation>CSV and lists (*.csv *.txt);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="265"/>
+        <location filename="../vocabulary_page.py" line="266"/>
         <source>Vokabular</source>
         <translation>Vocabulary</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="268"/>
+        <location filename="../vocabulary_page.py" line="269"/>
         <source>{neu} neue von {gelesen} Begriffen aus {name} übernommen.</source>
         <translation>{neu} new of {gelesen} terms taken over from {name}.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="281"/>
+        <location filename="../vocabulary_page.py" line="282"/>
         <source>{n} fehlende Begriffe der mitgelieferten Listen aufgenommen.</source>
         <translation>{n} missing terms of the bundled lists taken in.</translation>
     </message>

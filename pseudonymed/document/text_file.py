@@ -26,6 +26,7 @@ from typing import Any, NamedTuple
 from optdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit
+from pseudonymed.core.text import say
 
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".srt", ".vtt", ".json", ".eml"}
 SUBTITLE_EXTENSIONS = {".srt", ".vtt"}
@@ -143,11 +144,13 @@ def render_whisper(data: Any) -> str:
     if segments is None:
         if isinstance(data, dict) and isinstance(data.get("text"), str):
             return data["text"].strip() + "\n"
-        raise ValueError("JSON ohne Transkript: erwartet 'segments' (Whisper, WhisperX),"
-                         " 'transcription' (whisper.cpp) oder 'text'.")
+        raise ValueError(say("JSON ohne Transkript: erwartet 'segments' (Whisper, WhisperX),"
+                             " 'transcription' (whisper.cpp) oder 'text'.",
+                             "JSON without a transcript: expected 'segments' (Whisper, WhisperX),"
+                             " 'transcription' (whisper.cpp) or 'text'."))
     lines = [line for line in map(_segment_line, segments) if line]
     if not lines:
-        raise ValueError("JSON-Transkript ohne Text.")
+        raise ValueError(say("JSON-Transkript ohne Text.", "JSON transcript without text."))
     return "\n".join(lines) + "\n"
 
 
