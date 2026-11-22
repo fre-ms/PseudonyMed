@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from pseudonymed.dokument import anbindung
 from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 
 
 class AufbereitenSeite(QWidget):
@@ -423,7 +424,8 @@ class AufbereitenSeite(QWidget):
         try:
             grad = aufmodul.estimate_orientation(bild, backend)
         except Exception as e:  # noqa: BLE001
-            self.hinweis.setText(self.tr("Ausrichtung nicht erkannt: {fehler}").format(fehler=e))
+            self.hinweis.setText(self.tr("Ausrichtung nicht erkannt: {fehler}").format(
+                fehler=anbindung.meldung(e, oberflaechensprache())))
             return
         a.rotation = grad
         a.masks = []
@@ -478,15 +480,14 @@ class AufbereitenSeite(QWidget):
             png, _skala = vorlage.vorschau(self.seite, a, VORSCHAU_DPI)
         except Exception as e:  # noqa: BLE001 - shown instead of crashing the step
             self.hinweis.setText(self.tr("Aufbereitung fehlgeschlagen: {fehler}").format(
-                fehler=e))
+                fehler=anbindung.meldung(e, oberflaechensprache())))
             return
         bild = QImage.fromData(png)
         self.nachher.skala = bild.width() / vorlage.seitenbreite(self.seite, a)
         # an enlarged image is shown at the size of the original; zooming shows the gain
         self.nachher.setze_basis((VORSCHAU_DPI / 72.0) / self.nachher.skala)
         self.nachher.zeige(png, [], None)
-        # "de" becomes "en" while the English translation is installed
-        text = anbindung.beschreibung(a, self.tr("de", "language code of the interface"))
+        text = anbindung.beschreibung(a, oberflaechensprache())
         if a.corners is None and not vorlage.foto:
             text += " · " + self.tr("kein fotografiertes Blatt erkannt")
         self.hinweis.setText(text)

@@ -52,7 +52,7 @@ from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
 from pseudonymed.schwaerzen.pdf import Schwaerzoptionen
 
 MARKE = "pseudonymed_arbeitsstand"
-VERSION = 2  # 2: clean-up plans and page texts in optdoc's form (English keys)
+VERSION = 1
 KENNZEICHEN = ".arbeitsstand"
 ENDUNG = KENNZEICHEN + ".json"
 _OPTIONEN_AUSSEN = ("aufbereitung", "empfaenger", "empfaenger_fingerabdruck", "abgleich")
@@ -240,12 +240,6 @@ def lies(pfad: str | Path) -> Arbeitsstand:
         raise ArbeitsstandFehler(f"{pfad.name}: kein Arbeitsstand von PseudonyMed.")
     if int(daten[MARKE]) > VERSION:
         raise ArbeitsstandFehler(f"{pfad.name}: stammt von einem neueren PseudonyMed.")
-    if int(daten[MARKE]) < VERSION:
-        raise ArbeitsstandFehler(
-            f"{pfad.name}: Arbeitsstand im alten Format von PseudonyMed (vor der Umstellung der"
-            " Texterkennung auf optdoc); seine Aufbereitung und Seitentexte lassen sich nicht mehr"
-            f" lesen. Das Dokument daneben ({daten['dokument']['datei']}) ist unverändert"
-            " lesbar: bitte neu laden und die Sichtprüfung wiederholen.")
     dokument = pfad.parent / str(daten["dokument"]["datei"])
     try:
         inhalt = dokument.read_bytes()

@@ -97,21 +97,6 @@ def test_veraendertes_dokument_und_fremde_datei(tmp_path: Path, befund: Path, pa
         standmodul.lies(fremd)
 
 
-def test_altes_format_wird_klar_abgelehnt(tmp_path: Path, befund: Path, patient: Patient,
-                                          speicher: Pseudonymspeicher) -> None:
-    """A state written before the switch to optdoc (format 1, German keys) is refused with
-    a message that says what still works, not read into an empty plan."""
-    v = _vorbereitet(befund, patient, speicher)
-    dokument, konfiguration = standmodul.speichere(v, tmp_path)
-    v.schliessen()
-    daten = json.loads(konfiguration.read_text(encoding="utf-8"))
-    daten[standmodul.MARKE] = 1
-    konfiguration.write_text(json.dumps(daten), encoding="utf-8")
-    with pytest.raises(standmodul.ArbeitsstandFehler, match="alten Format") as fehler:
-        standmodul.lies(konfiguration)
-    assert dokument.name in str(fehler.value) and "neu laden" in str(fehler.value)
-
-
 def test_empfaengermodus_verweigert(befund: Path, patient: Patient) -> None:
     with einmalspeicher() as sp:
         opt = Ablaufoptionen(empfaenger="x", empfaenger_fingerabdruck="y")

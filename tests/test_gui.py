@@ -372,13 +372,13 @@ def test_englische_oberflaeche(qapp: QApplication, monkeypatch: pytest.MonkeyPat
         assert fenster.patient.f["nachname"].placeholderText() == ""
         assert fenster.export.knopf.text() == "Export"
         # the clean-up wording comes from optdoc and follows the installed translation
-        assert fenster.dokumente.aufbereiten.tr("de", "language code of the interface") == "en"
+        assert uebersetzung.oberflaechensprache() == "en"
         fenster.close()
     finally:
         qapp.removeTranslator(uebersetzer)
     fenster = Hauptfenster(Sitzung(speicherpfad=None))
     assert fenster.tabs.tabText(3) == "4 Dokumente"
-    assert fenster.dokumente.aufbereiten.tr("de", "language code of the interface") == "de"
+    assert uebersetzung.oberflaechensprache() == "de"
     fenster.close()
 
 
@@ -418,6 +418,18 @@ def test_fenster_aufbereiten(qapp: QApplication, tmp_path: Path, befund: Path,
     au.farbe_entfernen.setChecked(True)
     assert d.aufbereitung[0].upscale == 3 and d.aufbereitung[0].letter_mode
     assert d.aufbereitung[0].remove_colour and "Buchstabenmodus" in au.hinweis.text()
+    # optdoc's part of the hint follows the interface language like the rest of the page
+    from pseudonymed.gui import uebersetzung
+
+    uebersetzer = uebersetzung.installiere(qapp, "en_gb")
+    assert uebersetzer is not None
+    try:
+        au.zeichne()
+        assert "letter mode" in au.hinweis.text() and "Buchstabenmodus" not in au.hinweis.text()
+    finally:
+        qapp.removeTranslator(uebersetzer)
+    au.zeichne()
+    assert "Buchstabenmodus" in au.hinweis.text()
     au.hochskalieren.setCurrentIndex(0)
     au.textmodus.setChecked(False)
     # the two views are linked: pan one, the other follows; zoom likewise

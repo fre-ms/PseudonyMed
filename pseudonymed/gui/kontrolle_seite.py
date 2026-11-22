@@ -26,9 +26,11 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.ablauf import Ergebnis
+from pseudonymed.dokument import anbindung
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.export_seite import AMPELFARBEN
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 from pseudonymed.konfig import Einstellungen, lade_einstellungen, speichere_einstellungen
 from pseudonymed.pruefung import restrisiko as risikomodul
 from pseudonymed.pruefung.bericht import als_text
@@ -222,7 +224,7 @@ class KontrolleSeite(QWidget):
             try:
                 self.sitzung.pruefe(d)
             except Exception as e:  # noqa: BLE001
-                d.fehler = str(e)
+                d.fehler = anbindung.meldung(e, oberflaechensprache())
             self._naechstes()
             return
         self._arbeiter = Arbeiter(partial(self.sitzung.pruefe, d), self)
@@ -232,7 +234,8 @@ class KontrolleSeite(QWidget):
 
     def _pruefung_fehlgeschlagen(self, d: Dokument, e: object) -> None:
         """Record the worker's exception on the document and carry on with the queue."""
-        d.fehler = str(e)
+        d.fehler = anbindung.meldung(e, oberflaechensprache()) if isinstance(e, BaseException) \
+            else str(e)
         self._naechstes()
 
     # -- display -----------------------------------------------------------------------------------

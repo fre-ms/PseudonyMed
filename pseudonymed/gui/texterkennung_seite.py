@@ -26,9 +26,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.dokument import anbindung
 from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 
 
 class TexterkennungSeite(QWidget):
@@ -256,10 +258,10 @@ class TexterkennungSeite(QWidget):
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
         """Reading ``d`` failed: remember the error, show it, go on with the queue."""
-        d.fehler = str(e)
+        d.fehler = anbindung.meldung(e, oberflaechensprache())
         if self.synchron:
             raise e
-        QMessageBox.warning(self, d.pfad.name, str(e))
+        QMessageBox.warning(self, d.pfad.name, d.fehler)
         if self._warteschlange and self._warteschlange[0] is d:
             self._warteschlange.pop(0)
         self._naechstes()

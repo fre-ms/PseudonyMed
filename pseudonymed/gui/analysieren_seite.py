@@ -20,10 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.dokument import anbindung
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import ner as nermodul
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 from pseudonymed.konfig import Einstellungen, lade_einstellungen, speichere_einstellungen
 from pseudonymed.pseudonyme import pgp as pgpmodul
 from pseudonymed.pseudonyme.speicher import UnsichererAbgleich
@@ -382,8 +384,8 @@ class AnalysierenSeite(QWidget):
             self.sitzung.abgleich = entscheidung
             self._naechstes()  # same document again
             return
-        d.fehler = str(e)
-        QMessageBox.warning(self, d.pfad.name, str(e))
+        d.fehler = anbindung.meldung(e, oberflaechensprache())
+        QMessageBox.warning(self, d.pfad.name, d.fehler)
         if self._warteschlange and self._warteschlange[0] is d:
             self._warteschlange.pop(0)
         self._naechstes()

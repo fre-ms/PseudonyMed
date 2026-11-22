@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.dokument import anbindung
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.aufbereiten_seite import AufbereitenSeite
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 
 
 class Ablage(QListWidget):
@@ -261,10 +263,10 @@ class DokumenteSeite(QWidget):
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
         """Opening ``d`` failed: remember the error, show it, go on with the queue."""
-        d.fehler = str(e)
+        d.fehler = anbindung.meldung(e, oberflaechensprache())
         if d in self._warteschlange:
             self._warteschlange.remove(d)
         if self.synchron:
             raise e
-        QMessageBox.warning(self, d.pfad.name, str(e))
+        QMessageBox.warning(self, d.pfad.name, d.fehler)
         self._naechstes()

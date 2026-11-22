@@ -282,3 +282,30 @@ def test_papierformat_laedt_bilder_neu(qapp: QApplication, tmp_path: Path,
     assert bild.vorlage.doc[0].rect.height < hoehe_a4
     assert "1 Seite(n)" in seite.liste.item(0).text()
     seite.sitzung.schliessen()
+
+
+def test_meldungen_von_optdoc_in_der_sprache_der_oberflaeche(
+        qapp: QApplication, tmp_path: Path, befund: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An error optdoc raises while a file is opened is kept and shown in the language of
+    the interface: German, or English while the English translation is installed."""
+    from pseudonymed.ablauf import lesen
+    from pseudonymed.gui import uebersetzung
+
+    def kaputt(*_a: object, **_k: object) -> None:
+        raise ValueError("Unsupported file type: .pdf")
+
+    monkeypatch.setattr(lesen, "oeffne", kaputt)
+    seite = _seite(tmp_path)
+    with pytest.raises(ValueError):
+        seite.hinzufuegen([befund])
+    assert seite.sitzung.dokumente[0].fehler == "Dateityp nicht unterstützt: .pdf"
+    uebersetzer = uebersetzung.installiere(qapp, "en_gb")
+    assert uebersetzer is not None
+    try:
+        (tmp_path / "en").mkdir()
+        englisch = _seite(tmp_path / "en")
+        with pytest.raises(ValueError):
+            englisch.hinzufuegen([befund])
+        assert englisch.sitzung.dokumente[0].fehler == "Unsupported file type: .pdf"
+    finally:
+        qapp.removeTranslator(uebersetzer)

@@ -1,15 +1,16 @@
 """Where PseudonyMed meets optdoc, the document layer it builds on.
 
 optdoc loads, cleans up and reads the pages (text layer and OCR); its names and messages
-are English.  PseudonyMed keeps its German vocabulary at the edges: the engine "aus", the
-paper size "bild", German messages for the settings a user can get wrong, the German
-wording of a clean-up in reports, and its own hits for the lines OCR could not read.  The
-settings optdoc reads (which engine "auto" means, where Tesseract lives) are PseudonyMed's
-configuration, handed over on import of this module.
+are English.  The user sees optdoc's part in the language of the interface: its wording of
+a clean-up and its messages in German or English, its engine "none" as "aus" and its
+paper size "image" as "bild".  PseudonyMed makes its own hits of the lines OCR could not
+read, and hands optdoc its settings (which engine "auto" means, where Tesseract lives) on
+import of this module.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import cast
 
@@ -22,13 +23,33 @@ from pseudonymed.kern.modell import Art, Fundstelle
 
 UNLESBAR = "[unlesbar]"  # what a line OCR could not read becomes in the output
 
-OCRFehler = ocr.OCRError  # raised by the engines; the selection below speaks German
+OCRFehler = ocr.OCRError  # raised by the engines; :func:`meldung` words it for the user
 
 # PseudonyMed's names for the engines and paper sizes, where they differ from optdoc's
-_ENGINES = {"auto": "auto", "rapidocr": "rapidocr", "tesseract": "tesseract", "aus": "none"}
+_ENGINES = {"aus": "none"}
 _PAPIER = {"bild": "image"}
 
-PAPIERFORMATE = ("a4", "a5", "a3", "letter", "legal", "bild")
+# optdoc's messages and their German wording; a named group carries the variable part over
+_MELDUNGEN_DE: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(muster, re.DOTALL), deutsch) for muster, deutsch in (
+        (r"Tesseract is not installed \(no program 'tesseract'\)\.",
+         "Tesseract ist nicht installiert (Programm 'tesseract' fehlt)."),
+        (r"Tesseract could not be run: (?P<x>.*)", "Tesseract konnte nicht ausgeführt werden: {x}"),
+        (r"Tesseract reports an error: (?P<x>.*)", "Tesseract meldet einen Fehler: {x}"),
+        (r"RapidOCR is not installed \(extra 'ocr'\)\.",
+         "RapidOCR ist nicht installiert (Extra 'ocr')."),
+        (r"RapidOCR failed: (?P<x>.*)", "RapidOCR fehlgeschlagen: {x}"),
+        (r"unknown OCR engine: (?P<x>.*) \(auto, rapidocr, tesseract, none\)",
+         "Unbekanntes OCR-Backend: {x} (auto, rapidocr, tesseract, aus)."),
+        (r"unknown paper size: (?P<x>.*) \([^()]*\)",
+         "Unbekanntes Papierformat: {x} (a4, a5, a3, letter, legal, bild)."),
+        (r"Unsupported file type: (?P<x>.*)", "Dateityp nicht unterstützt: {x}"),
+        (r"HEIC/HEIF photos need the extra 'ocr' \(pillow-heif\): (?P<x>.*)",
+         "HEIC/HEIF-Fotos brauchen das Extra 'ocr' (pillow-heif): {x}"),
+        (r"page text (?P<x>\d+): the character lists do not fit the text",
+         "Seitentext {x}: Zeichenlisten passen nicht zum Text."),
+        (r"PNG encoding failed", "PNG-Kodierung fehlgeschlagen."),
+    ))
 
 
 class _Einstellungen:
@@ -63,50 +84,44 @@ class _Einstellungen:
 set_settings(cast(SettingsLike, _Einstellungen()))
 
 
-def _nicht_installiert(name: str) -> str | None:
-    """The German message for an engine that was asked for by name but is missing."""
-    if name == "rapidocr" and not ocr.RapidOCRBackend.available():
-        return "RapidOCR ist nicht installiert (Extra 'ocr')."
-    if name == "tesseract" and not ocr.TesseractBackend.available():
-        return "Tesseract ist nicht installiert (Programm 'tesseract' fehlt)."
-    return None
-
-
 def backend(name: str = "auto", sprachen: str | None = None,
             tabellen: bool = True) -> ocr.OCRBackend | None:
     """The OCR engine for PseudonyMed's name of it ("auto", "rapidocr", "tesseract", "aus");
     None for "aus" and for "auto" without an engine.  Unknown and missing engines end in an
-    :class:`OCRFehler` with a German message."""
-    gewuenscht = (name or "auto").lower()
-    if gewuenscht not in _ENGINES:
-        raise OCRFehler(f"Unbekanntes OCR-Backend: {name!r} (auto, rapidocr, tesseract, aus).")
-    fehlt = _nicht_installiert(gewuenscht)
-    if fehlt:
-        raise OCRFehler(fehlt)
-    return ocr.backend(_ENGINES[gewuenscht], sprachen, tables=tabellen)
+    :class:`OCRFehler`."""
+    return ocr.backend(_ENGINES.get((name or "auto").lower(), name), sprachen, tables=tabellen)
 
 
 def papierformat(name: str | None) -> tuple[float, float] | None:
     """Width and height in points of a paper size by PseudonyMed's name ("bild" for a page
-    as large as the image, None then); an unknown name is a ValueError in German."""
+    as large as the image, None then); an unknown name is a ValueError."""
     schluessel = (name or "a4").lower()
-    try:
-        return loading.paper_size(_PAPIER.get(schluessel, schluessel))
-    except ValueError:
-        raise ValueError(f"Unbekanntes Papierformat: {name!r} ({', '.join(PAPIERFORMATE)})") \
-            from None
+    return loading.paper_size(_PAPIER.get(schluessel, name))
 
 
 def oeffne(pfad: str | Path, papier: str | None = "a4") -> pymupdf.Document:
     """Open a PDF, or an image on a sheet of the paper size PseudonyMed names."""
     schluessel = (papier or "a4").lower()
-    return loading.open_document(pfad, _PAPIER.get(schluessel, schluessel))
+    return loading.open_document(pfad, _PAPIER.get(schluessel, papier))
 
 
 def beschreibung(plan: cleanup.CleanupPlan, sprache: str = "de") -> str:
-    """What a page clean-up does: German for the reports, English for the interface in
-    English ("en")."""
+    """What a page clean-up does, in German ("de", the reports and the German interface) or
+    English ("en", the English interface)."""
     return cleanup.describe(plan, "en" if sprache.startswith("en") else "de")
+
+
+def meldung(fehler: BaseException, sprache: str = "de") -> str:
+    """The message of an error for the user: optdoc's own in German unless the language is
+    English ("en"), every other message as it is."""
+    text = str(fehler)
+    if sprache.startswith("en"):
+        return text
+    for muster, deutsch in _MELDUNGEN_DE:
+        treffer = muster.fullmatch(text)
+        if treffer:
+            return deutsch.format(**treffer.groupdict())
+    return text
 
 
 def unlesbare_treffer(seite: PageText) -> list[Fundstelle]:

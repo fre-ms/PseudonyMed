@@ -48,6 +48,12 @@ def ohne_sprachargumente(argumente: list[str]) -> list[str]:
     return rest
 
 
+def oberflaechensprache() -> str:
+    """"en" while the English translation is installed, else "de": the language for texts
+    that are not built with tr(), such as optdoc's wording and messages."""
+    return QCoreApplication.translate("Sprache", "de", "language code of the interface")
+
+
 def installiere(app: QCoreApplication, sprache: str) -> QTranslator | None:
     """Install the en-GB translation when the language asks for English."""
     if not sprache.startswith("en"):

@@ -28,8 +28,10 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.ablauf import Ergebnis
+from pseudonymed.dokument import anbindung
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
+from pseudonymed.gui.uebersetzung import oberflaechensprache
 from pseudonymed.pruefung.bericht import als_text
 
 AMPELFARBEN = {"grau": "#9a9a9a", "gruen": "#28a040", "gelb": "#e6a500", "rot": "#c81e1e"}
@@ -365,9 +367,9 @@ class ExportSeite(QWidget):
 
     def _fehler(self, e: Exception, d: Dokument) -> None:
         """Note the error on the document and in the protocol, then go on."""
-        d.fehler = str(e)
+        d.fehler = anbindung.meldung(e, oberflaechensprache())
         self.ausgabe.appendPlainText(
-            self.tr("{name}: Fehler: {fehler}").format(name=d.pfad.name, fehler=e) + "\n")
+            self.tr("{name}: Fehler: {fehler}").format(name=d.pfad.name, fehler=d.fehler) + "\n")
         self._naechstes()
 
     def ordner_oeffnen(self) -> None:

@@ -38,7 +38,8 @@ from pseudonymed.cli.basis import (
     unsicher_melden,
     wahl_pruefen,
 )
-from pseudonymed.dokument.anbindung import OCRFehler, papierformat
+from pseudonymed.dokument import anbindung
+from pseudonymed.dokument.anbindung import OCRFehler
 from pseudonymed.dokument.textdatei import ist_textdatei
 from pseudonymed.kern.modell import Patient
 from pseudonymed.konfig import (
@@ -85,9 +86,9 @@ def _wahlen_pruefen(papier: str, unlesbar: str, datum: str, vorschau: str,
                     aufbereiten: str) -> None:
     """End the command when one of the free-text options holds an unknown value."""
     try:
-        papierformat(papier)
+        anbindung.papierformat(papier)
     except ValueError as e:
-        abbruch(str(e), ursache=e)
+        abbruch(anbindung.meldung(e), ursache=e)
     wahl_pruefen("--unlesbar", unlesbar, ("schwaerzen", "lassen"))
     wahl_pruefen("--datum", datum, ("jahr", "alter"))
     wahl_pruefen("--vorschau", vorschau, ("auto", "immer", "nie"))
@@ -191,7 +192,7 @@ def _verarbeite(datei: Path, stand: Path | None, lauf: _Durchlauf, sp: Pseudonym
         unsicher_melden(person, e)
         raise typer.Exit(code=4) from e
     except (ValueError, NotImplementedError, OCRFehler, standmodul.ArbeitsstandFehler) as e:
-        typer.echo(f"{datei.name}: {e}", err=True)
+        typer.echo(f"{datei.name}: {anbindung.meldung(e)}", err=True)
         return False
     assert person is not None
     return _ergebnis_melden(erg, datei, person)
