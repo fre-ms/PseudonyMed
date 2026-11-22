@@ -23,7 +23,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from pseudonymed.dokument.textebene import Seitentext
+from optdoc.pagetext import PageText
+
 from pseudonymed.kern.modell import Fundstelle
 
 TEXTENDUNGEN = {".txt", ".md", ".markdown", ".srt", ".vtt", ".json", ".eml"}
@@ -309,10 +310,10 @@ def analysetext(text: str, endung: str) -> str:
     return "".join(zeichen)
 
 
-def textseite(text: str, nummer: int = 0) -> Seitentext:
-    """A :class:`Seitentext` without boxes: the rules, the fuzzy search, NER and the
+def textseite(text: str, nummer: int = 0) -> PageText:
+    """A :class:`PageText` without boxes: the rules, the fuzzy search, NER and the
     vocabulary only need the string and the line of every character."""
-    seite = Seitentext(nummer=nummer, breite=0.0, hoehe=0.0, text=text, quelle="text")
+    seite = PageText(number=nummer, width=0.0, height=0.0, text=text, source="text")
     zeilen: list[int] = []
     zeile = 0
     for c in text:
@@ -320,10 +321,10 @@ def textseite(text: str, nummer: int = 0) -> Seitentext:
         if c == "\n":
             zeile += 1
     n = len(text)
-    seite.boxen = [None] * n
-    seite.zeilen = zeilen
-    seite.groessen = [0.0] * n
-    seite.basislinien = [0.0] * n
+    seite.boxes = [None] * n
+    seite.lines = zeilen
+    seite.sizes = [0.0] * n
+    seite.baselines = [0.0] * n
     return seite
 
 

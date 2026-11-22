@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import ocr as ocrmodul
+from optdoc import cleanup as aufmodul
+from optdoc import ocr as ocrmodul
+
 from pseudonymed.kern.modell import Fundstelle, Pruefbericht
 from pseudonymed.pruefung import restrisiko as risikomodul
 from pseudonymed.schwaerzen.pdf import Schwaerzoptionen
@@ -39,7 +40,7 @@ class Ablaufoptionen:
     unscharf_text: bool = True  # text files: fuzzy search for misspelt identifiers (transcripts)
     aufbereiten: str = "auto"  # image-only pages: "auto" (suggested clean-up) or "aus"
     verworfene_merken: bool = False  # remember discarded hits per patient in the store
-    aufbereitung: dict[int, aufmodul.Aufbereitung] | None = None  # explicit choice per page
+    aufbereitung: dict[int, aufmodul.CleanupPlan] | None = None  # explicit choice per page
     vorschau: str = "auto"  # "auto" (pages that needed OCR), "immer", "nie"
     papierformat: str = "a4"  # page size for photos and images: a4, a5, a3, letter, legal, bild
     ocr_tabellen: bool = True  # Tesseract: second pass for sparse text (tables), merged in

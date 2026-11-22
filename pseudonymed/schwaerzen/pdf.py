@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pymupdf
+from optdoc.pagetext import Box, PageText, read_text_layer
 
 from pseudonymed import WERKZEUG
-from pseudonymed.dokument.textebene import Box, Seitentext, lese_seite
 from pseudonymed.kern.modell import Fundstelle
 
 ERLAUBTE_METADATEN = {"producer": WERKZEUG, "creator": WERKZEUG}
@@ -65,11 +65,11 @@ class Schwaerzoptionen:
     textebene: bool = True  # embed the OCR text invisibly so that scans stay searchable
 
 
-def _band(rect: pymupdf.Rect, zeile: int, seite: Seitentext) -> pymupdf.Rect:
+def _band(rect: pymupdf.Rect, zeile: int, seite: PageText) -> pymupdf.Rect:
     """Shrink ``rect`` so that it touches no character of another line."""
     band = pymupdf.Rect(rect)
     mitte = (band.y0 + band.y1) / 2
-    for z, box in seite.zeilenboxen.items():
+    for z, box in seite.line_boxes.items():
         if z == zeile:
             continue
         andere = pymupdf.Rect(box)
@@ -87,12 +87,12 @@ def _band(rect: pymupdf.Rect, zeile: int, seite: Seitentext) -> pymupdf.Rect:
     return band
 
 
-def _zeile_von_rect(seite: Seitentext, f: Fundstelle, rect: pymupdf.Rect) -> int:
+def _zeile_von_rect(seite: PageText, f: Fundstelle, rect: pymupdf.Rect) -> int:
     """Line of the first character of ``f`` whose box touches ``rect``, or -1."""
     for i in range(f.start, min(f.ende, len(seite.text))):
-        box = seite.boxen[i]
+        box = seite.boxes[i]
         if box is not None and pymupdf.Rect(box).intersects(rect):
-            return seite.zeilen[i]
+            return seite.lines[i]
     return -1
 
 
@@ -116,11 +116,11 @@ class _Einblendung(NamedTuple):
     pseudonym: str
 
 
-def _zeichenlagen(seite: Seitentext) -> list[tuple[int, str, Box]]:
+def _zeichenlagen(seite: PageText) -> list[tuple[int, str, Box]]:
     """Offset, character and box of every printed, non-blank character of ``seite``."""
     return [
         (i, c, box) for i, c in enumerate(seite.text)
-        if (box := seite.boxen[i]) is not None and not c.isspace()
+        if (box := seite.boxes[i]) is not None and not c.isspace()
     ]
 
 
@@ -141,7 +141,7 @@ def _verschoben(a: tuple[str, Box], b: tuple[str, Box], toleranz: float) -> bool
 
 
 def lage_intakt(
-    vorher: Seitentext, nachher: Seitentext, fundstellen: list[Fundstelle], toleranz: float = 0.6,
+    vorher: PageText, nachher: PageText, fundstellen: list[Fundstelle], toleranz: float = 0.6,
     kaesten: list[pymupdf.Rect] | None = None,
 ) -> bool:
     """True when every character outside the hits (and outside the applied boxes
@@ -171,11 +171,11 @@ def _einblendung(page: pymupdf.Page, e: _Einblendung, opt: Schwaerzoptionen) -> 
 
 
 def _beschriftung(
-    seite: Seitentext, f: Fundstelle, rect: pymupdf.Rect, opt: Schwaerzoptionen
+    seite: PageText, f: Fundstelle, rect: pymupdf.Rect, opt: Schwaerzoptionen
 ) -> _Einblendung:
     """The pseudonym of ``f`` fitted into its first box: on the original baseline for a
     text-layer hit, otherwise near the bottom of the box."""
-    basis = seite.basislinie(f.start, f.ende) if f.quelle == "text" else None
+    basis = seite.baseline(f.start, f.ende) if f.quelle == "text" else None
     if basis is None:
         basis = rect.y1 - 0.22 * rect.height
     groesse = _passende_groesse(f.pseudonym, rect.width - 1.5, f.schriftgroesse, opt)
@@ -183,7 +183,7 @@ def _beschriftung(
 
 
 def _uebermale_treffer(
-    page: pymupdf.Page, seite: Seitentext, fundstellen: list[Fundstelle], opt: Schwaerzoptionen
+    page: pymupdf.Page, seite: PageText, fundstellen: list[Fundstelle], opt: Schwaerzoptionen
 ) -> None:
     """Paint every box of every hit (black for masks), then write the pseudonyms, so
     that a neighbouring box never covers a text."""
@@ -203,7 +203,7 @@ def rastere_seite(
     doc: pymupdf.Document,
     nummer: int,
     original: pymupdf.Document,
-    seite: Seitentext,
+    seite: PageText,
     fundstellen: list[Fundstelle],
     opt: Schwaerzoptionen,
 ) -> None:
@@ -313,13 +313,13 @@ class _Schwaerzplan:
     einblendungen: list[_Einblendung] = field(default_factory=list)
 
 
-def _ist_gezeichnet(f: Fundstelle, seite: Seitentext | None) -> bool:
+def _ist_gezeichnet(f: Fundstelle, seite: PageText | None) -> bool:
     """True for a box the user drew over text: its rects are the text spans per line,
     followed by the box itself."""
     return f.quelle == "manuell" and f.ende > f.start and seite is not None
 
 
-def _textband(seite: Seitentext, f: Fundstelle, rect: pymupdf.Rect) -> _Loeschband:
+def _textband(seite: PageText, f: Fundstelle, rect: pymupdf.Rect) -> _Loeschband:
     """The removal band of a text-layer hit: clipped to its own line so that MuPDF
     leaves the neighbouring lines alone, or the box itself when no character of the
     hit touches it."""
@@ -341,7 +341,7 @@ def _bildband(page: pymupdf.Page, rect: pymupdf.Rect, tinte: _Tinte | None) -> _
 
 
 def _loeschband(
-    page: pymupdf.Page, seite: Seitentext | None, f: Fundstelle, rect: pymupdf.Rect,
+    page: pymupdf.Page, seite: PageText | None, f: Fundstelle, rect: pymupdf.Rect,
     gezeichnet: bool, tinte: _Tinte | None,
 ) -> _Loeschband:
     """Decide how ``rect`` of ``f`` is removed: by a line-clipped band when the hit
@@ -355,7 +355,7 @@ def _loeschband(
 
 
 def _einblendung_fuer(
-    seite: Seitentext | None, f: Fundstelle, lb: _Loeschband, opt: Schwaerzoptionen
+    seite: PageText | None, f: Fundstelle, lb: _Loeschband, opt: Schwaerzoptionen
 ) -> _Einblendung:
     """Decide where and how large the pseudonym of ``f`` is written: on the original
     baseline for a text-layer hit, widened to the right into free space when the
@@ -364,8 +364,8 @@ def _einblendung_fuer(
     flaeche, band = lb.flaeche, lb.band
     basis = frei = None
     if seite is not None and not lb.auf_bild:
-        basis = seite.basislinie(f.start, f.ende)
-        frei = seite.freier_raum_rechts(f.ende)
+        basis = seite.baseline(f.start, f.ende)
+        frei = seite.free_space_right(f.ende)
     if basis is None:
         basis = flaeche.y1 - 0.22 * flaeche.height
     if frei is None:
@@ -380,7 +380,7 @@ def _einblendung_fuer(
 
 
 def _sammle_treffer(
-    page: pymupdf.Page, seite: Seitentext | None, f: Fundstelle, tinte: _Tinte | None,
+    page: pymupdf.Page, seite: PageText | None, f: Fundstelle, tinte: _Tinte | None,
     opt: Schwaerzoptionen, plan: _Schwaerzplan,
 ) -> None:
     """Add the boxes of one hit to ``plan``.  A box the user drew over text is
@@ -404,7 +404,7 @@ def _sammle_treffer(
 
 
 def _sammle_kaesten(
-    page: pymupdf.Page, seite: Seitentext | None, fundstellen: list[Fundstelle],
+    page: pymupdf.Page, seite: PageText | None, fundstellen: list[Fundstelle],
     opt: Schwaerzoptionen,
 ) -> _Schwaerzplan:
     """Decide for every rectangle of every hit how it is removed and painted, without
@@ -436,7 +436,7 @@ def _wende_kaesten_an(page: pymupdf.Page, plan: _Schwaerzplan, opt: Schwaerzopti
 
 
 def _lage_bleibt(
-    page: pymupdf.Page, seite: Seitentext | None, fundstellen: list[Fundstelle],
+    page: pymupdf.Page, seite: PageText | None, fundstellen: list[Fundstelle],
     plan: _Schwaerzplan,
 ) -> bool:
     """Re-read the page and check that every character outside the hits kept its
@@ -446,7 +446,7 @@ def _lage_bleibt(
     treffer = [f for f in fundstellen if f.quelle in ("text", "manuell")]
     if not treffer and not plan.ohne_lagepruefung:
         return True
-    return lage_intakt(seite, lese_seite(page, seite.nummer), treffer,
+    return lage_intakt(seite, read_text_layer(page, seite.number), treffer,
                        kaesten=plan.ohne_lagepruefung)
 
 
@@ -463,7 +463,7 @@ def _zeichne_einblendungen(page: pymupdf.Page, plan: _Schwaerzplan, opt: Schwaer
 
 def schwaerze_seite(
     page: pymupdf.Page,
-    seite: Seitentext | None,
+    seite: PageText | None,
     fundstellen: list[Fundstelle],
     opt: Schwaerzoptionen | None = None,
 ) -> Seitenergebnis:
@@ -515,7 +515,7 @@ def _ohne_ueberlappung(
     return ergebnis
 
 
-def _wortkasten(seite: Seitentext, a: int, b: int) -> pymupdf.Rect | None:
+def _wortkasten(seite: PageText, a: int, b: int) -> pymupdf.Rect | None:
     """The union of the boxes of the word ``seite.text[a:b]``, or None without boxes."""
     kasten = seite.rects(a, b)
     if not kasten:
@@ -537,14 +537,14 @@ def _unter_treffer(wort: pymupdf.Rect, rects: list[pymupdf.Rect]) -> bool:
 
 
 def _freie_woerter(
-    seite: Seitentext, fundstellen: list[Fundstelle]
+    seite: PageText, fundstellen: list[Fundstelle]
 ) -> list[tuple[str, pymupdf.Rect]]:
     """The words of ``seite`` with their boxes, except words a hit covers: by offset
     for hits with a text span, by rectangle for the boxes of every hit."""
     treffer = [f for f in fundstellen if f.ende > f.start]
     rects = [pymupdf.Rect(r) for f in fundstellen for r in f.rects]
     frei: list[tuple[str, pymupdf.Rect]] = []
-    for a, b in seite.woerter():
+    for a, b in seite.words():
         wort = None if _im_treffer(a, b, treffer) else _wortkasten(seite, a, b)
         if wort is not None and not _unter_treffer(wort, rects):
             frei.append((seite.text[a:b], wort))
@@ -593,7 +593,7 @@ def _schreibe_pseudonyme(
 
 
 def unsichtbare_textebene(
-    page: pymupdf.Page, seite: Seitentext, fundstellen: list[Fundstelle],
+    page: pymupdf.Page, seite: PageText, fundstellen: list[Fundstelle],
     mit_pseudonymen: bool = False, opt: Schwaerzoptionen | None = None,
 ) -> int:
     """Write the words of ``seite`` invisibly (render mode 3) where they stand, except

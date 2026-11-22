@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from optdoc.loading import HEIC_SUFFIXES, IMAGE_SUFFIXES
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
@@ -20,7 +21,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.dokument.laden import BILDENDUNGEN, HEIC_ENDUNGEN
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.aufbereiten_seite import AufbereitenSeite
 from pseudonymed.gui.sitzung import Dokument, Sitzung
@@ -148,7 +148,7 @@ class DokumenteSeite(QWidget):
         """Images are opened on the new paper: reload those that are already in."""
         self.sitzung.optionen.papierformat = self.papier.currentData()
         bilder = [d for d in self.sitzung.dokumente
-                  if d.pfad.suffix.lower() in BILDENDUNGEN | HEIC_ENDUNGEN
+                  if d.pfad.suffix.lower() in IMAGE_SUFFIXES | HEIC_SUFFIXES
                   and d not in self._warteschlange]
         if bilder:
             laeuft = self.laedt

@@ -6,8 +6,8 @@ import datetime as dt
 import re
 
 import pymupdf
+from optdoc.pagetext import PageText, read_text_layer
 
-from pseudonymed.dokument.textebene import Seitentext, lese_seite
 from pseudonymed.erkennung.deterministisch import (
     Regel,
     finde,
@@ -42,7 +42,7 @@ def test_benachbarte_treffer_verschmelzen() -> None:
     page = doc.new_page()
     page.insert_text((72, 100), "Anschrift: Musterstraße 12, 80331 München, Tel.", fontname="helv")
     regeln = regeln_fuer(p, Pseudonymvergabe(p, "A"))
-    fundstellen = finde(lese_seite(page), regeln)
+    fundstellen = finde(read_text_layer(page), regeln)
     assert [f.pseudonym for f in fundstellen] == ["[Wohnort]"]
     assert fundstellen[0].text == "Musterstraße 12, 80331 München"
 
@@ -54,7 +54,7 @@ def test_adresscodes_mit_schluessel() -> None:
     page.insert_text((72, 100), "Anschrift: Musterstr. 12, 80331 München; geboren in Muenchen.",
                      fontname="helv")
     vergabe = Pseudonymvergabe(p, "K7Q4MX", geheimnis=bytes(32))
-    fundstellen = finde(lese_seite(page), regeln_fuer(p, vergabe))
+    fundstellen = finde(read_text_layer(page), regeln_fuer(p, vergabe))
     pseudonyme = [f.pseudonym for f in fundstellen]
     assert len(pseudonyme) == 3
     assert pseudonyme[0].startswith("[Straße ") and pseudonyme[1].startswith("[PLZ Ort ")
@@ -154,9 +154,9 @@ def test_kasten_gruppiert_je_zeile() -> None:
     page.insert_text((72, 100), "Erste Zeile hier", fontname="helv")
     page.insert_text((72, 120), "Zweite Zeile", fontname="helv")
     rect = (70.0, 88.0, 200.0, 124.0)
-    treffer = kasten_zu_fundstellen(lese_seite(page), rect, "[x]")
+    treffer = kasten_zu_fundstellen(read_text_layer(page), rect, "[x]")
     assert [f.text for f in treffer] == ["Erste Zeile hier", "Zweite Zeile"]
     assert treffer[0].rects[-1] == rect and all(f.regel == "manuell" for f in treffer)
-    leer = Seitentext(nummer=2, breite=595.0, hoehe=842.0, text="Bild")
+    leer = PageText(number=2, width=595.0, height=842.0, text="Bild")
     (einzig,) = kasten_zu_fundstellen(leer, rect, "[x]", "maske")
     assert (einzig.start, einzig.ende, einzig.rects, einzig.regel) == (0, 0, [rect], "maske")

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from optdoc.ocr import OCRWord, page_text_from_words
 from typer.testing import CliRunner
 
-from pseudonymed.dokument.ocr import OCRWort, seitentext_aus_woerter
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import ner as nermodul
 from pseudonymed.erkennung.unscharf import finde_unscharf, ziele_fuer
@@ -62,9 +62,9 @@ def test_unscharfe_suche_verschont_fachbegriffe() -> None:
     """Patient Hertz: "Herz" (one edit away) is an organ, "Hertx" is a misread name."""
     p = Patient(nachname="Hertz", vorname="Karl", geburtsdatum=dt.date(1950, 1, 2))
     v = Pseudonymvergabe(p, "K7Q4MX", geheimnis=bytes(32))
-    woerter = [OCRWort(w, 50 + 60 * i, 100, 100 + 60 * i, 112)
+    woerter = [OCRWord(w, 50 + 60 * i, 100, 100 + 60 * i, 112)
                for i, w in enumerate(["Das", "Herz", "schlägt", "ruhig", "Hertx", "kam"])]
-    s = seitentext_aus_woerter(woerter, 0, 595, 842)
+    s = page_text_from_words(woerter, 0, 595, 842)
     ohne = {f.text for f in finde_unscharf(s, ziele_fuer(p, v), [])}
     mit = {f.text for f in finde_unscharf(s, ziele_fuer(p, v), [], _klein())}
     assert "Herz" in ohne and "Hertx" in ohne
@@ -73,7 +73,7 @@ def test_unscharfe_suche_verschont_fachbegriffe() -> None:
 
 @pytest.mark.skipif(not nermodul.verfuegbar(), reason="spaCy oder Modell fehlt")
 def test_ner_verschont_fachbegriffe(patient: Patient) -> None:
-    from pseudonymed.dokument.textebene import lese_seite
+    from optdoc.pagetext import read_text_layer
 
     doc = pymupdf.open()
     page = doc.new_page()
@@ -82,7 +82,7 @@ def test_ner_verschont_fachbegriffe(patient: Patient) -> None:
                   "Die Tochter Erika Hoffmann berichtet über Stürze in Dresden."):
         page.insert_text((56, y), zeile, fontsize=10.5, fontname="helv")
         y += 14
-    seite = lese_seite(page)
+    seite = read_text_layer(page)
     allein = dataclasses.replace(patient, angehoerige=[], zuweiser=[])
     v = Pseudonymvergabe(allein, "K7Q4MX", geheimnis=bytes(32))
     verschont: list[str] = []

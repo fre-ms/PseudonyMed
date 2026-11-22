@@ -10,10 +10,10 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from optdoc import cleanup as aufmodul
+from optdoc import ocr as ocrmodul
 from PySide6.QtWidgets import QApplication, QGraphicsView  # noqa: E402
 
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import ocr as ocrmodul
 from pseudonymed.gui.hauptfenster import Hauptfenster  # noqa: E402
 from pseudonymed.gui.patient_seite import _personen  # noqa: E402
 from pseudonymed.gui.sitzung import Sitzung  # noqa: E402
@@ -371,15 +371,18 @@ def test_englische_oberflaeche(qapp: QApplication, monkeypatch: pytest.MonkeyPat
                     "11 Database"]
         assert fenster.patient.f["nachname"].placeholderText() == ""
         assert fenster.export.knopf.text() == "Export"
+        # the clean-up wording comes from optdoc and follows the installed translation
+        assert fenster.dokumente.aufbereiten.tr("de", "language code of the interface") == "en"
         fenster.close()
     finally:
         qapp.removeTranslator(uebersetzer)
     fenster = Hauptfenster(Sitzung(speicherpfad=None))
     assert fenster.tabs.tabText(3) == "4 Dokumente"
+    assert fenster.dokumente.aufbereiten.tr("de", "language code of the interface") == "de"
     fenster.close()
 
 
-@pytest.mark.skipif(not ocrmodul.verfuegbare_backends() or not aufmodul.verfuegbar(),
+@pytest.mark.skipif(not ocrmodul.available_backends() or not aufmodul.available(),
                     reason="OCR-Backend oder OpenCV fehlt")
 def test_fenster_aufbereiten(qapp: QApplication, tmp_path: Path, befund: Path,
                              patient: Patient) -> None:
@@ -403,18 +406,18 @@ def test_fenster_aufbereiten(qapp: QApplication, tmp_path: Path, befund: Path,
     au = fenster.dokumente.aufbereiten
     assert au.baum.topLevelItemCount() == 1 and au.dokument is d and au.seite == 0
     a = au.einstellung()
-    assert a is not None and a.begradigen and abs(abs(a.winkel) - 2.0) < 0.5, a
+    assert a is not None and a.straighten and abs(abs(a.angle) - 2.0) < 0.5, a
     assert "begradigt" in au.hinweis.text()
     au.hintergrund.setChecked(True)
     au.maske((56, 60, 300, 90))
-    assert d.aufbereitung[0].hintergrund and len(d.aufbereitung[0].masken) == 1
+    assert d.aufbereitung[0].background and len(d.aufbereitung[0].masks) == 1
     au.auf_alle_uebertragen()
-    assert d.aufbereitung[1].hintergrund
+    assert d.aufbereitung[1].background
     au.hochskalieren.setCurrentIndex(2)  # 3×
     au.textmodus.setChecked(True)
     au.farbe_entfernen.setChecked(True)
-    assert d.aufbereitung[0].hochskalieren == 3 and d.aufbereitung[0].textmodus
-    assert d.aufbereitung[0].farbe_entfernen and "Buchstabenmodus" in au.hinweis.text()
+    assert d.aufbereitung[0].upscale == 3 and d.aufbereitung[0].letter_mode
+    assert d.aufbereitung[0].remove_colour and "Buchstabenmodus" in au.hinweis.text()
     au.hochskalieren.setCurrentIndex(0)
     au.textmodus.setChecked(False)
     # the two views are linked: pan one, the other follows; zoom likewise
@@ -427,14 +430,14 @@ def test_fenster_aufbereiten(qapp: QApplication, tmp_path: Path, befund: Path,
     au.vorher.zoom_zuruecksetzen()
     assert abs(au.nachher.zoomfaktor - 1.0) < 1e-6
     au.ausrichtung_erkennen()
-    assert d.aufbereitung[0].drehung == 0
+    assert d.aufbereitung[0].rotation == 0
     au.drehe(90)
-    assert d.aufbereitung[0].drehung == 90 and not d.aufbereitung[0].masken
+    assert d.aufbereitung[0].rotation == 90 and not d.aufbereitung[0].masks
     au.drehe(270)
     au.nichts_aufbereiten()
-    assert not d.aufbereitung[0].aktiv
+    assert not d.aufbereitung[0].active
     au.vorschlag_wiederherstellen()
-    assert d.aufbereitung[0].begradigen
+    assert d.aufbereitung[0].straighten
     au.rueckgaengig()  # nothing to undo any more: no error
     # 3 text recognition on the cleaned-up pages, with a correction
     te = fenster.texterkennung

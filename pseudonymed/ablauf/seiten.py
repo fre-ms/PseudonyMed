@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from pseudonymed.dokument import gliederung as gliedmodul
-from pseudonymed.dokument import ocr as ocrmodul
+from optdoc import ocr as ocrmodul
+from optdoc import structure as gliedmodul
+from optdoc.pagetext import Box, PageText
+
 from pseudonymed.dokument import textdatei as textmodul
-from pseudonymed.dokument.textebene import Box, Seitentext
 from pseudonymed.kern.modell import Fundstelle
 
 _SATZZEICHEN_HINTEN = ".,;:!?)]}"
@@ -20,8 +21,8 @@ class Seite:
     """A page of the document: its text layer, its OCR reading and what was found."""
 
     nummer: int
-    text: Seitentext
-    ocr: Seitentext | None = None
+    text: PageText
+    ocr: PageText | None = None
     fundstellen: list[Fundstelle] = field(default_factory=list)
     fachrects: list[Box] = field(default_factory=list)
     fachspannen: list[tuple[int, int]] = field(default_factory=list)
@@ -29,30 +30,30 @@ class Seite:
     korrektur: str | None = None  # the OCR text as the user corrected it
     korrektur_treffer: list[Fundstelle] = field(default_factory=list)
     ocr_dpi: int = ocrmodul.OCR_DPI  # resolution the page was (and is re-)read at
-    ocr_max_pixel: int = ocrmodul.MAX_PIXEL
+    ocr_max_pixel: int = ocrmodul.MAX_PIXELS
     ocr_filter: object = None  # letter-aware finish applied before the engine
-    gliederung: gliedmodul.Gliederung | None = None  # layout roles of the OCR lines
+    gliederung: gliedmodul.Structure | None = None  # layout roles of the OCR lines
 
     @property
     def bildseite(self) -> bool:
         """True for a page whose only text is the OCR reading."""
-        return self.ocr is not None and not self.text.hat_textebene
+        return self.ocr is not None and not self.text.has_text_layer
 
     @property
-    def textbasis(self) -> Seitentext:
+    def textbasis(self) -> PageText:
         """The text the review clicks into: the OCR reading on image pages, else the
         text layer."""
         return self.ocr if self.ocr is not None and self.bildseite else self.text
 
-    def ocr_lesen(self, page: object, backend: ocrmodul.OCRBackend) -> Seitentext:
+    def ocr_lesen(self, page: object, backend: ocrmodul.OCRBackend) -> PageText:
         """Read the page with the engine at this page's resolution and finish."""
-        return ocrmodul.erkenne_seite(page, backend, self.nummer, self.ocr_dpi,
+        return ocrmodul.recognise_page(page, backend, self.nummer, self.ocr_dpi,
                                       max_pixel=self.ocr_max_pixel, filter_=self.ocr_filter)
 
     def treffer_auf(self, basis: str) -> list[Fundstelle]:
         """The hits that belong to ``basis`` ("text" or "ocr"), manual boxes included
         where they were drawn on that basis; empty spans left out."""
-        mit_manuell = (basis == "text") == self.text.hat_textebene
+        mit_manuell = (basis == "text") == self.text.has_text_layer
         quellen = (basis, "manuell") if mit_manuell else (basis,)
         return [f for f in self.fundstellen if f.quelle in quellen and f.ende > f.start]
 
@@ -65,7 +66,7 @@ def lesetext(s: Seite, gliedern: bool) -> str:
     if s.ocr is None:
         return ""
     if gliedern and s.gliederung is not None:
-        return s.gliederung.rendere(s.ocr.text)
+        return s.gliederung.render(s.ocr.text)
     return s.ocr.text
 
 
@@ -74,7 +75,7 @@ def unveraendert(s: Seite, text: str) -> bool:
     assert s.ocr is not None
     kandidaten = [s.ocr.text.strip()]
     if s.gliederung is not None:
-        kandidaten.append(s.gliederung.rendere(s.ocr.text).strip())
+        kandidaten.append(s.gliederung.render(s.ocr.text).strip())
     return text.strip() in kandidaten
 
 
@@ -90,9 +91,9 @@ def ohne_rand(text: str, start: int, ende: int) -> tuple[int, int]:
     return start, ende
 
 
-def _zeichen_unter(basis: Seitentext, x: float, y: float, toleranz: float) -> int | None:
+def _zeichen_unter(basis: PageText, x: float, y: float, toleranz: float) -> int | None:
     """Offset of the first character whose box, widened by ``toleranz``, holds (x, y)."""
-    for i, box in enumerate(basis.boxen):
+    for i, box in enumerate(basis.boxes):
         if box is None:
             continue
         if (box[0] - toleranz <= x <= box[2] + toleranz
@@ -116,7 +117,7 @@ def _wortgrenzen(text: str, i: int) -> tuple[int, int]:
     return a, b
 
 
-def wort_bei(basis: Seitentext, x: float, y: float,
+def wort_bei(basis: PageText, x: float, y: float,
              toleranz: float = 2.0) -> tuple[int, int] | None:
     """Offsets of the word whose character box lies under (x, y), widened by ``toleranz``
     points; None without one.  A word runs between whitespace, trailing punctuation left
@@ -162,7 +163,7 @@ def _ocr_text_pseudonym(s: Seite, gliedern: bool = True) -> str:
     assert s.ocr is not None
     roh = textmodul.ersetze(s.ocr.text, s.treffer_auf("ocr"))
     if gliedern and s.gliederung is not None:
-        roh = s.gliederung.rendere(roh)
+        roh = s.gliederung.render(roh)
     return re.sub(r"\n{3,}", "\n\n", roh).strip()
 
 

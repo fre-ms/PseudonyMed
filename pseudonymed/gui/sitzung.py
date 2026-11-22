@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from optdoc import cleanup as aufmodul
+
 from pseudonymed import arbeitsstand as standmodul
 from pseudonymed.ablauf import (
     Ablaufoptionen,
@@ -23,7 +25,6 @@ from pseudonymed.ablauf import (
     lese,
     vorbereiten,
 )
-from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument.textdatei import TEXTENDUNGEN, ist_textdatei
 from pseudonymed.kern.modell import Patient
 from pseudonymed.pruefung import restrisiko as risikomodul
@@ -60,7 +61,7 @@ class Dokument:
 
     pfad: Path
     vorlage: Vorlage | None = None  # phase zero: open, pages known, clean-up suggested
-    aufbereitung: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
+    aufbereitung: dict[int, aufmodul.CleanupPlan] = field(default_factory=dict)
     lesung: Lesung | None = None  # reading phase: text layer and OCR, correctable
     vorbereitung: Vorbereitung | Textvorbereitung | None = None
     vorpruefung: Ergebnis | None = None  # the re-check run into a scratch folder
@@ -316,7 +317,7 @@ class Sitzung:
         except Exception as e:
             d.fehler = str(e)
             raise
-        d.aufbereitung = {n: aufmodul.Aufbereitung(**{**a.__dict__, "masken": list(a.masken)})
+        d.aufbereitung = {n: aufmodul.CleanupPlan(**{**a.__dict__, "masks": list(a.masks)})
                           for n, a in d.vorlage.vorschlaege.items()}
 
     def _arbeitsstand_laden(self, d: Dokument) -> None:

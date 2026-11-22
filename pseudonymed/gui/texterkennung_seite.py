@@ -5,6 +5,7 @@ edits text."""
 
 from __future__ import annotations
 
+from optdoc import ocr as ocrmodul
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,7 +26,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.dokument import ocr as ocrmodul
 from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.arbeiter import Arbeiter
 from pseudonymed.gui.sitzung import Dokument, Sitzung
@@ -63,7 +63,7 @@ class TexterkennungSeite(QWidget):
         form = QFormLayout(einstellungen)
         self.engine = QComboBox()
         self.engine.addItem(self.tr("automatisch"), "auto")
-        for b in ocrmodul.verfuegbare_backends():
+        for b in ocrmodul.available_backends():
             self.engine.addItem(b, b)
         self.engine.addItem(self.tr("aus (nur Textebene)"), "aus")
         self.engine.currentIndexChanged.connect(self._engine_gewechselt)
@@ -160,12 +160,12 @@ class TexterkennungSeite(QWidget):
         """Adapt placeholder and note to the chosen engine; the table pass is Tesseract's."""
         name = self.engine.currentData()
         tesseract = name == "tesseract" or (name == "auto"
-                                            and ocrmodul.verfuegbare_backends()[:1]
+                                            and ocrmodul.available_backends()[:1]
                                             == ["tesseract"])
         self.tabellen.setEnabled(tesseract)
         if tesseract:
-            programm = ocrmodul.tesseract_programm()
-            installiert = ocrmodul.tesseract_sprachen(programm) if programm else []
+            programm = ocrmodul.tesseract_program()
+            installiert = ocrmodul.tesseract_languages(programm) if programm else []
             self.sprachen.setPlaceholderText("deu+eng")
             self.sprachen_hinweis.setText(
                 self.tr("Installierte Tesseract-Sprachen: {liste}").format(

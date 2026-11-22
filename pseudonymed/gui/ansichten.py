@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from optdoc.pagetext import Box
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
@@ -26,7 +27,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.dokument.textebene import Box
 from pseudonymed.kern.modell import Fundstelle
 
 # Traffic light: red = will be redacted, yellow = uncertain (read badly, blanked as a

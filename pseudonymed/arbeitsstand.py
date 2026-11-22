@@ -30,6 +30,9 @@ from pathlib import Path
 from typing import Any
 
 import pymupdf
+from optdoc import cleanup as aufmodul
+from optdoc import structure as gliedmodul
+from optdoc.pagetext import PageText
 
 from pseudonymed import WERKZEUG
 from pseudonymed.ablauf import (
@@ -42,9 +45,6 @@ from pseudonymed.ablauf import (
     merke_fachbegriffe,
     ruestzeug,
 )
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import gliederung as gliedmodul
-from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.kern.modell import Fundstelle, Patient
 from pseudonymed.pruefung.gegenprobe import toleranzschluessel
@@ -52,7 +52,7 @@ from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
 from pseudonymed.schwaerzen.pdf import Schwaerzoptionen
 
 MARKE = "pseudonymed_arbeitsstand"
-VERSION = 1
+VERSION = 2  # 2: clean-up plans and page texts in optdoc's form (English keys)
 KENNZEICHEN = ".arbeitsstand"
 ENDUNG = KENNZEICHEN + ".json"
 _OPTIONEN_AUSSEN = ("aufbereitung", "empfaenger", "empfaenger_fingerabdruck", "abgleich")
@@ -154,8 +154,8 @@ def _optionen_aus(d: dict[str, Any]) -> Ablaufoptionen:
 def _seite_als_dict(s: Seite) -> dict[str, Any]:
     """A page as JSON data: text layer, OCR reading, correction, resolution and hits."""
     return {
-        "nummer": s.nummer, "text": s.text.als_dict(),
-        "ocr": s.ocr.als_dict() if s.ocr is not None else None,
+        "nummer": s.nummer, "text": s.text.as_dict(),
+        "ocr": s.ocr.as_dict() if s.ocr is not None else None,
         "korrektur": s.korrektur, "ocr_dpi": s.ocr_dpi, "ocr_max_pixel": s.ocr_max_pixel,
         "fundstellen": [f.als_dict() for f in s.fundstellen],
         "korrektur_treffer": [f.als_dict() for f in s.korrektur_treffer],
@@ -186,7 +186,7 @@ def erfasse(v: Vorbereitung | Textvorbereitung) -> Arbeitsstand:
         "patient": v.patient.als_dict(),
         "kennung": v.kennung,
         "optionen": _optionen_als_dict(v.opt),
-        "aufbereitung": {str(n): a.vollstaendig() for n, a in v.aufbereitet.items()},
+        "aufbereitung": {str(n): a.full_dict() for n, a in v.aufbereitet.items()},
         "seiten": [_seite_als_dict(s) for s in v.seiten],
         "ohne_text": list(v.ohne_text),
         "verworfen": [f.als_dict() for f in v.verworfen],
@@ -240,6 +240,12 @@ def lies(pfad: str | Path) -> Arbeitsstand:
         raise ArbeitsstandFehler(f"{pfad.name}: kein Arbeitsstand von PseudonyMed.")
     if int(daten[MARKE]) > VERSION:
         raise ArbeitsstandFehler(f"{pfad.name}: stammt von einem neueren PseudonyMed.")
+    if int(daten[MARKE]) < VERSION:
+        raise ArbeitsstandFehler(
+            f"{pfad.name}: Arbeitsstand im alten Format von PseudonyMed (vor der Umstellung der"
+            " Texterkennung auf optdoc); seine Aufbereitung und Seitentexte lassen sich nicht mehr"
+            f" lesen. Das Dokument daneben ({daten['dokument']['datei']}) ist unverändert"
+            " lesbar: bitte neu laden und die Sichtprüfung wiederholen.")
     dokument = pfad.parent / str(daten["dokument"]["datei"])
     try:
         inhalt = dokument.read_bytes()
@@ -253,31 +259,31 @@ def lies(pfad: str | Path) -> Arbeitsstand:
     return Arbeitsstand(daten, inhalt, pfad)
 
 
-def _seite_aus(d: dict[str, Any], plan: aufmodul.Aufbereitung | None,
+def _seite_aus(d: dict[str, Any], plan: aufmodul.CleanupPlan | None,
                page: pymupdf.Page | None) -> Seite:
     """A page as it was read, without its hits: text layer, OCR reading, correction and
     resolution.  The letter-aware finish follows the clean-up plan; the layout roles are
     rebuilt from the PDF page when there is an OCR reading to place them on."""
-    s = Seite(int(d["nummer"]), Seitentext.aus_dict(d["text"]))
-    s.ocr = Seitentext.aus_dict(d["ocr"]) if d.get("ocr") else None
+    s = Seite(int(d["nummer"]), PageText.from_dict(d["text"]))
+    s.ocr = PageText.from_dict(d["ocr"]) if d.get("ocr") else None
     s.korrektur = d.get("korrektur")
     s.ocr_dpi = int(d.get("ocr_dpi", s.ocr_dpi))
     s.ocr_max_pixel = int(d.get("ocr_max_pixel", s.ocr_max_pixel))
-    if plan is not None and plan.textmodus:
-        s.ocr_filter = functools.partial(aufmodul.textverfeinerung,
-                                         faktor=max(1, plan.hochskalieren))
+    if plan is not None and plan.letter_mode:
+        s.ocr_filter = functools.partial(aufmodul.letter_finish,
+                                         factor=max(1, plan.upscale))
     if s.ocr is not None and page is not None:
-        s.gliederung = gliedmodul.gliedere_seite(page, s.ocr)
+        s.gliederung = gliedmodul.analyse_page_structure(page, s.ocr)
     return s
 
 
-def _plan_aus(daten: dict[str, Any]) -> dict[int, aufmodul.Aufbereitung]:
+def _plan_aus(daten: dict[str, Any]) -> dict[int, aufmodul.CleanupPlan]:
     """The clean-up plan read back, keyed by page number."""
-    return {int(n): aufmodul.Aufbereitung.aus_dict(a)
+    return {int(n): aufmodul.CleanupPlan.from_dict(a)
             for n, a in daten.get("aufbereitung", {}).items()}
 
 
-def _pdfseiten_aus(seiten: list[dict[str, Any]], plan: dict[int, aufmodul.Aufbereitung],
+def _pdfseiten_aus(seiten: list[dict[str, Any]], plan: dict[int, aufmodul.CleanupPlan],
                    doc: pymupdf.Document) -> list[Seite]:
     """The saved pages of a PDF, each rebuilt against its page in the opened document."""
     return [_seite_aus(d, plan.get(int(d["nummer"])), doc[int(d["nummer"])]) for d in seiten]
@@ -381,7 +387,7 @@ def _seite_wiederherstellen(s: Seite, d: dict[str, Any], ist_text: bool,
     s.fachrects, s.fachspannen, s.fachanzahl = [], [], 0
     if fachbegriffe is None:
         return
-    if ist_text or s.text.hat_textebene:
+    if ist_text or s.text.has_text_layer:
         merke_fachbegriffe(s, s.text, fachbegriffe)
     if s.ocr is not None:
         merke_fachbegriffe(s, s.ocr, fachbegriffe)

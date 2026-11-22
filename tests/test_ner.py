@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from optdoc.pagetext import read_text_layer
 
 from pseudonymed.ablauf import Ablaufoptionen, pseudonymisiere
-from pseudonymed.dokument.textebene import lese_seite
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import ner as nermodul
 from pseudonymed.kern.modell import Art, Fundstelle, Patient
@@ -42,7 +42,7 @@ def test_finde_ner_auf_seite(patient: Patient) -> None:
                   "Befundbericht von Dr. med. Erika Hoffmann, Klinikum Chemnitz."):
         page.insert_text((56, y), zeile, fontsize=10.5, fontname="helv")
         y += 14
-    seite = lese_seite(page)
+    seite = read_text_layer(page)
     allein = dataclasses.replace(patient, angehoerige=[], zuweiser=[])
     v = Pseudonymvergabe(allein, "K7Q4MX", geheimnis=bytes(32))
     treffer = nermodul.finde_ner(seite, nermodul.NER(), v, [])

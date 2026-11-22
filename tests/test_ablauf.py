@@ -362,7 +362,7 @@ def test_kasten_knapp_unter_der_zeile(befund: Path, patient: Patient,
     v = vorbereiten(befund, patient, Ablaufoptionen(), speicher=speicher)
     text = v.seiten[0].text
     i = text.text.index("Sehr geehrte")
-    box = text.boxen[i]
+    box = text.boxes[i]
     mitte = (box[1] + box[3]) / 2
     neue = v.kasten(0, (56, mitte + 0.5, 300, mitte + 12), "[Anrede]")
     assert neue and neue[0].text.startswith("Sehr geehrte"), [n.text for n in neue]

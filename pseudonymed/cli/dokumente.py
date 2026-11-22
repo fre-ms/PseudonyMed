@@ -38,8 +38,7 @@ from pseudonymed.cli.basis import (
     unsicher_melden,
     wahl_pruefen,
 )
-from pseudonymed.dokument.laden import papierformat
-from pseudonymed.dokument.ocr import OCRFehler
+from pseudonymed.dokument.anbindung import OCRFehler, papierformat
 from pseudonymed.dokument.textdatei import ist_textdatei
 from pseudonymed.kern.modell import Patient
 from pseudonymed.konfig import (

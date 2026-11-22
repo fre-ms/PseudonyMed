@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pymupdf
+from optdoc.pagetext import read_text_layer
 
-from pseudonymed.dokument.textebene import lese_seite
 from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.schwaerzen.pdf import (
     OCR_RAND,
@@ -33,12 +33,12 @@ def _dokument(leading: float = 1.2) -> pymupdf.Document:
 
 
 def _treffer(page: pymupdf.Page, wort: str, pseudonym: str = "Patient A") -> Fundstelle:
-    s = lese_seite(page)
+    s = read_text_layer(page)
     a = s.text.index(wort)
     b = a + len(wort)
     return Fundstelle(0, a, b, wort, Art.NACHNAME, "test", pseudonym,
                       rects=[tuple(r) for r in s.rects(a, b)],
-                      schriftgroesse=s.schriftgroesse(a, b))
+                      schriftgroesse=s.font_size(a, b))
 
 
 def test_nachbarn_bleiben_auch_bei_engem_zeilenabstand() -> None:
@@ -46,7 +46,7 @@ def test_nachbarn_bleiben_auch_bei_engem_zeilenabstand() -> None:
         doc = _dokument(leading)
         page = doc[0]
         f = _treffer(page, "Flantz")
-        erg = schwaerze_seite(page, lese_seite(page), [f], Schwaerzoptionen())
+        erg = schwaerze_seite(page, read_text_layer(page), [f], Schwaerzoptionen())
         assert erg.anzahl == 1 and erg.lage_intakt
         text = page.get_text("text")
         assert "Flantz" not in text
@@ -60,12 +60,12 @@ def test_pseudonym_wird_sichtbar_gezeichnet() -> None:
     doc = _dokument()
     page = doc[0]
     f = _treffer(page, "Flantz", "[Versichertennummer]")
-    schwaerze_seite(page, lese_seite(page), [f], Schwaerzoptionen())
+    schwaerze_seite(page, read_text_layer(page), [f], Schwaerzoptionen())
     zeichnungen = page.get_drawings()
     assert any(d.get("fill") for d in zeichnungen)
     # the comma after the name is still rendered to the right of the box
-    s = lese_seite(page)
-    komma = s.boxen[s.text.index(",")]
+    s = read_text_layer(page)
+    komma = s.boxes[s.text.index(",")]
     assert komma is not None and komma[0] >= f.rects[0][2] - 0.5
 
 
@@ -73,26 +73,26 @@ def test_lage_intakt_erkennt_verschiebung() -> None:
     doc = pymupdf.open()
     vorher = doc.new_page()
     vorher.insert_text((56, 100), "Herrn Flantz, geb.", fontsize=10.5, fontname="helv")
-    sv = lese_seite(vorher)
+    sv = read_text_layer(vorher)
     a = sv.text.index("Flantz")
     rect = tuple(sv.rects(a, a + 6)[0])
     f = Fundstelle(0, a, a + 6, "Flantz", Art.NACHNAME, "t", "P", rects=[rect])
-    x_komma = sv.boxen[a + 6][0]
+    x_komma = sv.boxes[a + 6][0]
     richtig = doc.new_page()
     richtig.insert_text((56, 100), "Herrn ", fontsize=10.5, fontname="helv")
     richtig.insert_text((x_komma, 100), ", geb.", fontsize=10.5, fontname="helv")
-    assert lage_intakt(sv, lese_seite(richtig), [f])
+    assert lage_intakt(sv, read_text_layer(richtig), [f])
     falsch = doc.new_page()
     falsch.insert_text((56, 100), "Herrn ", fontsize=10.5, fontname="helv")
     falsch.insert_text((x_komma - 6.4, 100), ", geb.", fontsize=10.5, fontname="helv")
-    assert not lage_intakt(sv, lese_seite(falsch), [f])
+    assert not lage_intakt(sv, read_text_layer(falsch), [f])
 
 
 def test_rastere_seite_ersetzt_seite_durch_bild() -> None:
     doc = _dokument()
     original = pymupdf.open("pdf", doc.tobytes())
     page = doc[0]
-    s = lese_seite(page)
+    s = read_text_layer(page)
     f = _treffer(page, "Flantz")
     rastere_seite(doc, 0, original, s, [f], Schwaerzoptionen(dpi=72))
     assert len(doc) == 1
@@ -121,7 +121,7 @@ def test_ocr_treffer_loescht_bildpixel() -> None:
     doc = pymupdf.open()
     page = doc.new_page(width=quelle[0].rect.width, height=quelle[0].rect.height)
     page.insert_image(page.rect, pixmap=pix)
-    s = lese_seite(quelle[0])
+    s = read_text_layer(quelle[0])
     a = s.text.index("Flantz")
     rect = s.rects(a, a + 6)[0]
     vorher = page.get_pixmap(dpi=150, clip=rect).samples
@@ -140,7 +140,7 @@ def test_einblendung_nutzt_freien_raum_oder_schrumpft() -> None:
     space to the right; where the next character follows at once, the font shrinks."""
     doc = _dokument()
     page = doc[0]
-    s = lese_seite(page)
+    s = read_text_layer(page)
     opt = Schwaerzoptionen()
     letztes = _treffer(page, "123", "[Patienten-ID K7Q4MX]")  # last word of its line
     plan = _sammle_kaesten(page, s, [letztes], opt)
@@ -173,7 +173,7 @@ def test_unsichtbare_textebene_laesst_treffer_aus() -> None:
     """The invisible layer carries every word except those a hit covers (by text span or
     by box), plus the pseudonyms on request, and leaves the rendering untouched."""
     quelle = _dokument()
-    s = lese_seite(quelle[0])
+    s = read_text_layer(quelle[0])
     name = _treffer(quelle[0], "Flantz")
     a = s.text.index("Zweite")
     kasten = Fundstelle(0, 0, 0, "Zweite", Art.NACHNAME, "ocr", "[Ort K7Q4MX]",
@@ -182,7 +182,7 @@ def test_unsichtbare_textebene_laesst_treffer_aus() -> None:
     assert "Flantz," not in frei and "Zweite" not in frei
     assert {"Pat.-ID", "123", "auch"} <= set(frei)
     doc = pymupdf.open()
-    page = doc.new_page(width=s.breite, height=s.hoehe)
+    page = doc.new_page(width=s.width, height=s.height)
     page.insert_image(page.rect, pixmap=quelle[0].get_pixmap(dpi=100, alpha=False))
     vorher = page.get_pixmap(dpi=72, alpha=False).samples
     anzahl = unsichtbare_textebene(page, s, [name, kasten], mit_pseudonymen=True)

@@ -38,7 +38,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from pseudonymed.dokument.textebene import Seitentext
+from optdoc.pagetext import PageText
+
 from pseudonymed.erkennung import lexikon, listenimport
 from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
@@ -416,14 +417,14 @@ def _studien_nummern(text: str, belegt: list[Kandidat]) -> list[Kandidat]:
 
 
 # -- hits -----------------------------------------------------------------------------------------
-def _fundstelle(seite: Seitentext, a: int, b: int, klasse: str, vergabe: Pseudonymvergabe,
+def _fundstelle(seite: PageText, a: int, b: int, klasse: str, vergabe: Pseudonymvergabe,
                 quelle: str) -> Fundstelle:
     """The hit for ``a:b`` with its pseudonym, rectangles and font size."""
     text = seite.text[a:b]
     return Fundstelle(
-        seite=seite.nummer, start=a, ende=b, text=text, art=Art.IDENTIFIKATOR,
+        seite=seite.number, start=a, ende=b, text=text, art=Art.IDENTIFIKATOR,
         regel=regelname(klasse), pseudonym=vergabe.identifikator(praefix(klasse), text),
-        rects=[tuple(r) for r in seite.rects(a, b)], schriftgroesse=seite.schriftgroesse(a, b),
+        rects=[tuple(r) for r in seite.rects(a, b)], schriftgroesse=seite.font_size(a, b),
         quelle=quelle)
 
 
@@ -432,7 +433,7 @@ def _frei(a: int, b: int, belegt: list[Fundstelle]) -> bool:
     return not any(f.ende > f.start and a < f.ende and b > f.start for f in belegt)
 
 
-def finde_identifikatoren(seite: Seitentext, erkenner: Erkenner, vergabe: Pseudonymvergabe,
+def finde_identifikatoren(seite: PageText, erkenner: Erkenner, vergabe: Pseudonymvergabe,
                           vorhandene: list[Fundstelle], quelle: str = "text") -> list[Fundstelle]:
     """Hospitals, professions, studies and the user's own identifiers on one page; what
     overlaps an existing hit is left to that hit."""
@@ -443,7 +444,7 @@ def finde_identifikatoren(seite: Seitentext, erkenner: Erkenner, vergabe: Pseudo
     return treffer
 
 
-def finde_titel(seite: Seitentext, erkenner: Erkenner, vergabe: Pseudonymvergabe,
+def finde_titel(seite: PageText, erkenner: Erkenner, vergabe: Pseudonymvergabe,
                 vorhandene: list[Fundstelle], quelle: str = "text") -> list[Fundstelle]:
     """Titles directly before a person ("Prof. Dr. med. Person K7Q4MX") or after it
     ("…, Dipl.-Ing."), run after the NER; adjacent titles become one hit."""

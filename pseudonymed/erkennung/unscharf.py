@@ -15,7 +15,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
-from pseudonymed.dokument.textebene import Seitentext
+from optdoc.pagetext import PageText
+
 from pseudonymed.erkennung.varianten import ohne_akzente
 from pseudonymed.kern.modell import Art, Fundstelle, Patient, Person, Rolle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
@@ -202,7 +203,7 @@ class _Suchlauf:
     """What every step of one page's fuzzy search shares: the page, its tokens, the
     spans of protected medical terms and whether names must be capitalised."""
 
-    seite: Seitentext
+    seite: PageText
     tokens: list[_Token]
     fachbegriffe: Fachbegriffe | None
     schutz: list[_Spanne]
@@ -227,13 +228,13 @@ def _fenster(tokens: list[_Token], ziel: Ziel) -> Iterator[_Spanne]:
             yield i, i + n - 1
 
 
-def _auf_einer_zeile(seite: Seitentext, stuecke: list[_Token]) -> bool:
+def _auf_einer_zeile(seite: PageText, stuecke: list[_Token]) -> bool:
     """Do all pieces sit on the line of the first one?"""
-    zeile = seite.zeile_von(stuecke[0].start)
-    return all(seite.zeile_von(t.start) == zeile for t in stuecke[1:])
+    zeile = seite.line_of(stuecke[0].start)
+    return all(seite.line_of(t.start) == zeile for t in stuecke[1:])
 
 
-def _geteilte_fenster(seite: Seitentext, tokens: list[_Token],
+def _geteilte_fenster(seite: PageText, tokens: list[_Token],
                       ziel_token: str) -> Iterator[_Spanne]:
     """Index ranges of two or three neighbouring tokens on one line whose concatenation
     matches a long target token: OCR splits such tokens ("gotthard. flantz@example. org")."""
@@ -312,18 +313,18 @@ def _ohne_ueberlappung(kandidaten: list[_Kandidat], belegt: list[_Spanne]) -> li
     return gewaehlt
 
 
-def _fundstelle(seite: Seitentext, a: int, b: int, ziel: Ziel, quelle: str) -> Fundstelle:
+def _fundstelle(seite: PageText, a: int, b: int, ziel: Ziel, quelle: str) -> Fundstelle:
     """The hit for one span, with its boxes and font size read from the page."""
     return Fundstelle(
-        seite=seite.nummer, start=a, ende=b, text=seite.text[a:b], art=ziel.art,
+        seite=seite.number, start=a, ende=b, text=seite.text[a:b], art=ziel.art,
         regel=f"unscharf.{ziel.regel}", pseudonym=ziel.pseudonym,
-        rects=[tuple(r) for r in seite.rects(a, b)], schriftgroesse=seite.schriftgroesse(a, b),
+        rects=[tuple(r) for r in seite.rects(a, b)], schriftgroesse=seite.font_size(a, b),
         rolle=ziel.rolle, quelle=quelle,
     )
 
 
 def finde_unscharf(
-    seite: Seitentext, ziele: list[Ziel], vorhandene: list[Fundstelle],
+    seite: PageText, ziele: list[Ziel], vorhandene: list[Fundstelle],
     fachbegriffe: Fachbegriffe | None = None, grossschreibung: bool = False,
     quelle: str = "ocr",
 ) -> list[Fundstelle]:

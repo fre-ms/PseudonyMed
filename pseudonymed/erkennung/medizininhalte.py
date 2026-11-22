@@ -34,7 +34,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from pseudonymed.dokument.textebene import Seitentext
+from optdoc.pagetext import PageText
+
 from pseudonymed.erkennung import lexikon
 from pseudonymed.erkennung.identifikatoren import Erkenner, Kandidat
 from pseudonymed.kern.modell import Art, Fundstelle
@@ -302,7 +303,7 @@ class Medizinsuche:
                 aus += self._laborspannen(text, k)
         return sorted(set(aus))
 
-    def finde(self, seite: Seitentext, vergabe: Pseudonymvergabe, vorhandene: list[Fundstelle],
+    def finde(self, seite: PageText, vergabe: Pseudonymvergabe, vorhandene: list[Fundstelle],
               quelle: str = "text") -> list[Fundstelle]:
         """The chosen elements on one page that no other hit covers."""
         text = seite.text
@@ -312,10 +313,10 @@ class Medizinsuche:
                 continue
             klartext = text[a:b]
             treffer.append(Fundstelle(
-                seite=seite.nummer, start=a, ende=b, text=klartext, art=Art.MEDIZIN,
+                seite=seite.number, start=a, ende=b, text=klartext, art=Art.MEDIZIN,
                 regel=REGEL[art], pseudonym=vergabe.identifikator(art, klartext, Art.MEDIZIN),
                 rects=[tuple(r) for r in seite.rects(a, b)],
-                schriftgroesse=seite.schriftgroesse(a, b), quelle=quelle))
+                schriftgroesse=seite.font_size(a, b), quelle=quelle))
         return treffer
 
 

@@ -9,7 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from pseudonymed.dokument.textebene import Box, Seitentext
+from optdoc.pagetext import Box, PageText
+
 from pseudonymed.erkennung import varianten as v
 from pseudonymed.erkennung.muster import GLOBALE_MUSTER
 from pseudonymed.kern.modell import Art, Fundstelle, Patient, Person, Rolle
@@ -252,13 +253,13 @@ def verschmelze(treffer: list[tuple[int, int, Regel]], text: str) -> list[tuple[
     return ergebnis
 
 
-def finde(seite: Seitentext, regeln: list[Regel]) -> list[Fundstelle]:
+def finde(seite: PageText, regeln: list[Regel]) -> list[Fundstelle]:
     """Run all rules over one page and return hits with rectangles."""
     fundstellen: list[Fundstelle] = []
     for a, b, regel in verschmelze(finde_im_text(seite.text, regeln), seite.text):
         fundstellen.append(
             Fundstelle(
-                seite=seite.nummer,
+                seite=seite.number,
                 start=a,
                 ende=b,
                 text=seite.text[a:b],
@@ -266,7 +267,7 @@ def finde(seite: Seitentext, regeln: list[Regel]) -> list[Fundstelle]:
                 regel=regel.id,
                 pseudonym=regel.pseudonym,
                 rects=[tuple(r) for r in seite.rects(a, b)],
-                schriftgroesse=seite.schriftgroesse(a, b),
+                schriftgroesse=seite.font_size(a, b),
                 rolle=regel.rolle,
             )
         )
@@ -292,19 +293,19 @@ def _bedeckt(kasten: Box, box: Box) -> bool:
     return breite * hoehe >= 0.4 * flaeche
 
 
-def _bedeckte_zeichen(seite: Seitentext, kasten: Box) -> list[int]:
+def _bedeckte_zeichen(seite: PageText, kasten: Box) -> list[int]:
     """Indices of the printed characters the drawn box covers."""
-    return [i for i, box in enumerate(seite.boxen) if box is not None and _bedeckt(kasten, box)]
+    return [i for i, box in enumerate(seite.boxes) if box is not None and _bedeckt(kasten, box)]
 
 
-def _setzt_fort(seite: Seitentext, start: int, vorher: int, i: int) -> bool:
+def _setzt_fort(seite: PageText, start: int, vorher: int, i: int) -> bool:
     """Whether character ``i`` continues the run begun at ``start``: the same line, and
     nothing but whitespace between the previous covered character and this one."""
-    return seite.zeilen[i] == seite.zeilen[start] and all(
+    return seite.lines[i] == seite.lines[start] and all(
         seite.text[k].isspace() for k in range(vorher + 1, i))
 
 
-def _zeilenlaeufe(seite: Seitentext, innen: list[int]) -> list[tuple[int, int]]:
+def _zeilenlaeufe(seite: PageText, innen: list[int]) -> list[tuple[int, int]]:
     """The covered characters as ``(start, ende)`` runs, one per line of the box."""
     laeufe: list[tuple[int, int]] = []
     start = vorher = innen[0]
@@ -317,26 +318,26 @@ def _zeilenlaeufe(seite: Seitentext, innen: list[int]) -> list[tuple[int, int]]:
     return laeufe
 
 
-def _manueller_treffer(seite: Seitentext, start: int, ende: int, pseudonym: str,
+def _manueller_treffer(seite: PageText, start: int, ende: int, pseudonym: str,
                        quelle: str) -> Fundstelle:
     """The hit for one run of covered characters, with its rectangles and font size."""
     return Fundstelle(
-        seite=seite.nummer, start=start, ende=ende, text=seite.text[start:ende],
+        seite=seite.number, start=start, ende=ende, text=seite.text[start:ende],
         art=Art.MANUELL, regel=quelle, pseudonym=pseudonym,
         rects=[tuple(r) for r in seite.rects(start, ende)],
-        schriftgroesse=seite.schriftgroesse(start, ende), quelle=quelle,
+        schriftgroesse=seite.font_size(start, ende), quelle=quelle,
     )
 
 
-def _kasten_ohne_text(seite: Seitentext, kasten: Box, pseudonym: str, quelle: str) -> Fundstelle:
+def _kasten_ohne_text(seite: PageText, kasten: Box, pseudonym: str, quelle: str) -> Fundstelle:
     """The hit for a box over an image page: no text span, the rectangle only."""
-    return Fundstelle(seite=seite.nummer, start=0, ende=0, text="", art=Art.MANUELL,
+    return Fundstelle(seite=seite.number, start=0, ende=0, text="", art=Art.MANUELL,
                       regel=quelle, pseudonym=pseudonym, rects=[kasten], schriftgroesse=9.0,
                       quelle=quelle)
 
 
 def kasten_zu_fundstellen(
-    seite: Seitentext, rect: tuple[float, float, float, float], pseudonym: str = "[geschwärzt]",
+    seite: PageText, rect: tuple[float, float, float, float], pseudonym: str = "[geschwärzt]",
     quelle: str = "manuell",
 ) -> list[Fundstelle]:
     """A box drawn by the user becomes hits with text spans where the page has text.

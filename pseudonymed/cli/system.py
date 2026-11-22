@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from optdoc.ocr import available_backends
 
 from pseudonymed import __version__
 from pseudonymed.cli.basis import (
     SpeicherOption,
     app,
 )
-from pseudonymed.dokument.ocr import verfuegbare_backends
 from pseudonymed.erkennung.codes import verfuegbar as codes_verfuegbar
 from pseudonymed.konfig import (
     Einstellungen,
@@ -56,17 +56,18 @@ def konfig(speicher: SpeicherOption = None) -> None:
 
 def _werkzeuge_zeigen(einstellungen: Einstellungen) -> None:
     """OCR engines, Tesseract and its languages, barcodes, NER and the vocabulary."""
-    from pseudonymed.dokument.ocr import tesseract_programm, tesseract_sprachen
+    from optdoc.ocr import tesseract_languages, tesseract_program
+
     from pseudonymed.erkennung import fachbegriffe as fachmodul
     from pseudonymed.erkennung import ner as nermodul
 
-    backends = verfuegbare_backends()
+    backends = available_backends()
     typer.echo("OCR-Backends:        " + (", ".join(backends) if backends else
                                           "keine (Extra 'ocr' installieren oder Tesseract)")
                + f"  (bevorzugt: {einstellungen.ocr_backend})")
-    tess = tesseract_programm(einstellungen.tesseract_pfad or None)
+    tess = tesseract_program(einstellungen.tesseract_pfad or None)
     if tess:
-        sprachen = tesseract_sprachen(tess)
+        sprachen = tesseract_languages(tess)
         relevante = [s for s in ("deu", "eng") if s in sprachen]
         sprachtext = ", ".join(relevante) or "deu/eng fehlen"
         typer.echo(f"Tesseract:           {tess}  (Sprachen: {sprachtext},"

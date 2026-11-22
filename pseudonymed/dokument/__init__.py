@@ -1,6 +1,2 @@
-"""Loading documents and reading their text layer."""
-
-from pseudonymed.dokument.laden import oeffne
-from pseudonymed.dokument.textebene import Seitentext, lese_dokument, lese_seite
-
-__all__ = ["Seitentext", "lese_dokument", "lese_seite", "oeffne"]
+"""PseudonyMed's documents: text files of its own (:mod:`.textdatei`) and the adapter to
+optdoc, which loads PDFs and images, cleans them up and reads their text (:mod:`.anbindung`)."""

@@ -63,6 +63,10 @@ lexikon_klein
 ohne_variablen
 appauthor
 
+# fields of optdoc's page text that PseudonyMed fills for a text file and optdoc reads
+_.sizes
+_.baselines
+
 # dataclass fields, attributes of foreign objects (PyMuPDF widgets in a test), the *exc of __exit__
 _.field_name
 _.field_type

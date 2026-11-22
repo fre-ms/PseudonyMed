@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
+from optdoc import ocr as ocrmodul
+from optdoc.pagetext import PageText
 from PySide6.QtWidgets import QApplication
 from typer.testing import CliRunner
 
@@ -13,8 +15,6 @@ from pseudonymed import arbeitsstand as standmodul
 from pseudonymed.ablauf import Ablaufoptionen, Seite, abschliessen, analysiere, vorbereiten
 from pseudonymed.ablauf.vorbereitung import Vorbereitungsbasis
 from pseudonymed.cli import app
-from pseudonymed.dokument import ocr as ocrmodul
-from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.kern.modell import Art, Fundstelle, Patient
 from pseudonymed.pruefung.bericht import als_text
 from pseudonymed.pseudonyme.rueckersetzung import rueckersetzen
@@ -45,7 +45,7 @@ def test_rundlauf_pdf(tmp_path: Path, befund: Path, patient: Patient,
     assert dokument.name == "befund.arbeitsstand.pdf"
     assert konfiguration.name == "befund.arbeitsstand.json"
     daten = json.loads(konfiguration.read_text(encoding="utf-8"))
-    assert daten[standmodul.MARKE] == 1 and daten["kennung"] == v.kennung
+    assert daten[standmodul.MARKE] == standmodul.VERSION and daten["kennung"] == v.kennung
     assert daten["patient"]["nachname"] == patient.nachname  # clear data, by design
     assert standmodul.ist_arbeitsstand(dokument) == konfiguration
     assert standmodul.ist_arbeitsstand(konfiguration) == konfiguration
@@ -97,6 +97,21 @@ def test_veraendertes_dokument_und_fremde_datei(tmp_path: Path, befund: Path, pa
         standmodul.lies(fremd)
 
 
+def test_altes_format_wird_klar_abgelehnt(tmp_path: Path, befund: Path, patient: Patient,
+                                          speicher: Pseudonymspeicher) -> None:
+    """A state written before the switch to optdoc (format 1, German keys) is refused with
+    a message that says what still works, not read into an empty plan."""
+    v = _vorbereitet(befund, patient, speicher)
+    dokument, konfiguration = standmodul.speichere(v, tmp_path)
+    v.schliessen()
+    daten = json.loads(konfiguration.read_text(encoding="utf-8"))
+    daten[standmodul.MARKE] = 1
+    konfiguration.write_text(json.dumps(daten), encoding="utf-8")
+    with pytest.raises(standmodul.ArbeitsstandFehler, match="alten Format") as fehler:
+        standmodul.lies(konfiguration)
+    assert dokument.name in str(fehler.value) and "neu laden" in str(fehler.value)
+
+
 def test_empfaengermodus_verweigert(befund: Path, patient: Patient) -> None:
     with einmalspeicher() as sp:
         opt = Ablaufoptionen(empfaenger="x", empfaenger_fingerabdruck="y")
@@ -126,7 +141,7 @@ def test_erneute_analyse_uebernimmt_entscheidungen(befund: Path, patient: Patien
     assert e.freigegeben and "[Kasten]" in e.text and "[Begriff " in e.text
 
 
-@pytest.mark.skipif(not ocrmodul.verfuegbare_backends(), reason="kein OCR-Backend installiert")
+@pytest.mark.skipif(not ocrmodul.available_backends(), reason="kein OCR-Backend installiert")
 def test_scan_ohne_erneute_ocr(tmp_path: Path, befund: Path, patient: Patient,
                                speicher: Pseudonymspeicher,
                                monkeypatch: pytest.MonkeyPatch) -> None:
@@ -136,7 +151,7 @@ def test_scan_ohne_erneute_ocr(tmp_path: Path, befund: Path, patient: Patient,
     v.setze_ocr_text(0, v.ocr_text(0).replace("Diagnosen", "Diagnosen (korrigiert)"))
     dokument, konfiguration = standmodul.speichere(v, tmp_path)
     v.schliessen()
-    monkeypatch.setattr(ocrmodul, "erkenne_seite",
+    monkeypatch.setattr(ocrmodul, "recognise_page",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("OCR lief erneut")))
     a = standmodul.lies(konfiguration)
     v2 = standmodul.vorbereitung_aus(a, speicher=speicher)
@@ -156,7 +171,7 @@ def test_wort_bei_und_aufnehmen(befund: Path, patient: Patient,
     v = vorbereiten(befund, patient, Ablaufoptionen(), speicher=speicher)
     basis = v.seiten[0].textbasis
     i = basis.text.index("Diagnosen")
-    box = basis.boxen[i + 2]
+    box = basis.boxes[i + 2]
     spanne = v.wort_bei(0, (box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
     assert spanne == (i, i + len("Diagnosen"))
     assert v.wort_bei(0, 5.0, 5.0) is None  # the margin
@@ -207,11 +222,11 @@ def test_oberflaeche(qapp: QApplication, tmp_path: Path, befund: Path,  # noqa: 
     # pick a word on the page, extend it, take it up with a code of its own
     basis = d.vorbereitung.seiten[0].textbasis
     i = basis.text.index("Diagnosen")
-    box = basis.boxen[i + 1]
+    box = basis.boxes[i + 1]
     pr.punkt((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
     assert pr.auswahl == (i, i + len("Diagnosen")) and pr.markieren.isEnabled()
     j = basis.text.index(" ", i + len("Diagnosen") + 1) + 1
-    box2 = basis.boxen[j]
+    box2 = basis.boxes[j]
     pr.punkt((box2[0] + box2[2]) / 2, (box2[1] + box2[3]) / 2, erweitern=True)
     assert pr.auswahl is not None and pr.auswahl[0] == i and pr.auswahl[1] > i + 9
     pr.aufnehmen()
@@ -282,7 +297,7 @@ def _treffer(start: int, ende: int, regel: str = "patient.nachname", quelle: str
 
 
 def _seite(*fundstellen: Fundstelle) -> Seite:
-    seite = Seite(0, Seitentext(0, 100.0, 100.0, text="a" * 60))
+    seite = Seite(0, PageText(0, 100.0, 100.0, text="a" * 60))
     seite.fundstellen = list(fundstellen)
     return seite
 

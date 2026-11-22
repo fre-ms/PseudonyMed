@@ -1370,6 +1370,39 @@ wheels = [
 ]
 
 [[package]]
+name = "optdoc"
+version = "0.1.0"
+source = { editable = "../optdoc" }
+dependencies = [
+    { name = "pymupdf" },
+]
+
+[package.optional-dependencies]
+ocr = [
+    { name = "onnxruntime" },
+    { name = "pillow" },
+    { name = "pillow-heif" },
+    { name = "rapidocr" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.18" },
+    { name = "pillow", marker = "extra == 'ocr'", specifier = ">=10" },
+    { name = "pillow-heif", marker = "extra == 'ocr'", specifier = ">=0.18" },
+    { name = "pymupdf", specifier = ">=1.25,<2" },
+    { name = "rapidocr", marker = "extra == 'ocr'", specifier = ">=3" },
+]
+provides-extras = ["ocr"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "ruff", specifier = ">=0.6" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1629,6 +1662,7 @@ name = "pseudonymed"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "optdoc" },
     { name = "platformdirs" },
     { name = "pymupdf" },
     { name = "typer" },
@@ -1650,10 +1684,7 @@ ner = [
     { name = "spacy" },
 ]
 ocr = [
-    { name = "onnxruntime" },
-    { name = "pillow" },
-    { name = "pillow-heif" },
-    { name = "rapidocr" },
+    { name = "optdoc", extra = ["ocr"] },
 ]
 pgp = [
     { name = "pysequoia" },
@@ -1683,15 +1714,13 @@ quality = [
 requires-dist = [
     { name = "de-core-news-md", marker = "extra == 'ner'", url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_md-3.8.0/de_core_news_md-3.8.0-py3-none-any.whl" },
     { name = "keyring", marker = "extra == 'carddav'", specifier = ">=25" },
-    { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.18" },
+    { name = "optdoc", editable = "../optdoc" },
+    { name = "optdoc", extras = ["ocr"], marker = "extra == 'ocr'", editable = "../optdoc" },
     { name = "pillow", marker = "extra == 'codes'", specifier = ">=10" },
-    { name = "pillow", marker = "extra == 'ocr'", specifier = ">=10" },
-    { name = "pillow-heif", marker = "extra == 'ocr'", specifier = ">=0.18" },
     { name = "platformdirs", specifier = ">=4" },
     { name = "pymupdf", specifier = ">=1.25,<2" },
     { name = "pysequoia", marker = "extra == 'pgp'", specifier = ">=0.1.30" },
     { name = "pyside6", marker = "extra == 'gui'", specifier = ">=6.7" },
-    { name = "rapidocr", marker = "extra == 'ocr'", specifier = ">=3" },
     { name = "spacy", marker = "extra == 'ner'", specifier = ">=3.8" },
     { name = "typer", specifier = ">=0.12" },
     { name = "zxing-cpp", marker = "extra == 'codes'", specifier = ">=2.2" },

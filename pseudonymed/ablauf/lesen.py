@@ -9,14 +9,16 @@ from pathlib import Path
 from typing import ClassVar
 
 import pymupdf
+from optdoc import cleanup as aufmodul
+from optdoc import ocr as ocrmodul
+from optdoc import structure as gliedmodul
+from optdoc.loading import HEIC_SUFFIXES, IMAGE_SUFFIXES
+from optdoc.pagetext import PageText, read_text_layer
 
 from pseudonymed.ablauf.optionen import Ablaufoptionen
 from pseudonymed.ablauf.seiten import Seite, lesetext, unveraendert
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import gliederung as gliedmodul
-from pseudonymed.dokument import ocr as ocrmodul
-from pseudonymed.dokument.laden import BILDENDUNGEN, HEIC_ENDUNGEN, oeffne
-from pseudonymed.dokument.textebene import Seitentext, lese_seite
+from pseudonymed.dokument import anbindung
+from pseudonymed.dokument.anbindung import oeffne
 
 _VORSCHLAG_DPI = 150  # resolution the clean-up suggestion looks at a page with
 _MAX_PIXEL_HOCHSKALIERT = 9000  # cap for the OCR image of an upscaled page
@@ -33,13 +35,13 @@ def dokumente_schliessen(*docs: pymupdf.Document) -> None:
 
 def _ist_foto(quelle: Path) -> bool:
     """True for an image file (photo, scan as JPEG, PNG, HEIC) rather than a PDF."""
-    return quelle.suffix.lower() in BILDENDUNGEN | HEIC_ENDUNGEN
+    return quelle.suffix.lower() in IMAGE_SUFFIXES | HEIC_SUFFIXES
 
 
-def _vorschlag(page: pymupdf.Page, foto: bool) -> aufmodul.Aufbereitung:
+def _vorschlag(page: pymupdf.Page, foto: bool) -> aufmodul.CleanupPlan:
     """The automatic clean-up suggestion for one image-only page."""
-    bild, skala = aufmodul.rendere(page, _VORSCHLAG_DPI)
-    return aufmodul.vorschlag(bild, foto, skala, aufmodul.native_dpi(page))
+    bild, skala = aufmodul.render(page, _VORSCHLAG_DPI)
+    return aufmodul.suggest(bild, foto, skala, aufmodul.native_dpi(page))
 
 
 @dataclass
@@ -54,7 +56,7 @@ class Vorlage:
     doc: pymupdf.Document
     foto: bool
     kandidaten: list[int]
-    vorschlaege: dict[int, aufmodul.Aufbereitung]
+    vorschlaege: dict[int, aufmodul.CleanupPlan]
 
     @property
     def seitenzahl(self) -> int:
@@ -65,15 +67,15 @@ class Vorlage:
         """PNG of page ``nummer`` (0-based) as it is."""
         return self.doc[nummer].get_pixmap(dpi=dpi, alpha=False).tobytes("png")
 
-    def vorschau(self, nummer: int, a: aufmodul.Aufbereitung,
+    def vorschau(self, nummer: int, a: aufmodul.CleanupPlan,
                  dpi: int = 100) -> tuple[bytes, float]:
         """PNG of the processed page and its pixels per point."""
-        return aufmodul.vorschau_png(self.doc[nummer], a, dpi)
+        return aufmodul.preview_png(self.doc[nummer], a, dpi)
 
-    def seitenbreite(self, nummer: int, a: aufmodul.Aufbereitung) -> float:
+    def seitenbreite(self, nummer: int, a: aufmodul.CleanupPlan) -> float:
         """Width in points of page ``nummer`` after the rotation ``a`` asks for."""
         r = self.doc[nummer].rect
-        return r.width if a.drehung in (0, 180) else r.height
+        return r.width if a.rotation in (0, 180) else r.height
 
     def schliessen(self) -> None:
         """Release the document."""
@@ -86,57 +88,57 @@ def lade(pfad: str | Path, opt: Ablaufoptionen | None = None) -> Vorlage:
     quelle = Path(pfad)
     doc = oeffne(quelle, opt.papierformat)
     foto = _ist_foto(quelle)
-    kandidaten = [i for i, page in enumerate(doc) if not lese_seite(page, i).hat_textebene]
-    vorschlaege: dict[int, aufmodul.Aufbereitung] = {}
-    if aufmodul.verfuegbar() and opt.aufbereiten != "aus":
+    kandidaten = [i for i, page in enumerate(doc) if not read_text_layer(page, i).has_text_layer]
+    vorschlaege: dict[int, aufmodul.CleanupPlan] = {}
+    if aufmodul.available() and opt.aufbereiten != "aus":
         vorschlaege = {i: _vorschlag(doc[i], foto) for i in kandidaten}
     return Vorlage(quelle, doc, foto, kandidaten, vorschlaege)
 
 
 def _vorgeschlagene(doc: pymupdf.Document, foto: bool,
-                    plan: dict[int, aufmodul.Aufbereitung]) -> dict[int, aufmodul.Aufbereitung]:
+                    plan: dict[int, aufmodul.CleanupPlan]) -> dict[int, aufmodul.CleanupPlan]:
     """Suggestions for the image-only pages the plan does not cover yet, active ones only."""
-    neu: dict[int, aufmodul.Aufbereitung] = {}
+    neu: dict[int, aufmodul.CleanupPlan] = {}
     for i, page in enumerate(doc):
-        if i in plan or lese_seite(page, i).hat_textebene:
+        if i in plan or read_text_layer(page, i).has_text_layer:
             continue
         a = _vorschlag(page, foto)
-        if a.aktiv:
+        if a.active:
             neu[i] = a
     return neu
 
 
 def _aufbereitungsplan(
     doc: pymupdf.Document, quelle: Path, opt: Ablaufoptionen,
-    explizit: dict[int, aufmodul.Aufbereitung] | None,
-) -> dict[int, aufmodul.Aufbereitung]:
+    explizit: dict[int, aufmodul.CleanupPlan] | None,
+) -> dict[int, aufmodul.CleanupPlan]:
     """Which pages get which clean-up: the explicit choice, else the suggestion for
     every image-only page when ``aufbereiten`` is "auto"."""
-    plan = {n: a for n, a in (explizit or opt.aufbereitung or {}).items() if a.aktiv}
-    automatisch = (opt.aufbereiten == "auto" and aufmodul.verfuegbar()
+    plan = {n: a for n, a in (explizit or opt.aufbereitung or {}).items() if a.active}
+    automatisch = (opt.aufbereiten == "auto" and aufmodul.available()
                    and explizit is None and opt.aufbereitung is None)
     if automatisch:
         plan.update(_vorgeschlagene(doc, _ist_foto(quelle), plan))
     return plan
 
 
-def _seite_mit_plan(nummer: int, textebene: Seitentext, opt: Ablaufoptionen,
-                    plan: aufmodul.Aufbereitung | None) -> Seite:
+def _seite_mit_plan(nummer: int, textebene: PageText, opt: Ablaufoptionen,
+                    plan: aufmodul.CleanupPlan | None) -> Seite:
     """A page entry with the OCR resolution and finish its clean-up plan asks for: an
     upscaled page is read at that multiple of the OCR resolution (capped), a page in
     letter mode gets the letter-aware finish before the engine."""
     eintrag = Seite(nummer, textebene)
-    faktor = max(1, plan.hochskalieren) if plan is not None else 1
+    faktor = max(1, plan.upscale) if plan is not None else 1
     eintrag.ocr_dpi = opt.ocr_dpi * faktor
-    eintrag.ocr_max_pixel = min(ocrmodul.MAX_PIXEL * faktor, _MAX_PIXEL_HOCHSKALIERT)
-    if plan is not None and plan.textmodus:
-        eintrag.ocr_filter = functools.partial(aufmodul.textverfeinerung, faktor=faktor)
+    eintrag.ocr_max_pixel = min(ocrmodul.MAX_PIXELS * faktor, _MAX_PIXEL_HOCHSKALIERT)
+    if plan is not None and plan.letter_mode:
+        eintrag.ocr_filter = functools.partial(aufmodul.letter_finish, factor=faktor)
     return eintrag
 
 
 def _lese_roh(
     doc: pymupdf.Document, opt: Ablaufoptionen, backend: ocrmodul.OCRBackend | None,
-    plaene: dict[int, aufmodul.Aufbereitung] | None = None,
+    plaene: dict[int, aufmodul.CleanupPlan] | None = None,
 ) -> tuple[list[Seite], list[int]]:
     """Read every page: text layer and, where needed and possible, OCR.  No detection
     yet.  Returns the pages and the numbers (1-based) of pages that needed OCR but got
@@ -144,13 +146,13 @@ def _lese_roh(
     seiten: list[Seite] = []
     ohne_text: list[int] = []
     for i, page in enumerate(doc):
-        eintrag = _seite_mit_plan(i, lese_seite(page, i), opt, (plaene or {}).get(i))
-        if ocrmodul.braucht_ocr(page, eintrag.text):
+        eintrag = _seite_mit_plan(i, read_text_layer(page, i), opt, (plaene or {}).get(i))
+        if ocrmodul.needs_ocr(page, eintrag.text):
             if backend is None:
                 ohne_text.append(i + 1)
             else:
                 eintrag.ocr = eintrag.ocr_lesen(page, backend)
-                eintrag.gliederung = gliedmodul.gliedere_seite(page, eintrag.ocr)
+                eintrag.gliederung = gliedmodul.analyse_page_structure(page, eintrag.ocr)
         seiten.append(eintrag)
     return seiten, ohne_text
 
@@ -170,7 +172,7 @@ class Lesung:
     backend: ocrmodul.OCRBackend | None
     seiten: list[Seite]
     ohne_text: list[int]
-    plan: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
+    plan: dict[int, aufmodul.CleanupPlan] = field(default_factory=dict)
     warnungen: list[str] = field(default_factory=list)
     hinweise: list[str] = field(default_factory=list)
     verbraucht: bool = False
@@ -217,13 +219,13 @@ class Lesung:
 
 
 def _lesehinweise(
-    plan: dict[int, aufmodul.Aufbereitung], ohne_text: list[int], seiten: list[Seite],
+    plan: dict[int, aufmodul.CleanupPlan], ohne_text: list[int], seiten: list[Seite],
     backend: ocrmodul.OCRBackend | None,
 ) -> tuple[list[str], list[str]]:
     """What the reading has to tell: the clean-ups applied, pages nobody could read,
     the pages OCR read and how sure it was.  Returns warnings and hints."""
     hinweise = [f"Seite {nummer + 1} vor der OCR aufbereitet:"
-                f" {aufmodul.beschreibung(plan[nummer])}." for nummer in sorted(plan)]
+                f" {anbindung.beschreibung(plan[nummer])}." for nummer in sorted(plan)]
     warnungen: list[str] = []
     if ohne_text:
         warnungen.append(
@@ -232,7 +234,7 @@ def _lesehinweise(
         )
     gelesen = [(s.nummer + 1, s.ocr) for s in seiten if s.ocr is not None]
     if gelesen:
-        unsicher = sum(ocr.unsichere_woerter for _, ocr in gelesen)
+        unsicher = sum(ocr.uncertain_words for _, ocr in gelesen)
         hinweise.append(
             f"Scan/Foto: Seite(n) {', '.join(str(n) for n, _ in gelesen)} per OCR gelesen"
             f" ({backend.name if backend else '?'}, {unsicher} unsichere Wörter)."
@@ -245,18 +247,18 @@ def _lesehinweise(
 def lese(
     pfad: str | Path,
     opt: Ablaufoptionen | None = None,
-    aufbereitung: dict[int, aufmodul.Aufbereitung] | None = None,
+    aufbereitung: dict[int, aufmodul.CleanupPlan] | None = None,
 ) -> Lesung:
     """Reading phase for a PDF or image: clean-up, text layer, OCR.  No patient needed."""
     opt = opt or Ablaufoptionen()
     quelle = Path(pfad)
-    backend = ocrmodul.backend(opt.ocr, opt.ocr_sprachen, tabellen=opt.ocr_tabellen)
+    backend = anbindung.backend(opt.ocr, opt.ocr_sprachen, tabellen=opt.ocr_tabellen)
     doc = oeffne(quelle, opt.papierformat)
     original = oeffne(quelle, opt.papierformat)
     try:
         plan = _aufbereitungsplan(doc, quelle, opt, aufbereitung)
         for nummer in sorted(plan):
-            aufmodul.seiten_ersetzen([doc, original], nummer, plan[nummer], opt.ocr_dpi)
+            aufmodul.replace_pages([doc, original], nummer, plan[nummer], opt.ocr_dpi)
         seiten, ohne_text = _lese_roh(doc, opt, backend, plan)
     except Exception:
         doc.close()

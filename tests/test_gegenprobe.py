@@ -8,8 +8,8 @@ import re
 
 import pymupdf
 import pytest
+from optdoc.pagetext import read_text_layer
 
-from pseudonymed.dokument.textebene import lese_seite
 from pseudonymed.erkennung.deterministisch import Regel
 from pseudonymed.kern.modell import Art, Gegenprobe
 from pseudonymed.pruefung import gegenprobe as gp
@@ -47,7 +47,7 @@ def test_textebene_schuetzt_pseudonyme_und_zaehlt_belassenes() -> None:
     doc = _dokument("Beispielwort, Akte AB1234, dann [Akte CD5678].")
     ergebnis = Gegenprobe()
     gesehen: set[tuple[int, str, str]] = set()
-    gp._pruefe_textebene(_ziele(TOLERIERT, ("[Akte CD5678]",)), lese_seite(doc[0], 0),
+    gp._pruefe_textebene(_ziele(TOLERIERT, ("[Akte CD5678]",)), read_text_layer(doc[0], 0),
                          ergebnis, gesehen)
     assert _kurz(ergebnis) == [(1, "probe.akte", "text")]
     assert ergebnis.belassen == ["probe.wort"]

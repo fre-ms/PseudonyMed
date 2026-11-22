@@ -7,6 +7,9 @@ import dataclasses
 from pathlib import Path
 
 import pymupdf
+from optdoc import cleanup as aufmodul
+from optdoc.alignment import text_layer_from_correction
+from optdoc.pagetext import PageText
 
 from pseudonymed.ablauf.ausgabe import (
     bericht_schreiben,
@@ -22,10 +25,7 @@ from pseudonymed.ablauf.ruestzeug import ruestzeug
 from pseudonymed.ablauf.seiten import Seite, markdown_aus_text, text_mit_pseudonymen
 from pseudonymed.ablauf.textdateien import Textvorbereitung, abschliesse_text, vorbereite_text
 from pseudonymed.ablauf.vorbereitung import Vorbereitung, analysiere
-from pseudonymed.dokument import aufbereitung as aufmodul
 from pseudonymed.dokument import textdatei as textmodul
-from pseudonymed.dokument.textabgleich import textebene_aus_korrektur
-from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.erkennung import codes as codemodul
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung.deterministisch import finde
@@ -51,12 +51,12 @@ from pseudonymed.schwaerzen.pdf import (
 )
 
 
-def _korrekturebene(s: Seite, gerastert: bool) -> tuple[Seitentext, list[Fundstelle]]:
+def _korrekturebene(s: Seite, gerastert: bool) -> tuple[PageText, list[Fundstelle]]:
     """The corrected (or restructured) text, every word on the box of the OCR word it
     came from, so that selecting it in a reader covers the image word; on a rasterised
     page the hits get those boxes too."""
     assert s.ocr is not None and s.korrektur is not None
-    ebene = textebene_aus_korrektur(s.korrektur, s.ocr)
+    ebene = text_layer_from_correction(s.korrektur, s.ocr)
     treffer = s.korrektur_treffer
     if gerastert:
         treffer = [dataclasses.replace(f, rects=[tuple(r) for r in ebene.rects(f.start, f.ende)])
@@ -202,7 +202,7 @@ def _berichtsoptionen(v: Vorbereitung) -> dict[str, object]:
     """The options for the report, with the clean-up applied per page (1-based)."""
     optionen = v.opt.als_dict()
     if v.aufbereitet:
-        optionen["aufbereitung"] = {str(n + 1): a.als_dict() for n, a in v.aufbereitet.items()}
+        optionen["aufbereitung"] = {str(n + 1): a.as_dict() for n, a in v.aufbereitet.items()}
     return optionen
 
 
@@ -265,7 +265,7 @@ def vorbereiten(
     patient: Patient,
     opt: Ablaufoptionen | None = None,
     speicher: Pseudonymspeicher | None = None,
-    aufbereitung: dict[int, aufmodul.Aufbereitung] | None = None,
+    aufbereitung: dict[int, aufmodul.CleanupPlan] | None = None,
 ) -> Vorbereitung | Textvorbereitung:
     """Phase one of :func:`pseudonymisiere`: read the file and find the hits.
 

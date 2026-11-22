@@ -554,9 +554,15 @@
         <translation>Orientation not detected: {fehler}</translation>
     </message>
     <message>
-        <location filename="../aufbereiten_seite.py" line="481"/>
+        <location filename="../aufbereiten_seite.py" line="480"/>
         <source>Aufbereitung fehlgeschlagen: {fehler}</source>
         <translation>Clean-up failed: {fehler}</translation>
+    </message>
+    <message>
+        <location filename="../aufbereiten_seite.py" line="489"/>
+        <source>de</source>
+        <comment>language code of the interface</comment>
+        <translation>en</translation>
     </message>
     <message>
         <location filename="../aufbereiten_seite.py" line="491"/>

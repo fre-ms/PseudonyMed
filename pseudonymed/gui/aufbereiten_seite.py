@@ -8,6 +8,7 @@ then starts the analysis.
 
 from __future__ import annotations
 
+from optdoc import cleanup as aufmodul
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -27,8 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import ocr as ocrmodul
+from pseudonymed.dokument import anbindung
 from pseudonymed.gui.ansichten import VORSCHAU_DPI, Seitenansicht
 from pseudonymed.gui.sitzung import Dokument, Sitzung
 
@@ -49,7 +49,7 @@ class AufbereitenSeite(QWidget):
         teiler.addWidget(self._baue_steuerung())
         teiler.setSizes([180, 760, 300])
         aussen.addWidget(teiler, 1)
-        if not aufmodul.verfuegbar():
+        if not aufmodul.available():
             self.hinweis.setText(self.tr(
                 "Bildaufbereitung braucht OpenCV und NumPy (Extra 'ocr'); hier sind nur"
                 " Masken möglich."))
@@ -315,7 +315,7 @@ class AufbereitenSeite(QWidget):
         self.zeichne()
 
     # -- data <-> form -----------------------------------------------------------------------------
-    def einstellung(self) -> aufmodul.Aufbereitung | None:
+    def einstellung(self) -> aufmodul.CleanupPlan | None:
         """The plan of the current page, created from the suggestion on first access;
         None while no document is shown."""
         if self.dokument is None or self.dokument.vorlage is None:
@@ -331,23 +331,23 @@ class AufbereitenSeite(QWidget):
             return
         self._stumm = True
         try:
-            self.begradigen.setChecked(a.begradigen)
-            self.winkel.setValue(a.winkel)
-            self.entzerren.setChecked(a.entzerren)
-            self.entzerren.setEnabled(bool(a.ecken))
-            self.hochskalieren.setCurrentIndex(max(0, min(3, a.hochskalieren - 1)))
-            self.textmodus.setChecked(a.textmodus)
-            self.hintergrund.setChecked(a.hintergrund)
-            self.schwarzweiss.setChecked(a.schwarzweiss)
-            self.raender.setChecked(a.raender)
-            self.farbe_entfernen.setChecked(a.farbe_entfernen)
-            self.entrauschen.setChecked(a.entrauschen)
-            self.kontrast.setChecked(a.kontrast)
-            self.schaerfen.setChecked(a.schaerfen)
-            self.linien_entfernen.setChecked(a.linien_entfernen)
-            self.regler["entrauschen"].setValue(a.entrauschen_staerke)
-            self.regler["kontrast"].setValue(a.kontrast_staerke)
-            self.regler["schaerfen"].setValue(a.schaerfen_staerke)
+            self.begradigen.setChecked(a.straighten)
+            self.winkel.setValue(a.angle)
+            self.entzerren.setChecked(a.unwarp)
+            self.entzerren.setEnabled(bool(a.corners))
+            self.hochskalieren.setCurrentIndex(max(0, min(3, a.upscale - 1)))
+            self.textmodus.setChecked(a.letter_mode)
+            self.hintergrund.setChecked(a.background)
+            self.schwarzweiss.setChecked(a.black_white)
+            self.raender.setChecked(a.borders)
+            self.farbe_entfernen.setChecked(a.remove_colour)
+            self.entrauschen.setChecked(a.denoise)
+            self.kontrast.setChecked(a.contrast)
+            self.schaerfen.setChecked(a.sharpen)
+            self.linien_entfernen.setChecked(a.remove_lines)
+            self.regler["entrauschen"].setValue(a.denoise_strength)
+            self.regler["kontrast"].setValue(a.contrast_strength)
+            self.regler["schaerfen"].setValue(a.sharpen_strength)
         finally:
             self._stumm = False
 
@@ -358,22 +358,22 @@ class AufbereitenSeite(QWidget):
         a = self.einstellung()
         if a is None:
             return
-        a.begradigen = self.begradigen.isChecked()
-        a.winkel = self.winkel.value()
-        a.entzerren = self.entzerren.isChecked() and bool(a.ecken)
-        a.hochskalieren = int(self.hochskalieren.currentData() or 1)
-        a.textmodus = self.textmodus.isChecked()
-        a.hintergrund = self.hintergrund.isChecked()
-        a.schwarzweiss = self.schwarzweiss.isChecked()
-        a.raender = self.raender.isChecked()
-        a.farbe_entfernen = self.farbe_entfernen.isChecked()
-        a.entrauschen = self.entrauschen.isChecked()
-        a.kontrast = self.kontrast.isChecked()
-        a.schaerfen = self.schaerfen.isChecked()
-        a.linien_entfernen = self.linien_entfernen.isChecked()
-        a.entrauschen_staerke = self.regler["entrauschen"].value()
-        a.kontrast_staerke = self.regler["kontrast"].value()
-        a.schaerfen_staerke = self.regler["schaerfen"].value()
+        a.straighten = self.begradigen.isChecked()
+        a.angle = self.winkel.value()
+        a.unwarp = self.entzerren.isChecked() and bool(a.corners)
+        a.upscale = int(self.hochskalieren.currentData() or 1)
+        a.letter_mode = self.textmodus.isChecked()
+        a.background = self.hintergrund.isChecked()
+        a.black_white = self.schwarzweiss.isChecked()
+        a.borders = self.raender.isChecked()
+        a.remove_colour = self.farbe_entfernen.isChecked()
+        a.denoise = self.entrauschen.isChecked()
+        a.contrast = self.kontrast.isChecked()
+        a.sharpen = self.schaerfen.isChecked()
+        a.remove_lines = self.linien_entfernen.isChecked()
+        a.denoise_strength = self.regler["entrauschen"].value()
+        a.contrast_strength = self.regler["kontrast"].value()
+        a.sharpen_strength = self.regler["schaerfen"].value()
         self.zeichne()
 
     # -- actions -----------------------------------------------------------------------------------
@@ -383,8 +383,8 @@ class AufbereitenSeite(QWidget):
         a = self.einstellung()
         if a is None:
             return
-        a.drehung = (a.drehung + grad) % 360
-        a.masken = []  # drawn on the old orientation
+        a.rotation = (a.rotation + grad) % 360
+        a.masks = []  # drawn on the old orientation
         self.zeichne()
 
     def maske(self, rect: tuple[float, float, float, float]) -> None:
@@ -392,21 +392,21 @@ class AufbereitenSeite(QWidget):
         a = self.einstellung()
         if a is None:
             return
-        a.masken.append(rect)
+        a.masks.append(rect)
         self.zeichne()
 
     def loesche_masken(self) -> None:
         """Take back every erased area of the current page."""
         a = self.einstellung()
         if a is not None:
-            a.masken = []
+            a.masks = []
             self.zeichne()
 
     def rueckgaengig(self) -> None:
         """Take back the last erased area of this page (Cmd/Ctrl+Z)."""
         a = self.einstellung()
-        if a is not None and a.masken:
-            a.masken.pop()
+        if a is not None and a.masks:
+            a.masks.pop()
             self.zeichne()
 
     def ausrichtung_erkennen(self) -> None:
@@ -416,17 +416,17 @@ class AufbereitenSeite(QWidget):
         if a is None or self.dokument is None or self.dokument.vorlage is None:
             return
         try:
-            backend = ocrmodul.backend(self.sitzung.optionen.ocr)
+            backend = anbindung.backend(self.sitzung.optionen.ocr)
         except Exception:  # noqa: BLE001 - no engine: lines only
             backend = None
-        bild, _skala = aufmodul.rendere(self.dokument.vorlage.doc[self.seite], 150)
+        bild, _skala = aufmodul.render(self.dokument.vorlage.doc[self.seite], 150)
         try:
-            grad = aufmodul.schaetze_ausrichtung(bild, backend)
+            grad = aufmodul.estimate_orientation(bild, backend)
         except Exception as e:  # noqa: BLE001
             self.hinweis.setText(self.tr("Ausrichtung nicht erkannt: {fehler}").format(fehler=e))
             return
-        a.drehung = grad
-        a.masken = []
+        a.rotation = grad
+        a.masks = []
         self.zeichne()
 
     def vorschlag_wiederherstellen(self) -> None:
@@ -442,7 +442,7 @@ class AufbereitenSeite(QWidget):
         """Switch every step off for the current page: the OCR reads it as it is."""
         if self.dokument is None:
             return
-        self.dokument.aufbereitung[self.seite] = aufmodul.Aufbereitung()
+        self.dokument.aufbereitung[self.seite] = aufmodul.CleanupPlan()
         self._formular_fuellen()
         self.zeichne()
 
@@ -457,11 +457,10 @@ class AufbereitenSeite(QWidget):
                 continue
             for n in d.vorlage.kandidaten:
                 ziel = d.aufbereitung.setdefault(n, _kopie(d.vorlage.vorschlaege.get(n)))
-                ziel.begradigen = quelle.begradigen and abs(ziel.winkel) >= 0.05
-                ziel.entzerren = quelle.entzerren and bool(ziel.ecken)
-                for feld in ("hochskalieren", "textmodus", "hintergrund", "schwarzweiss",
-                             "raender", "farbe_entfernen", "entrauschen", "kontrast",
-                             "schaerfen", "linien_entfernen"):
+                ziel.straighten = quelle.straighten and abs(ziel.angle) >= 0.05
+                ziel.unwarp = quelle.unwarp and bool(ziel.corners)
+                for feld in ("upscale", "letter_mode", "background", "black_white", "borders",
+                             "remove_colour", "denoise", "contrast", "sharpen", "remove_lines"):
                     setattr(ziel, feld, getattr(quelle, feld))
         self.zeichne()
 
@@ -486,8 +485,9 @@ class AufbereitenSeite(QWidget):
         # an enlarged image is shown at the size of the original; zooming shows the gain
         self.nachher.setze_basis((VORSCHAU_DPI / 72.0) / self.nachher.skala)
         self.nachher.zeige(png, [], None)
-        text = aufmodul.beschreibung(a)
-        if a.ecken is None and not vorlage.foto:
+        # "de" becomes "en" while the English translation is installed
+        text = anbindung.beschreibung(a, self.tr("de", "language code of the interface"))
+        if a.corners is None and not vorlage.foto:
             text += " · " + self.tr("kein fotografiertes Blatt erkannt")
         self.hinweis.setText(text)
 
@@ -502,9 +502,9 @@ class AufbereitenSeite(QWidget):
         self.nachher.zoom_zuruecksetzen()
 
 
-def _kopie(a: aufmodul.Aufbereitung | None) -> aufmodul.Aufbereitung:
+def _kopie(a: aufmodul.CleanupPlan | None) -> aufmodul.CleanupPlan:
     """An independent copy of a plan (own mask and corner lists); an empty plan for None."""
     if a is None:
-        return aufmodul.Aufbereitung()
-    return aufmodul.Aufbereitung(**{**a.__dict__, "masken": list(a.masken),
-                                    "ecken": list(a.ecken) if a.ecken else None})
+        return aufmodul.CleanupPlan()
+    return aufmodul.CleanupPlan(**{**a.__dict__, "masks": list(a.masks),
+                                    "corners": list(a.corners) if a.corners else None})

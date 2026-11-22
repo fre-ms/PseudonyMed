@@ -6,13 +6,13 @@ user's corrected text as text-only hits."""
 from __future__ import annotations
 
 import pymupdf
+from optdoc.pagetext import PageText
 
 from pseudonymed.ablauf.optionen import Ablaufoptionen
 from pseudonymed.ablauf.ruestzeug import Ruestzeug
 from pseudonymed.ablauf.seiten import Seite
-from pseudonymed.dokument import ocr as ocrmodul
+from pseudonymed.dokument import anbindung
 from pseudonymed.dokument import textdatei as textmodul
-from pseudonymed.dokument.textebene import Seitentext
 from pseudonymed.erkennung import codes as codemodul
 from pseudonymed.erkennung import fachbegriffe as fachmodul
 from pseudonymed.erkennung import identifikatoren as identmodul
@@ -23,7 +23,7 @@ from pseudonymed.kern.modell import Fundstelle
 from pseudonymed.pruefung.gegenprobe import toleranzschluessel
 
 
-def ergaenze_treffer(seite: Seitentext, treffer: list[Fundstelle], quelle: str, r: Ruestzeug,
+def ergaenze_treffer(seite: PageText, treffer: list[Fundstelle], quelle: str, r: Ruestzeug,
                      verschont: list[str] | None = None, ner: bool = True) -> None:
     """Identifiers, medical content, NER (when asked for) and titles over ``seite``,
     appended to ``treffer`` in place and in that order: every stage sees what the ones
@@ -40,7 +40,7 @@ def ergaenze_treffer(seite: Seitentext, treffer: list[Fundstelle], quelle: str, 
         treffer += identmodul.finde_titel(seite, r.identifikatoren, r.vergabe, treffer, quelle)
 
 
-def merke_fachbegriffe(eintrag: Seite, seite: Seitentext,
+def merke_fachbegriffe(eintrag: Seite, seite: PageText,
                        fachbegriffe: fachmodul.Fachbegriffe) -> None:
     """Remember where medical terms sit, for the green marks of the review step."""
     spannen = fachbegriffe.spannen(seite.text)
@@ -56,21 +56,21 @@ def _erkenne_textebene(eintrag: Seite, r: Ruestzeug, verschont: list[str]) -> No
     textebene = eintrag.text
     eintrag.fundstellen = finde(textebene, r.regeln)
     eintrag.fachrects, eintrag.fachspannen, eintrag.fachanzahl = [], [], 0
-    if not textebene.hat_textebene:
+    if not textebene.has_text_layer:
         return
     if r.fachbegriffe is not None:
         merke_fachbegriffe(eintrag, textebene, r.fachbegriffe)
     ergaenze_treffer(textebene, eintrag.fundstellen, "text", r, verschont)
 
 
-def _unlesbare_zeilen(ocr: Seitentext, fundstellen: list[Fundstelle]) -> list[Fundstelle]:
+def _unlesbare_zeilen(ocr: PageText, fundstellen: list[Fundstelle]) -> list[Fundstelle]:
     """Lines the OCR could not read, as hits, where no OCR hit covers them already."""
     belegt = [(f.start, f.ende) for f in fundstellen if f.quelle == "ocr"]
-    return [u for u in ocrmodul.unlesbare_regionen(ocr)
+    return [u for u in anbindung.unlesbare_treffer(ocr)
             if not any(u.start < y and u.ende > x for x, y in belegt)]
 
 
-def _erkenne_ocr(eintrag: Seite, ocr: Seitentext, r: Ruestzeug, opt: Ablaufoptionen,
+def _erkenne_ocr(eintrag: Seite, ocr: PageText, r: Ruestzeug, opt: Ablaufoptionen,
                  verschont: list[str]) -> None:
     """The OCR reading: vocabulary marks, exact rules, fuzzy search, then the chain of
     searches over the OCR hits only; unreadable lines and the user's correction last."""

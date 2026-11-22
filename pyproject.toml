@@ -20,12 +20,14 @@ classifiers = [
 dependencies = [
   # <2: PyMuPDF 2.0 (MuPDF 1.28.5) shifts glyphs after a redaction, see docs/pymupdf-redaction-shift.md
   "pymupdf>=1.25,<2",
+  # loading, clean-up, OCR, page text, structure: the document layer lives in optdoc
+  "optdoc>=0.1.0",
   "platformdirs>=4",
   "typer>=0.12",
 ]
 
 [project.optional-dependencies]
-ocr = ["rapidocr>=3", "onnxruntime>=1.18", "pillow>=10", "pillow-heif>=0.18"]
+ocr = ["optdoc[ocr]>=0.1.0"]  # RapidOCR, onnxruntime, Pillow, pillow-heif
 codes = ["zxing-cpp>=2.2", "pillow>=10"]
 carddav = ["keyring>=25"]
 gui = ["PySide6>=6.7"]
@@ -60,6 +62,10 @@ quality = [
   "mypy>=1.14",
   "pylint>=3.3",  # symilar, the duplication instrument
 ]
+
+[tool.uv.sources]
+# developed side by side; the published tag replaces the path once optdoc 0.1.0 is on GitHub
+optdoc = { path = "../optdoc", editable = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -100,3 +106,8 @@ ignore_missing_imports = true
 # PyMuPDF ships annotations that are incomplete (constants, Document iteration): read as Any.
 module = ["pymupdf"]
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+# optdoc is annotated but ships no py.typed marker yet: check against its annotations anyway.
+module = ["optdoc", "optdoc.*"]
+follow_untyped_imports = true

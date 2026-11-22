@@ -38,6 +38,7 @@ for paket in ("spacy", "thinc", "de_core_news_lg", "de_core_news_md", "de_core_n
 binaries += collect_dynamic_libs("pillow_heif")
 binaries += collect_dynamic_libs("zxingcpp")
 hiddenimports += collect_submodules("pseudonymed")
+hiddenimports += collect_submodules("optdoc")  # loading, clean-up, OCR: the document layer
 hiddenimports += ["pillow_heif", "zxingcpp", "PIL.Image", "PIL.ImageFilter", "PIL.ImageOps",
                   "shapely", "cv2", "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]
 

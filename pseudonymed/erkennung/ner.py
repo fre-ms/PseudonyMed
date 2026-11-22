@@ -19,7 +19,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pseudonymed.dokument.textebene import Seitentext
+from optdoc.pagetext import PageText
+
 from pseudonymed.kern.modell import Art, Fundstelle
 from pseudonymed.pseudonyme.vergabe import Pseudonymvergabe
 
@@ -190,12 +191,12 @@ class _Kandidat:
     regel: str
     pseudonym: str
 
-    def fundstelle(self, seite: Seitentext, a: int, b: int, quelle: str) -> Fundstelle:
+    def fundstelle(self, seite: PageText, a: int, b: int, quelle: str) -> Fundstelle:
         """The hit over ``seite.text[a:b]`` with its boxes and font size."""
         return Fundstelle(
-            seite=seite.nummer, start=a, ende=b, text=self.kern, art=self.art, regel=self.regel,
+            seite=seite.number, start=a, ende=b, text=self.kern, art=self.art, regel=self.regel,
             pseudonym=self.pseudonym, rects=[tuple(r) for r in seite.rects(a, b)],
-            schriftgroesse=seite.schriftgroesse(a, b), quelle=quelle,
+            schriftgroesse=seite.font_size(a, b), quelle=quelle,
         )
 
 
@@ -265,7 +266,7 @@ def _verdraengte_teiltreffer(a: int, b: int, vorhandene: list[Fundstelle],
 
 
 def finde_ner(
-    seite: Seitentext, ner: NER, vergabe: Pseudonymvergabe, vorhandene: list[Fundstelle],
+    seite: PageText, ner: NER, vergabe: Pseudonymvergabe, vorhandene: list[Fundstelle],
     quelle: str = "text", fachbegriffe: Fachbegriffe | None = None,
     verschont: list[str] | None = None,
 ) -> list[Fundstelle]:

@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import pymupdf
+from optdoc.pagetext import PageText, read_text_layers
 
-from pseudonymed.dokument.textebene import Seitentext, lese_dokument
 from pseudonymed.erkennung.deterministisch import Regel, finde, finde_im_text
 from pseudonymed.erkennung.varianten import exakt_muster
 from pseudonymed.kern.modell import Art, Gegenprobe, Rolle
@@ -111,7 +111,7 @@ def _klartexttreffer(seite: int, regel: Regel, quelle: str) -> dict[str, Any]:
             "pseudonym": regel.pseudonym, "rects": [], "quelle": quelle}
 
 
-def _pruefe_textebene(ziele: _Suchziele, seite: Seitentext, ergebnis: Gegenprobe,
+def _pruefe_textebene(ziele: _Suchziele, seite: PageText, ergebnis: Gegenprobe,
                       gesehen: set[tuple[int, str, str]]) -> None:
     """Runs the rules over one page's reconstructed text layer and reports residual hits
     with their rectangles.  Every hit, reported or not, is added to ``gesehen`` so that
@@ -203,7 +203,7 @@ def pruefe(
     ergebnis = Gegenprobe(geprueft=geprueft_aus(regeln))
     ziele = _Suchziele(regeln, frozenset(toleriert), tuple(p for p in pseudonyme if p))
     gesehen: set[tuple[int, str, str]] = set()
-    for seite in lese_dokument(doc):
+    for seite in read_text_layers(doc):
         _pruefe_textebene(ziele, seite, ergebnis, gesehen)
     for i, page in enumerate(doc):
         _pruefe_klartext(ziele, i, page.get_text("text"), ergebnis, gesehen)

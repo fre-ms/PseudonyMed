@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from optdoc.pagetext import Box
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,7 +27,6 @@ from PySide6.QtWidgets import (
 
 from pseudonymed import arbeitsstand as standmodul
 from pseudonymed.ablauf import Textvorbereitung, Vorbereitung
-from pseudonymed.dokument.textebene import Box
 
 # Traffic light: red = will be redacted, yellow = uncertain (read badly, blanked as a
 # precaution), green = stays (medical term, discarded hit).  The source of a hit is in

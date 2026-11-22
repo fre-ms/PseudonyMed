@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import ClassVar
 
 import pymupdf
+from optdoc import cleanup as aufmodul
+from optdoc import ocr as ocrmodul
+from optdoc.pagetext import Box
 
 from pseudonymed.ablauf.erkennen import erkenne_seiten, gemerkte_verwerfen, korrektur_treffer
 from pseudonymed.ablauf.lesen import Lesung, dokumente_schliessen
@@ -21,9 +24,6 @@ from pseudonymed.ablauf.seiten import (
     unveraendert,
     wort_bei,
 )
-from pseudonymed.dokument import aufbereitung as aufmodul
-from pseudonymed.dokument import ocr as ocrmodul
-from pseudonymed.dokument.textebene import Box
 from pseudonymed.erkennung.deterministisch import Regel, kasten_zu_fundstellen
 from pseudonymed.erkennung.unscharf import Ziel
 from pseudonymed.kern.modell import Art, Fundstelle, Patient
@@ -54,7 +54,7 @@ class Vorbereitungsbasis:
     warnungen: list[str] = field(default_factory=list)
     hinweise: list[str] = field(default_factory=list)
     verworfen: list[Fundstelle] = field(default_factory=list)
-    aufbereitet: dict[int, aufmodul.Aufbereitung] = field(default_factory=dict)
+    aufbereitet: dict[int, aufmodul.CleanupPlan] = field(default_factory=dict)
     abgeschlossen: bool = False
     version: int = 0  # grows with every change the user makes in the review
     wiederhergestellt: set[tuple[str, str]] = field(default_factory=set)
@@ -83,8 +83,8 @@ class Vorbereitungsbasis:
         if seite.ocr is None:
             return []
         rects: list[Box] = []
-        for (a, b), konf in zip(seite.ocr.wortspannen, seite.ocr.konfidenzen, strict=True):
-            if konf < ocrmodul.UNSICHER_KONFIDENZ:
+        for (a, b), konf in zip(seite.ocr.word_spans, seite.ocr.confidences, strict=True):
+            if konf < ocrmodul.UNCERTAIN_CONFIDENCE:
                 rects += [tuple(r) for r in seite.ocr.rects(a, b)]
         return rects
 
@@ -223,7 +223,7 @@ class Vorbereitung(Vorbereitungsbasis):
                        pseudonym=pseudonym or self.vergabe.identifikator("Begriff", text,
                                                                          Art.BEGRIFF),
                        rects=[tuple(r) for r in basis.rects(start, ende)],
-                       schriftgroesse=basis.schriftgroesse(start, ende), quelle="manuell")
+                       schriftgroesse=basis.font_size(start, ende), quelle="manuell")
         seite.fundstellen.append(f)
         self.version += 1
         return f
