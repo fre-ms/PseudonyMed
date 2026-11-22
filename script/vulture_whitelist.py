@@ -5,32 +5,32 @@
 _ = object()
 
 # typer: every command is registered by its decorator
-_hauptbefehl
-datenbank_status
-datenbank_zusatzdaten
-datenbank_speicherort
-datenbank_exportieren
-datenbank_importieren
-schluessel_zeigen
-schluessel_erzeugen
-fachbegriffe_status
-fachbegriffe_hinzufuegen
-fachbegriffe_entfernen
-fachbegriffe_exportieren
-fachbegriffe_pruefen
-fachbegriffe_ergaenzen
-fachbegriffe_importieren
-identifikatoren_status
-identifikatoren_hinzufuegen
-identifikatoren_entfernen
-identifikatoren_exportieren
-identifikatoren_importieren
-identifikatoren_pruefen
-einrichten
-kontakte_lokal
-adressbuecher
-suchen
-zeigen
+_main_command
+database_status
+load_extra_data
+database_location
+export_database
+import_database
+show_key
+create_key
+medical_terms_status
+add_medical_terms
+remove_medical_terms
+export_medical_terms
+check_medical_terms
+merge_medical_terms
+import_medical_terms
+identifiers_status
+add_identifiers
+remove_identifiers
+export_identifiers
+import_identifiers
+check_identifiers
+set_up
+local_contacts
+address_books
+run_search
+show_contact
 export
 
 # Qt virtuals and model methods
@@ -56,11 +56,11 @@ pytest_configure
 pytest_unconfigure
 config
 pytestmark
-datenordner_isoliert
-carddav_umgebung
-lexikon_an
-lexikon_klein
-ohne_variablen
+isolated_data_folder
+carddav_environment
+lexicon_on
+small_lexicon
+without_variables
 appauthor
 
 # fields of optdoc's page text that PseudonyMed fills for a text file and optdoc reads
@@ -70,7 +70,7 @@ _.baselines
 # dataclass fields, attributes of foreign objects (PyMuPDF widgets in a test), the *exc of __exit__
 _.field_name
 _.field_type
-einmalschluessel
+one_time_key
 vcard
 _.row_factory
 _.max_length

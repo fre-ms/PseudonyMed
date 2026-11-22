@@ -5,11 +5,11 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 
-from pseudonymed.kern.modell import Patient
-from pseudonymed.quellen.vcf import parse_bday, parse_vcards, patient_aus_vcard, patienten_aus_vcf
-from tests.synthetisch import vcard_aus_patient
+from pseudonymed.core.model import Patient
+from pseudonymed.sources.vcf import parse_bday, parse_vcards, patient_from_vcard, patients_from_vcf
+from tests.synthetic import vcard_from_patient
 
-HANDGEMACHT = """BEGIN:VCARD
+HANDMADE = """BEGIN:VCARD
 VERSION:3.0
 N:Muster;Erika;Maria;Dr. med.;
 FN:Dr. med. Erika Maria Muster
@@ -26,7 +26,7 @@ ORG:Beispiel GmbH;Abteilung\\, Entwicklung
 END:VCARD
 """
 
-KURZ = """BEGIN:VCARD
+SHORT = """BEGIN:VCARD
 VERSION:4.0
 FN:Hans Peter Lange
 BDAY:--0315
@@ -41,45 +41,45 @@ END:VCARD
 """
 
 
-def test_doctonext_karte(patient: Patient) -> None:
-    text = vcard_aus_patient(patient, "uid-1")
+def test_doctonext_card(patient: Patient) -> None:
+    text = vcard_from_patient(patient, "uid-1")
     assert any(len(z.encode("utf-8")) <= 75 for z in text.splitlines())
-    karten = parse_vcards(text)
-    assert len(karten) == 1
-    k = karten[0]
-    assert k.uid == "uid-1" and k.version == "4.0" and k.fn == patient.vollname
-    p = patient_aus_vcard(k)
-    assert (p.nachname, p.vorname, p.geschlecht) == (patient.nachname, patient.vorname, "m")
-    assert p.geburtsdatum == patient.geburtsdatum
-    assert (p.strasse, p.plz, p.ort) == (patient.strasse, patient.plz, patient.ort)
-    assert p.telefone == patient.telefone and p.emails == patient.emails
-    assert p.patienten_id == patient.patienten_id
-    assert p.versichertennummer == patient.versichertennummer  # found in NOTE
-    assert any("Ehepartner" in h for h in p.hinweise)
-    assert p.schluessel() == patient.schluessel()
+    cards = parse_vcards(text)
+    assert len(cards) == 1
+    k = cards[0]
+    assert k.uid == "uid-1" and k.version == "4.0" and k.fn == patient.full_name
+    p = patient_from_vcard(k)
+    assert (p.surname, p.first_name, p.sex) == (patient.surname, patient.first_name, "m")
+    assert p.birth_date == patient.birth_date
+    assert (p.street, p.postcode, p.place) == (patient.street, patient.postcode, patient.place)
+    assert p.phones == patient.phones and p.emails == patient.emails
+    assert p.patient_id == patient.patient_id
+    assert p.insurance_number == patient.insurance_number  # found in NOTE
+    assert any("Ehepartner" in h for h in p.notes)
+    assert p.key() == patient.key()
 
 
-def test_handgemachte_karte() -> None:
-    p = patient_aus_vcard(parse_vcards(HANDGEMACHT)[0])
-    assert p.nachname == "Muster" and p.vorname == "Erika Maria"
-    assert p.titel == "Dr. med." and p.geschlecht == ""
-    assert p.telefone == ["+49 (0)30 1234567", "0171 2345678"]
+def test_handmade_card() -> None:
+    p = patient_from_vcard(parse_vcards(HANDMADE)[0])
+    assert p.surname == "Muster" and p.first_name == "Erika Maria"
+    assert p.title == "Dr. med." and p.sex == ""
+    assert p.phones == ["+49 (0)30 1234567", "0171 2345678"]
     assert p.emails == ["erika.muster@example.org"]
-    assert (p.strasse, p.plz, p.ort) == ("Musterstraße 12", "14467", "Potsdam")
-    assert p.geburtsdatum == dt.date(1970, 5, 2)
-    assert p.versichertennummer == "B987654321"  # X-KVNR wins over the NOTE
-    assert p.hinweise[0] == "Versichertennr. A123456789, Angehörige: Max Muster; Tel. privat"
+    assert (p.street, p.postcode, p.place) == ("Musterstraße 12", "14467", "Potsdam")
+    assert p.birth_date == dt.date(1970, 5, 2)
+    assert p.insurance_number == "B987654321"  # X-KVNR wins over the NOTE
+    assert p.notes[0] == "Versichertennr. A123456789, Angehörige: Max Muster; Tel. privat"
 
 
-def test_unvollstaendige_karten() -> None:
-    karten = parse_vcards(KURZ)
-    assert len(karten) == 2
-    a = patient_aus_vcard(karten[0])
-    assert (a.nachname, a.vorname) == ("Lange", "Hans Peter")
-    assert a.geburtsdatum is None  # no year
-    assert a.telefone == ["+4989123"]
-    b = patient_aus_vcard(karten[1])
-    assert b.geschlecht == "w" and b.geburtsdatum is None
+def test_incomplete_cards() -> None:
+    cards = parse_vcards(SHORT)
+    assert len(cards) == 2
+    a = patient_from_vcard(cards[0])
+    assert (a.surname, a.first_name) == ("Lange", "Hans Peter")
+    assert a.birth_date is None  # no year
+    assert a.phones == ["+4989123"]
+    b = patient_from_vcard(cards[1])
+    assert b.sex == "w" and b.birth_date is None
 
 
 def test_parse_bday() -> None:
@@ -89,10 +89,10 @@ def test_parse_bday() -> None:
     assert parse_bday("") is None
 
 
-def test_datei_mit_bom_und_crlf(tmp_path: Path, patient: Patient, patientin: Patient) -> None:
-    pfad = tmp_path / "export.vcf"
-    inhalt = vcard_aus_patient(patient) + vcard_aus_patient(patientin)
-    pfad.write_bytes(b"\xef\xbb\xbf" + inhalt.encode())
-    patienten = patienten_aus_vcf(pfad)
-    assert [p.nachname for p in patienten] == [patient.nachname, patientin.nachname]
-    assert patienten[1].geschlecht == "w"
+def test_file_with_bom_and_crlf(tmp_path: Path, patient: Patient, female_patient: Patient) -> None:
+    path = tmp_path / "export.vcf"
+    content = vcard_from_patient(patient) + vcard_from_patient(female_patient)
+    path.write_bytes(b"\xef\xbb\xbf" + content.encode())
+    patients = patients_from_vcf(path)
+    assert [p.surname for p in patients] == [patient.surname, female_patient.surname]
+    assert patients[1].sex == "w"

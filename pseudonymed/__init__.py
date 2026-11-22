@@ -6,4 +6,4 @@ clear data never leaves the machine.
 """
 
 __version__ = "0.1.0"
-WERKZEUG = f"PseudonyMed {__version__}"
+TOOL = f"PseudonyMed {__version__}"

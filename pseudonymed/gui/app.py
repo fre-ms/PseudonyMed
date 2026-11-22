@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from PySide6.QtCore import QTranslator
     from PySide6.QtWidgets import QApplication
 
-    from pseudonymed.gui.hauptfenster import Hauptfenster
+    from pseudonymed.gui.main_window import MainWindow
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,40 +24,40 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print("Die Oberfläche braucht das Extra 'gui': uv sync --extra gui", file=sys.stderr)
         return 1
-    from pseudonymed.gui import uebersetzung
-    from pseudonymed.gui.hauptfenster import Hauptfenster
+    from pseudonymed.gui import translation
     from pseudonymed.gui.icon import app_icon
+    from pseudonymed.gui.main_window import MainWindow
 
-    argumente = list(argv if argv is not None else sys.argv[1:])
-    selbsttest = "--selbsttest" in argumente
-    if selbsttest:
-        argumente.remove("--selbsttest")
-    sprache = uebersetzung.sprache_bestimmen(argumente)
-    argumente = uebersetzung.ohne_sprachargumente(argumente)
+    arguments = list(argv if argv is not None else sys.argv[1:])
+    self_test = "--selbsttest" in arguments
+    if self_test:
+        arguments.remove("--selbsttest")
+    language = translation.determine_language(arguments)
+    arguments = translation.without_language_arguments(arguments)
     app = QApplication.instance()
     if not isinstance(app, QApplication):
-        app = QApplication([sys.argv[0], *argumente])
+        app = QApplication([sys.argv[0], *arguments])
     app.setApplicationName("PseudonyMed")
     app.setWindowIcon(app_icon())
     app.setOrganizationName("PseudonyMed")
-    uebersetzer = uebersetzung.installiere(app, sprache)  # the reference keeps it alive
-    fenster = Hauptfenster()
-    fenster.show()
-    if selbsttest:
-        return _selbsttest(app, fenster, uebersetzer)
+    translator = translation.install(app, language)  # the reference keeps it alive
+    window = MainWindow()
+    window.show()
+    if self_test:
+        return _self_test(app, window, translator)
     return app.exec()
 
 
-def _selbsttest(app: QApplication, fenster: Hauptfenster,
-                uebersetzer: QTranslator | None) -> int:
+def _self_test(app: QApplication, window: MainWindow,
+               translator: QTranslator | None) -> int:
     """Packaged builds: everything is constructed, rendered once, the step names are
     printed, then the window closes and the translator is taken out again."""
     app.processEvents()
-    tabs = [fenster.tabs.tabText(i) for i in range(fenster.tabs.count())]
+    tabs = [window.tabs.tabText(i) for i in range(window.tabs.count())]
     print("Selbsttest bestanden:", ", ".join(tabs))
-    fenster.close()
-    if uebersetzer is not None:
-        app.removeTranslator(uebersetzer)
+    window.close()
+    if translator is not None:
+        app.removeTranslator(translator)
     return 0
 
 

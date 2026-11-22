@@ -23,7 +23,7 @@ recorded, not fatal)
   * duplication copy-pasted blocks of 8 lines or more across the package (pylint's symilar,
                 ignoring imports, docstrings and signatures): the DRY instrument
   * ruff        finding counts per rule under the project's own config (package, tests,
-                packaging, werkzeuge, script)
+                packaging, tools, script)
   * mypy        error count under the project's own config (expected: zero)
   * docstrings  interrogate coverage, plus the number that matters: public modules, classes,
                 functions and methods without a docstring (Qt overrides excepted)
@@ -56,14 +56,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "pseudonymed"
 TESTS = ROOT / "tests"
 BASELINE = ROOT / "quality-baseline.json"
-RUFF_ZIELE = ("pseudonymed", "tests", "packaging", "werkzeuge", "script")
+RUFF_TARGETS = ("pseudonymed", "tests", "packaging", "tools", "script")
 
 # The family's bands: CC 10 (McCabe's own guidance) and 20, cognitive 15 (the SonarQube
 # convention), 60 statements and nesting 4 for the structure of a function, 800 lines for a
 # module, 8 lines for a duplicate.  Trend lines and ratchet counts, not gates.
 CC_WARN, CC_HIGH, COG_WARN = 10, 20, 15
-LANGE_FUNKTION, TIEFE_SCHACHTELUNG, LANGES_MODUL, VIELE_PARAMETER = 60, 4, 800, 7
-DUPLIKAT_ZEILEN = 8
+LONG_FUNCTION, DEEP_NESTING, LONG_MODULE, MANY_PARAMETERS = 60, 4, 800, 7
+DUPLICATE_LINES = 8
 
 # The ratchet: these must never rise above the committed baseline.
 REGRESSION_KEYS: tuple[tuple[str, str], ...] = (
@@ -80,7 +80,7 @@ REGRESSION_KEYS: tuple[tuple[str, str], ...] = (
 )
 # A point of noise: the baseline is measured on macOS, CI on Linux, and a few lines of
 # platform handling (key paths, program look-up) are only ever covered on one of them.
-COVERAGE_SPIELRAUM = 1.0
+COVERAGE_MARGIN = 1.0
 
 # Qt virtuals a widget overrides; their meaning is Qt's documentation, not ours.
 _QT_OVERRIDES = re.compile(r"^(?:[a-z]+[A-Z]\w*|run|data|flags|headerData|rowCount|columnCount"
@@ -101,10 +101,10 @@ def _py(*args: str) -> tuple[int, str]:
     return _run([sys.executable, "-m", *args])
 
 
-def _werkzeug(name: str) -> str:
+def _tool(name: str) -> str:
     """The tool next to the interpreter (the project's venv), else by name on the PATH."""
-    kandidat = Path(sys.executable).parent / name
-    return str(kandidat) if kandidat.exists() else name
+    candidate = Path(sys.executable).parent / name
+    return str(candidate) if candidate.exists() else name
 
 
 def _module_files() -> list[Path]:
@@ -159,7 +159,7 @@ def radon_metrics() -> dict[str, Any]:
 
 def complexipy_metrics() -> dict[str, Any]:
     """Cognitive complexity: nesting-sensitive, unlike cyclomatic."""
-    rc, out = _run([_werkzeug("complexipy"), str(SRC), "--output-csv", "-q"])
+    rc, out = _run([_tool("complexipy"), str(SRC), "--output-csv", "-q"])
     csv_path = ROOT / "complexipy.csv"
     if not csv_path.exists():
         return {"error": "complexipy produced no CSV", "detail": out[:400], "returncode": rc}
@@ -185,73 +185,73 @@ def _statements(node: ast.AST) -> int:
     return sum(1 for n in ast.walk(node) if isinstance(n, ast.stmt))
 
 
-def _nesting(node: ast.AST, tiefe: int = 0) -> int:
+def _nesting(node: ast.AST, depth: int = 0) -> int:
     """Deepest nesting of blocks (if/for/while/with/try/match) inside a function."""
-    bloecke = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try,
-               ast.Match)
-    tiefste = tiefe
+    blocks = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try,
+              ast.Match)
+    deepest = depth
     for kind in ast.iter_child_nodes(node):
         if isinstance(kind, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
             continue  # a nested function starts its own count
-        neu = tiefe + 1 if isinstance(kind, bloecke) else tiefe
-        tiefste = max(tiefste, _nesting(kind, neu))
-    return tiefste
+        new = depth + 1 if isinstance(kind, blocks) else depth
+        deepest = max(deepest, _nesting(kind, new))
+    return deepest
 
 
-def _funktionen(baum: ast.AST):
-    for n in ast.walk(baum):
+def _functions(tree: ast.AST):
+    for n in ast.walk(tree):
         if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef):
             yield n
 
 
-def _ist_cli_befehl(f: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def _is_cli_command(f: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     """True for a Typer command (decorated with ``<app>.command(...)``): its parameters are
     the command's options, the user-facing contract, so their number is not a design
     smell of the function."""
     for d in f.decorator_list:
-        aufruf = d.func if isinstance(d, ast.Call) else d
-        if isinstance(aufruf, ast.Attribute) and aufruf.attr == "command":
+        call = d.func if isinstance(d, ast.Call) else d
+        if isinstance(call, ast.Attribute) and call.attr == "command":
             return True
     return False
 
 
 def structure_metrics() -> dict[str, Any]:
     """The monolith instrument: long functions, deep nesting, long modules, wide signatures
-    (Typer commands excepted, see :func:`_ist_cli_befehl`)."""
-    lang: list[dict[str, Any]] = []
-    tief: list[dict[str, Any]] = []
-    breit: list[dict[str, Any]] = []
+    (Typer commands excepted, see :func:`_is_cli_command`)."""
+    long: list[dict[str, Any]] = []
+    deep: list[dict[str, Any]] = []
+    wide: list[dict[str, Any]] = []
     module: list[dict[str, Any]] = []
-    funktionen = 0
+    functions = 0
     for p in _module_files():
-        quelle = p.read_text(encoding="utf-8")
-        zeilen = quelle.count("\n") + 1
-        if zeilen > LANGES_MODUL:
-            module.append({"file": _rel(p), "lines": zeilen})
-        baum = ast.parse(quelle)
-        for f in _funktionen(baum):
-            funktionen += 1
+        source = p.read_text(encoding="utf-8")
+        lines = source.count("\n") + 1
+        if lines > LONG_MODULE:
+            module.append({"file": _rel(p), "lines": lines})
+        tree = ast.parse(source)
+        for f in _functions(tree):
+            functions += 1
             n = _statements(f) - 1
-            if n > LANGE_FUNKTION:
-                lang.append({"file": _rel(p), "name": f.name, "line": f.lineno, "statements": n})
+            if n > LONG_FUNCTION:
+                long.append({"file": _rel(p), "name": f.name, "line": f.lineno, "statements": n})
             t = _nesting(f)
-            if t > TIEFE_SCHACHTELUNG:
-                tief.append({"file": _rel(p), "name": f.name, "line": f.lineno, "depth": t})
+            if t > DEEP_NESTING:
+                deep.append({"file": _rel(p), "name": f.name, "line": f.lineno, "depth": t})
             args = f.args
-            anzahl = len(args.posonlyargs) + len(args.args) + len(args.kwonlyargs)
-            anzahl -= 1 if args.args and args.args[0].arg in ("self", "cls") else 0
-            if anzahl > VIELE_PARAMETER and not _ist_cli_befehl(f):
-                breit.append({"file": _rel(p), "name": f.name, "line": f.lineno,
-                              "parameters": anzahl})
-    lang.sort(key=lambda r: -r["statements"])
-    tief.sort(key=lambda r: -r["depth"])
-    breit.sort(key=lambda r: -r["parameters"])
+            count = len(args.posonlyargs) + len(args.args) + len(args.kwonlyargs)
+            count -= 1 if args.args and args.args[0].arg in ("self", "cls") else 0
+            if count > MANY_PARAMETERS and not _is_cli_command(f):
+                wide.append({"file": _rel(p), "name": f.name, "line": f.lineno,
+                             "parameters": count})
+    long.sort(key=lambda r: -r["statements"])
+    deep.sort(key=lambda r: -r["depth"])
+    wide.sort(key=lambda r: -r["parameters"])
     module.sort(key=lambda r: -r["lines"])
     return {
-        "functions": funktionen,
-        "long_functions": len(lang), "long": lang,
-        "deeply_nested": len(tief), "nested": tief,
-        "wide_signatures": len(breit), "wide": breit,
+        "functions": functions,
+        "long_functions": len(long), "long": long,
+        "deeply_nested": len(deep), "nested": deep,
+        "wide_signatures": len(wide), "wide": wide,
         "long_modules": len(module), "modules": module,
     }
 
@@ -259,29 +259,29 @@ def structure_metrics() -> dict[str, Any]:
 # -- duplication ----------------------------------------------------------------------------------
 def duplication_metrics() -> dict[str, Any]:
     """Copy-pasted blocks across the package (pylint's symilar)."""
-    dateien = [str(p) for p in _module_files()]
-    rc, out = _run([sys.executable, "-m", "pylint.checkers.symilar", "-d", str(DUPLIKAT_ZEILEN),
-                    "--ignore-imports", "--ignore-docstrings", "--ignore-signatures", *dateien])
+    files = [str(p) for p in _module_files()]
+    rc, out = _run([sys.executable, "-m", "pylint.checkers.symilar", "-d", str(DUPLICATE_LINES),
+                    "--ignore-imports", "--ignore-docstrings", "--ignore-signatures", *files])
     if rc == 127 or "duplicates=" not in out:
         return {"error": "symilar failed", "detail": out[:400]}
-    bloecke: list[dict[str, Any]] = []
-    zeilen_gesamt = 0
+    blocks: list[dict[str, Any]] = []
+    total_lines = 0
     for m in re.finditer(r"(\d+) similar lines in (\d+) files\n((?:==.*\n)+)", out):
-        n, dateien_n = int(m.group(1)), int(m.group(2))
-        orte = [_rel(o.group(1)) + ":" + o.group(2)
-                for o in re.finditer(r"==(\S+):\[(\d+):\d+\]", m.group(3))]
-        bloecke.append({"lines": n, "files": dateien_n, "where": orte})
-        zeilen_gesamt += n
-    bloecke.sort(key=lambda b: -b["lines"])
+        n, files_n = int(m.group(1)), int(m.group(2))
+        places = [_rel(o.group(1)) + ":" + o.group(2)
+                  for o in re.finditer(r"==(\S+):\[(\d+):\d+\]", m.group(3))]
+        blocks.append({"lines": n, "files": files_n, "where": places})
+        total_lines += n
+    blocks.sort(key=lambda b: -b["lines"])
     m = re.search(r"percent=([\d.]+)", out)
-    return {"blocks": len(bloecke), "duplicated_lines": zeilen_gesamt,
-            "percent": float(m.group(1)) if m else None, "detail": bloecke}
+    return {"blocks": len(blocks), "duplicated_lines": total_lines,
+            "percent": float(m.group(1)) if m else None, "detail": blocks}
 
 
 # -- lint, types, docs, dead code ------------------------------------------------------------------
 def ruff_metrics() -> dict[str, Any]:
     """Findings under the project's own ruff config."""
-    rc, out = _py("ruff", "check", *RUFF_ZIELE, "--statistics")
+    rc, out = _py("ruff", "check", *RUFF_TARGETS, "--statistics")
     if rc == 127:
         return {"error": out}
     counts: dict[str, int] = {}
@@ -299,20 +299,20 @@ def mypy_metrics() -> dict[str, Any]:
     if rc == 127:
         return {"error": out}
     m = re.search(r"Found (\d+) error", out)
-    fehler = [ln for ln in out.splitlines() if ": error:" in ln]
+    error = [ln for ln in out.splitlines() if ": error:" in ln]
     return {"errors": int(m.group(1)) if m else 0, "clean": "Success" in out,
-            "detail": fehler[:40]}
+            "detail": error[:40]}
 
 
 def _public_missing(p: Path) -> list[str]:
     """Public module, classes, functions and methods of ``p`` without a docstring."""
-    quelle = p.read_text(encoding="utf-8")
-    baum = ast.parse(quelle)
-    fehlt: list[str] = []
-    if p.name != "__init__.py" and ast.get_docstring(baum) is None:
-        fehlt.append(f"{_rel(p)}:1 (module)")
+    source = p.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    missing: list[str] = []
+    if p.name != "__init__.py" and ast.get_docstring(tree) is None:
+        missing.append(f"{_rel(p)}:1 (module)")
 
-    def pruefe(node: ast.AST, eltern: str) -> None:
+    def check(node: ast.AST, parents: str) -> None:
         for kind in ast.iter_child_nodes(node):
             if not isinstance(kind, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                 continue
@@ -321,29 +321,29 @@ def _public_missing(p: Path) -> list[str]:
             if any(isinstance(d, ast.Name) and d.id == "overload" for d in kind.decorator_list):
                 continue
             if ast.get_docstring(kind) is None:
-                fehlt.append(f"{_rel(p)}:{kind.lineno} {eltern}{kind.name}")
+                missing.append(f"{_rel(p)}:{kind.lineno} {parents}{kind.name}")
             if isinstance(kind, ast.ClassDef):
-                pruefe(kind, kind.name + ".")
+                check(kind, kind.name + ".")
 
-    pruefe(baum, "")
-    return fehlt
+    check(tree, "")
+    return missing
 
 
 def docstring_metrics() -> dict[str, Any]:
     """Coverage overall, and the number that matters: public definitions without one."""
-    rc, out = _run([_werkzeug("interrogate"), str(SRC)])
+    rc, out = _run([_tool("interrogate"), str(SRC)])
     pct = None
     m = re.search(r"actual:\s*([\d.]+)%", out) or re.search(r"([\d.]+)%", out)
     if m:
         pct = float(m.group(1))
-    missing = [eintrag for p in _module_files() for eintrag in _public_missing(p)]
+    missing = [entry for p in _module_files() for entry in _public_missing(p)]
     return {"coverage_pct": pct, "public_missing": len(missing), "public_missing_names": missing,
             "note": None if rc != 127 else out}
 
 
 def vulture_metrics() -> dict[str, Any]:
     """Unreferenced-code candidates; candidates, not findings."""
-    rc, out = _run([_werkzeug("vulture"), str(SRC), str(TESTS),
+    rc, out = _run([_tool("vulture"), str(SRC), str(TESTS),
                     str(ROOT / "script" / "vulture_whitelist.py"), "--min-confidence", "60"])
     if rc == 127:
         return {"error": out}
@@ -378,7 +378,7 @@ def coverage_metrics() -> dict[str, Any]:
 
 
 # -- snapshot, summary, ratchet -------------------------------------------------------------------
-def collect(mit_coverage: bool = True) -> dict[str, Any]:
+def collect(with_coverage: bool = True) -> dict[str, Any]:
     snap: dict[str, Any] = {
         "radon": radon_metrics(),
         "complexipy": complexipy_metrics(),
@@ -389,13 +389,13 @@ def collect(mit_coverage: bool = True) -> dict[str, Any]:
         "docstrings": docstring_metrics(),
         "vulture": vulture_metrics(),
     }
-    if mit_coverage:
+    if with_coverage:
         snap["coverage"] = coverage_metrics()
     return snap
 
 
 def _summary(snap: dict[str, Any]) -> str:
-    r, cx, st, du = snap["radon"], snap["complexipy"], snap["structure"], snap["duplication"]
+    r, cx, st, dup = snap["radon"], snap["complexipy"], snap["structure"], snap["duplication"]
     rf, my, ds, vu = snap["ruff"], snap["mypy"], snap["docstrings"], snap["vulture"]
     out = ["PseudonyMed quality snapshot", "-" * 60]
     if "mean_cc" in r:
@@ -407,13 +407,13 @@ def _summary(snap: dict[str, Any]) -> str:
         out.append(f"complexipy  max CogC {cx['max_cognitive']}  |  {cx['functions_over_15']} > 15")
     if "functions" in st:
         out.append(f"structure   {st['functions']} functions  |  {st['long_functions']} longer"
-                   f" than {LANGE_FUNKTION} statements  |  {st['deeply_nested']} nested deeper"
-                   f" than {TIEFE_SCHACHTELUNG}  |  {st['wide_signatures']} with more than"
-                   f" {VIELE_PARAMETER} parameters  |  {st['long_modules']} modules over"
-                   f" {LANGES_MODUL} lines")
-    if "blocks" in du:
-        out.append(f"duplication {du['blocks']} blocks of {DUPLIKAT_ZEILEN}+ similar lines"
-                   f"  |  {du['duplicated_lines']} lines  |  {du['percent']}%")
+                   f" than {LONG_FUNCTION} statements  |  {st['deeply_nested']} nested deeper"
+                   f" than {DEEP_NESTING}  |  {st['wide_signatures']} with more than"
+                   f" {MANY_PARAMETERS} parameters  |  {st['long_modules']} modules over"
+                   f" {LONG_MODULE} lines")
+    if "blocks" in dup:
+        out.append(f"duplication {dup['blocks']} blocks of {DUPLICATE_LINES}+ similar lines"
+                   f"  |  {dup['duplicated_lines']} lines  |  {dup['percent']}%")
     if "total_findings" in rf:
         out.append(f"ruff        {rf['total_findings']} findings {rf['findings_by_rule'] or ''}")
     if "errors" in my:
@@ -441,7 +441,7 @@ def _compare(snap: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     cov_now = snap.get("coverage", {}).get("total_pct")
     cov_was = baseline.get("coverage", {}).get("total_pct")
     if (isinstance(cov_now, int | float) and isinstance(cov_was, int | float)
-            and cov_now < cov_was - COVERAGE_SPIELRAUM):
+            and cov_now < cov_was - COVERAGE_MARGIN):
         bad.append(f"coverage.total_pct: {cov_was} -> {cov_now}")
     if snap.get("coverage", {}).get("suite_green") is False:
         bad.append("the test suite is not green")
@@ -457,7 +457,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--update", action="store_true", help="rewrite the baseline from this run")
     args = ap.parse_args(argv)
 
-    snap = collect(mit_coverage=not args.no_coverage)
+    snap = collect(with_coverage=not args.no_coverage)
     if args.json == "-":
         print(json.dumps(snap, indent=1, ensure_ascii=False))
     else:
@@ -468,24 +468,24 @@ def main(argv: list[str] | None = None) -> int:
         print(_summary(snap))
     if args.update:
         if args.no_coverage and BASELINE.exists():
-            alt = json.loads(BASELINE.read_text(encoding="utf-8"))
-            if "coverage" in alt:
-                snap["coverage"] = alt["coverage"]  # keep the last measured coverage
+            old = json.loads(BASELINE.read_text(encoding="utf-8"))
+            if "coverage" in old:
+                snap["coverage"] = old["coverage"]  # keep the last measured coverage
         BASELINE.write_text(json.dumps(snap, indent=1, ensure_ascii=False) + "\n",
                             encoding="utf-8")
         print(f"\nbaseline rewritten: {BASELINE.name}")
         return 0
-    pfad = Path(args.baseline)
-    if not pfad.exists():
-        print(f"\nno baseline at {pfad.name}; run with --update to create one")
+    path = Path(args.baseline)
+    if not path.exists():
+        print(f"\nno baseline at {path.name}; run with --update to create one")
         return 0
-    bad = _compare(snap, json.loads(pfad.read_text(encoding="utf-8")))
+    bad = _compare(snap, json.loads(path.read_text(encoding="utf-8")))
     if bad:
-        print("\nRATCHET REGRESSION against " + pfad.name, file=sys.stderr)
+        print("\nRATCHET REGRESSION against " + path.name, file=sys.stderr)
         for line in bad:
             print("  " + line, file=sys.stderr)
         return 1
-    print(f"\nno regression against {pfad.name}")
+    print(f"\nno regression against {path.name}")
     return 0
 
 

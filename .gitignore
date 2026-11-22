@@ -16,8 +16,6 @@ dist/
 # Modelle und Nutzerdaten gehören nicht ins Repo
 modelle/
 daten/
-!pseudonymed/daten/
-!pseudonymed/daten/*.gz
 eingang/
 ausgang/
 *.sqlite

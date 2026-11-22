@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from pseudonymed.kern.modell import Patient
-from pseudonymed.pseudonyme.speicher import Pseudonymspeicher
+from pseudonymed.core.model import Patient
+from pseudonymed.pseudonyms.store import PseudonymStore
 from tests.carddav_fake import FakeCardDAV
-from tests.synthetisch import erzeuge_befund, synthetischer_patient, vcard_aus_patient
+from tests.synthetic import create_report_pdf, synthetic_patient, vcard_from_patient
 
-_GESICHERT: dict[str, str | None] = {}
+_SAVED: dict[str, str | None] = {}
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -23,72 +23,72 @@ def pytest_configure(config: pytest.Config) -> None:
     reads the configuration (and would move a folder of the former name)."""
     import tempfile
 
-    ordner = tempfile.mkdtemp(prefix="pseudonymed-daten-")
-    werte = {"PSEUDONYMED_DATENORDNER": ordner,
-             "PSEUDONYMED_LEXIKON": "0"}  # the lexicon tests switch it on for themselves
-    for name, wert in werte.items():
-        _GESICHERT[name] = os.environ.get(name)
-        os.environ[name] = wert
+    folder = tempfile.mkdtemp(prefix="pseudonymed-daten-")
+    values = {"PSEUDONYMED_DATENORDNER": folder,
+              "PSEUDONYMED_LEXIKON": "0"}  # the lexicon tests switch it on for themselves
+    for name, value in values.items():
+        _SAVED[name] = os.environ.get(name)
+        os.environ[name] = value
     for name in ("ANONYMED_DATENORDNER", "ANONYMED_LEXIKON"):
-        _GESICHERT[name] = os.environ.pop(name, None)
+        _SAVED[name] = os.environ.pop(name, None)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     import shutil
 
-    ordner = os.environ.get("PSEUDONYMED_DATENORDNER", "")
-    if Path(ordner).name.startswith("pseudonymed-daten-"):
-        shutil.rmtree(ordner, ignore_errors=True)
-    for name, wert in _GESICHERT.items():
-        if wert is None:
+    folder = os.environ.get("PSEUDONYMED_DATENORDNER", "")
+    if Path(folder).name.startswith("pseudonymed-daten-"):
+        shutil.rmtree(folder, ignore_errors=True)
+    for name, value in _SAVED.items():
+        if value is None:
             os.environ.pop(name, None)
         else:
-            os.environ[name] = wert
+            os.environ[name] = value
 
 
 @pytest.fixture(scope="session")
-def datenordner_isoliert() -> Path:
+def isolated_data_folder() -> Path:
     return Path(os.environ["PSEUDONYMED_DATENORDNER"])
 
 
 @pytest.fixture
 def patient() -> Patient:
-    return synthetischer_patient(7, "m")
+    return synthetic_patient(7, "m")
 
 
 @pytest.fixture
-def patientin() -> Patient:
-    return synthetischer_patient(11, "w")
+def female_patient() -> Patient:
+    return synthetic_patient(11, "w")
 
 
 @pytest.fixture
-def befund(tmp_path: Path, patient: Patient) -> Path:
-    return erzeuge_befund(tmp_path / "befund.pdf", patient)
+def report_pdf(tmp_path: Path, patient: Patient) -> Path:
+    return create_report_pdf(tmp_path / "befund.pdf", patient)
 
 
-TESTSCHLUESSEL = bytes(range(32))
+TEST_KEY = bytes(range(32))
 
 
 @pytest.fixture
-def speicher() -> Iterator[Pseudonymspeicher]:
-    with Pseudonymspeicher(":memory:", geheimnis=TESTSCHLUESSEL) as s:
+def store() -> Iterator[PseudonymStore]:
+    with PseudonymStore(":memory:", secret=TEST_KEY) as s:
         yield s
 
 
 @pytest.fixture
-def buchstabenspeicher() -> Iterator[Pseudonymspeicher]:
-    with Pseudonymspeicher(":memory:", schema="buchstabe") as s:
+def letter_store() -> Iterator[PseudonymStore]:
+    with PseudonymStore(":memory:", schema="buchstabe") as s:
         yield s
 
 
 @pytest.fixture
-def fake_carddav(patient: Patient, patientin: Patient) -> Iterator[FakeCardDAV]:
+def fake_carddav(patient: Patient, female_patient: Patient) -> Iterator[FakeCardDAV]:
     """Two address books: an empty 'contacts' and 'medifed-patients' with two synthetic cards."""
     server = FakeCardDAV(
-        buecher={
+        books={
             "contacts": ("Kontakte", []),
-            "medifed-patients": ("Patienten", [vcard_aus_patient(patient, "uid-a"),
-                                               vcard_aus_patient(patientin, "uid-b")]),
+            "medifed-patients": ("Patienten", [vcard_from_patient(patient, "uid-a"),
+                                               vcard_from_patient(female_patient, "uid-b")]),
         }
     ).start()
     try:
@@ -98,10 +98,10 @@ def fake_carddav(patient: Patient, patientin: Patient) -> Iterator[FakeCardDAV]:
 
 
 @pytest.fixture
-def carddav_umgebung(fake_carddav: FakeCardDAV, monkeypatch: pytest.MonkeyPatch) -> FakeCardDAV:
+def carddav_environment(fake_carddav: FakeCardDAV, monkeypatch: pytest.MonkeyPatch) -> FakeCardDAV:
     """Point the CLI at the fake server through environment variables."""
     monkeypatch.setenv("PSEUDONYMED_CARDDAV_URL", fake_carddav.url)
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_BENUTZER", fake_carddav.benutzer)
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_BENUTZER", fake_carddav.user)
     monkeypatch.setenv("PSEUDONYMED_CARDDAV_ADRESSBUCH", "medifed-patients")
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORT", fake_carddav.passwort)
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORT", fake_carddav.password)
     return fake_carddav

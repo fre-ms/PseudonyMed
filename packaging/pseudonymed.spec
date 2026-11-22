@@ -21,12 +21,12 @@ for paket in ("rapidocr", "onnxruntime", "pymupdf"):
     datas += d
     binaries += b
     hiddenimports += h
-datas += [(str(wurzel / "pseudonymed" / "gui" / "uebersetzungen"), "pseudonymed/gui/uebersetzungen")]
+datas += [(str(wurzel / "pseudonymed" / "gui" / "translations"), "pseudonymed/gui/translations")]
 datas += [(str(wurzel / "pseudonymed" / "gui" / "icon"), "pseudonymed/gui/icon")]  # window icon
 ICON = {"darwin": wurzel / "packaging" / "icon" / "pseudonymed.icns",
         "win32": wurzel / "packaging" / "icon" / "pseudonymed.ico"}.get(sys.platform)
 ICON = str(ICON) if ICON is not None and ICON.exists() else None
-datas += [(str(wurzel / "pseudonymed" / "daten"), "pseudonymed/daten")]  # medical vocabulary
+datas += [(str(wurzel / "pseudonymed" / "data"), "pseudonymed/data")]  # medical vocabulary
 # NER travels only when the build environment has spaCy and a German model (extra "ner").
 for paket in ("spacy", "thinc", "de_core_news_lg", "de_core_news_md", "de_core_news_sm",
               "pysequoia", "keyring"):
