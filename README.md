@@ -24,14 +24,13 @@ Status (31 October 2026): milestones M0 (core), M1 (command line), M2 (CardDAV a
 **From source:** Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-git clone https://github.com/fre-ms/optdoc
 git clone <repository> PseudonyMed
 cd PseudonyMed
 uv sync --extra ocr --extra codes --extra gui
 uv run pseudonymed --help
 ```
 
-Loading, clean-up and OCR come from [optdoc](https://github.com/fre-ms/optdoc), a package of its own that other applications share; while both are developed side by side, uv takes it from the checkout next to PseudonyMed.
+Loading, clean-up and OCR come from [optdoc](https://github.com/fre-ms/optdoc), a package of its own that other applications share; uv installs the released tag that `pyproject.toml` names (`v0.1.0`).
 
 On first start PseudonyMed creates the pseudonym database and the secret key in the user data folder (`pseudonymed konfig` shows where; `PSEUDONYMED_DATENORDNER` overrides the folder, for a portable installation on an encrypted stick for instance). Back the key up.
 

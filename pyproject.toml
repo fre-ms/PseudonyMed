@@ -64,8 +64,8 @@ quality = [
 ]
 
 [tool.uv.sources]
-# developed side by side; the published tag replaces the path once optdoc 0.1.0 is on GitHub
-optdoc = { path = "../optdoc", editable = true }
+# a released tag, not the working tree next door: PseudonyMed moves to a new optdoc on purpose
+optdoc = { git = "https://github.com/fre-ms/optdoc", tag = "v0.1.0" }
 
 [build-system]
 requires = ["hatchling"]
