@@ -21,11 +21,23 @@ from pseudonymed.core.model import Patient
 def _run(arguments: list[str], tmp_path: Path, spoken: str | None) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
     env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_LEXIKON="0",
-               COLUMNS="100", NO_COLOR="1", TERM="dumb", LANG="C.UTF-8")
+               COLUMNS="100", NO_COLOR="1", TERM="dumb", LANG="C.UTF-8",
+               PYTHONIOENCODING="utf-8")  # Windows writes a pipe in cp1252 otherwise
     if spoken:
         env["PSEUDONYMED_SPRACHE"] = spoken
     return subprocess.run([sys.executable, "-m", "pseudonymed.cli", *arguments],
-                          capture_output=True, text=True, env=env, timeout=600)
+                          capture_output=True, text=True, encoding="utf-8", env=env, timeout=600)
+
+
+def test_output_that_is_not_utf8_replaces_instead_of_failing(tmp_path: Path) -> None:
+    """A run whose output is cp1252 (a redirected Windows console) still ends normally."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
+    env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_SPRACHE="de",
+               PYTHONIOENCODING="cp1252", COLUMNS="100", NO_COLOR="1", TERM="dumb")
+    code = ("import sys; from pseudonymed.cli.base import _tolerant_output; _tolerant_output();"
+            " print('λ ≈ 3 → ROT')")
+    run = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env, timeout=120)
+    assert run.returncode == 0 and run.stdout.strip() == "? ? 3 ? ROT".encode("cp1252"), run
 
 
 def test_the_language_is_chosen_like_the_desktops(monkeypatch: pytest.MonkeyPatch) -> None:

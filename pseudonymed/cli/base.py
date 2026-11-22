@@ -280,3 +280,14 @@ def _main_command(
 ) -> None:
     """The group of all commands; the language option was read before Typer started (see
     the module docstring), so it only needs accepting here."""
+    _tolerant_output()
+
+
+def _tolerant_output() -> None:
+    """Output that is not UTF-8 (a Windows console redirected to a file, cp1252) replaces
+    what it cannot encode (λ, κ, →) instead of ending the command with an error."""
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        reconfigure = getattr(stream, "reconfigure", None)
+        if encoding and encoding != "utf8" and reconfigure is not None:
+            reconfigure(errors="replace")
