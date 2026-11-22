@@ -1,8 +1,6 @@
-"""Interface language: German is the source language, en-GB comes from a Qt translation.
-
-Order of precedence: ``--sprache``/``--language`` on the command line,
-``PSEUDONYMED_SPRACHE`` or ``[gui] sprache`` in the configuration file, then the
-system locale.
+"""Interface language of the desktop: German is the source language, en-GB comes from a Qt
+translation.  The language is chosen as for the command line (:mod:`pseudonymed.language`),
+with Qt's idea of the system locale as the last word.
 """
 
 from __future__ import annotations
@@ -11,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QLocale, QTranslator
 
-from pseudonymed.config import load_settings
+from pseudonymed import language
 from pseudonymed.core.text import in_language
 from pseudonymed.document import optdoc_adapter
 
@@ -20,34 +18,14 @@ FOLDER = Path(__file__).parent / "translations"
 
 def determine_language(arguments: list[str]) -> str:
     """The language code in lower case: from the command line, else the configuration,
-    else the system locale (for example "de_de", "en_gb")."""
-    for i, a in enumerate(arguments):
-        if a in ("--sprache", "--language") and i + 1 < len(arguments):
-            return arguments[i + 1].lower()
-        if a.startswith("--sprache=") or a.startswith("--language="):
-            return a.split("=", 1)[1].lower()
-    selected = load_settings().gui_language
-    if selected:
-        return selected.lower()
-    return QLocale.system().name().lower()  # e.g. "de_de", "en_gb"
+    else the system locale as Qt sees it (for example "de_de", "en_gb")."""
+    return language.determine(arguments, QLocale.system().name())
 
 
 def without_language_arguments(arguments: list[str]) -> list[str]:
     """The command line without ``--sprache``/``--language`` and their values, as Qt
     gets it."""
-    rest: list[str] = []
-    skip = False
-    for a in arguments:
-        if skip:
-            skip = False
-            continue
-        if a in ("--sprache", "--language"):
-            skip = True
-            continue
-        if a.startswith(("--sprache=", "--language=")):
-            continue
-        rest.append(a)
-    return rest
+    return language.without_arguments(arguments)
 
 
 def interface_language() -> str:

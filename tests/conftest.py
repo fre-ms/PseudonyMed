@@ -25,7 +25,8 @@ def pytest_configure(config: pytest.Config) -> None:
 
     folder = tempfile.mkdtemp(prefix="pseudonymed-daten-")
     values = {"PSEUDONYMED_DATENORDNER": folder,
-              "PSEUDONYMED_LEXIKON": "0"}  # the lexicon tests switch it on for themselves
+              "PSEUDONYMED_LEXIKON": "0",  # the lexicon tests switch it on for themselves
+              "PSEUDONYMED_SPRACHE": "de"}  # German, whatever the machine's locale says
     for name, value in values.items():
         _SAVED[name] = os.environ.get(name)
         os.environ[name] = value

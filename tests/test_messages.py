@@ -58,6 +58,7 @@ NOT_MESSAGES = {
                           "## Bildtext (OCR, ungeprüft)"},
     "pipeline/preparation.py": {"[geschwärzt]"},
     "pipeline/reading.py": {"aus"},
+    "cli/documents.py": {"aus"},  # a value of --aufbereiten
     "pipeline/text_files.py": {"[geschwärzt]"},
     "pseudonyms/assignment.py": {"Patient"},
     "pseudonyms/backup.py": {"verworfen"},  # a table name
@@ -70,11 +71,8 @@ NOT_MESSAGES = {
 # literals by their beginning: the citation stored with the ministry's rows (data, like the
 # citations in the first line of every bundled file)
 NOT_MESSAGE_PREFIXES = {"detection/extra_data.py": ("Quelle: Bundesministerium",)}
-# f-strings that are document content (pseudonyms, page headings), by their source
-NOT_MESSAGE_FSTRINGS = (
-    'f"[Straße {code}]"', 'f"Angehörige {self.code}-{number}"',
-    'f"=== Seite {s.number + 1} ===\\n\\n{text}"',
-)
+# f-strings that are document content (pseudonyms, page headings), by their fixed parts
+NOT_MESSAGE_FSTRINGS = ("[Straße ]", "Angehörige -", "=== Seite  ===\n\n")
 
 
 def _core_modules() -> list[Path]:
@@ -93,9 +91,14 @@ def _core_modules() -> list[Path]:
     return files
 
 
+def _cli_modules() -> list[Path]:
+    """The command line, whose texts are written ``w(german, english)``."""
+    return sorted((ROOT / "cli").glob("*.py"))
+
+
 def _unwrapped_german(path: Path) -> list[str]:
-    """German literals of one module outside ``say(...)``, docstrings, regexes, SQL,
-    subscripts and dict keys."""
+    """German literals of one module outside ``say(...)``/``w(...)``, docstrings, regexes,
+    SQL, subscripts and dict keys."""
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
@@ -113,12 +116,12 @@ def _unwrapped_german(path: Path) -> list[str]:
             continue
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             text = node.value
-        elif isinstance(node, ast.JoinedStr):
-            text = ast.get_source_segment(source, node) or ""
+        elif isinstance(node, ast.JoinedStr):  # its fixed parts; expressions are checked alone
+            text = "".join(v.value for v in node.values if isinstance(v, ast.Constant))
         else:
             continue
-        if text.startswith(("https://", *NOT_MESSAGE_PREFIXES.get(rel, ()))):
-            continue
+        if text.startswith(("https://", "-", *NOT_MESSAGE_PREFIXES.get(rel, ()))):
+            continue  # addresses, option names and citations are not messages
         if not GERMAN.search(text) or "(?" in text or "\\b" in text or text in allowed \
                 or text in NOT_MESSAGE_FSTRINGS or text.lstrip().startswith(
                     ("SELECT", "INSERT", "CREATE", "UPDATE", "DELETE")):
@@ -130,11 +133,12 @@ def _unwrapped_german(path: Path) -> list[str]:
 
 
 def _inside_say(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
-    """Whether the literal is (part of) an argument of ``say``."""
+    """Whether the literal is (part of) an argument of ``say`` or of the command line's
+    ``w``."""
     while node in parents:
         node = parents[node]
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id == "say":
+                and node.func.id in ("say", "w"):
             return True
         if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.Module)):
             return False
@@ -175,6 +179,11 @@ def _in_language_branch(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
 def test_every_core_message_has_an_english_form() -> None:
     found = [x for p in _core_modules() for x in _unwrapped_german(p)]
     assert found == [], "German messages without say(...):\n" + "\n".join(found)
+
+
+def test_every_command_line_text_has_an_english_form() -> None:
+    found = [x for p in _cli_modules() for x in _unwrapped_german(p)]
+    assert found == [], "German command-line texts without w(...):\n" + "\n".join(found)
 
 
 def test_text_behaves_as_its_german_string() -> None:

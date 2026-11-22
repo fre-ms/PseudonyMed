@@ -9,8 +9,10 @@ from optdoc.ocr import available_backends
 
 from pseudonymed import __version__
 from pseudonymed.cli.base import (
+    EXPLICIT_LANGUAGE,
     StoreOption,
     app,
+    w,
 )
 from pseudonymed.config import (
     Settings,
@@ -25,25 +27,27 @@ from pseudonymed.pseudonyms.store import (
 )
 
 
-@app.command()
+@app.command("gui", help=w("Grafische Oberfläche starten (Extra 'gui').",
+                           "Start the desktop interface (extra 'gui')."))
 def gui() -> None:
-    """Grafische Oberfläche starten (Extra 'gui')."""
+    """Start the desktop, handing on a language given explicitly on the command line."""
     from pseudonymed.gui.app import main
 
-    raise typer.Exit(code=main([]))
+    raise typer.Exit(code=main(["--sprache", EXPLICIT_LANGUAGE] if EXPLICIT_LANGUAGE else []))
 
 
-@app.command("vorlage")
+@app.command("vorlage", help=w("JSON-Vorlage für eine Patientendatei ausgeben.",
+                               "Print a JSON template for a patient file."))
 def template() -> None:
-    """JSON-Vorlage für eine Patientendatei ausgeben."""
+    """Print the JSON template of a patient file."""
     from pseudonymed.sources.manual import template as _template
 
     typer.echo(_template(), nl=False)
 
 
-@app.command("konfig")
+@app.command("konfig", help=w("Version und Pfade anzeigen.", "Show the version and the paths."))
 def config(store: StoreOption = None) -> None:
-    """Version und Pfade anzeigen."""
+    """Print versions, tools, paths, keys and accounts of this installation."""
     import pymupdf
 
     settings = load_settings()
@@ -62,25 +66,36 @@ def _show_tools(settings: Settings) -> None:
     from pseudonymed.detection import ner as ner_module
 
     backends = available_backends()
-    typer.echo("OCR-Backends:        " + (", ".join(backends) if backends else
-                                          "keine (Extra 'ocr' installieren oder Tesseract)")
-               + f"  (bevorzugt: {settings.ocr_backend})")
+    typer.echo(w("OCR-Backends:        ", "OCR engines:         ")
+               + (", ".join(backends) if backends else
+                  w("keine (Extra 'ocr' installieren oder Tesseract)",
+                    "none (install the extra 'ocr' or Tesseract)"))
+               + w(f"  (bevorzugt: {settings.ocr_backend})",
+                   f"  (preferred: {settings.ocr_backend})"))
     tess = tesseract_program(settings.tesseract_path or None)
     if tess:
         languages = tesseract_languages(tess)
         relevant = [s for s in ("deu", "eng") if s in languages]
-        language_text = ", ".join(relevant) or "deu/eng fehlen"
-        typer.echo(f"Tesseract:           {tess}  (Sprachen: {language_text},"
-                   f" insgesamt {len(languages)})")
+        language_text = ", ".join(relevant) or w("deu/eng fehlen", "deu/eng missing")
+        typer.echo(w(f"Tesseract:           {tess}  (Sprachen: {language_text},"
+                     f" insgesamt {len(languages)})",
+                     f"Tesseract:           {tess}  (languages: {language_text},"
+                     f" {len(languages)} in total)"))
     typer.echo("Barcodes/QR:         " + ("zxing-cpp" if codes_available() else
-                                          "nicht verfügbar (Extra 'codes')"))
-    typer.echo("NER:                 " + (f"spaCy mit {ner_module.available_model()}"
-                                          if ner_module.available() else
-                                          "nicht verfügbar (Extra 'ner' + deutsches Modell)"))
+                                          w("nicht verfügbar (Extra 'codes')",
+                                            "not available (extra 'codes')")))
+    typer.echo("NER:                 "
+               + (w(f"spaCy mit {ner_module.available_model()}",
+                    f"spaCy with {ner_module.available_model()}")
+                  if ner_module.available() else
+                  w("nicht verfügbar (Extra 'ner' + deutsches Modell)",
+                    "not available (extra 'ner' + German model)")))
     fb = terms_module.standard()
     sources = ", ".join(f"{name} {n}" for name, n in fb.sources)
-    typer.echo(f"Fachbegriffe:        {fb.count} geschützte Begriffe ({sources});"
-               f" eigene Listen in {terms_module.data_folder()}")
+    typer.echo(w(f"Fachbegriffe:        {fb.count} geschützte Begriffe ({sources});"
+                 f" eigene Listen in {terms_module.data_folder()}",
+                 f"Medical terms:       {fb.count} protected terms ({sources});"
+                 f" own lists in {terms_module.data_folder()}"))
 
 
 def _show_keys(store: Path | None, settings: Settings) -> None:
@@ -89,26 +104,35 @@ def _show_keys(store: Path | None, settings: Settings) -> None:
     from pseudonymed.pseudonyms import pgp as pgp_module
     from pseudonymed.pseudonyms.store import default_key_path
 
-    typer.echo(f"Pseudonym-Datenbank: {store or default_path()}")
+    database = store or default_path()
+    typer.echo(w(f"Pseudonym-Datenbank: {database}", f"Pseudonym database:  {database}"))
     key = key_path_for(store) if store else default_key_path()
-    typer.echo(f"Pseudonymschlüssel:  {key}"
-               "  (sichern; gleicher Schlüssel = gleiche Kennungen auf jedem Rechner)")
-    typer.echo("Schlüsselbund:       " + (keyring_backend() or "keiner (Extra 'carddav')"))
+    typer.echo(w(f"Pseudonymschlüssel:  {key}"
+                 "  (sichern; gleicher Schlüssel = gleiche Kennungen auf jedem Rechner)",
+                 f"Pseudonym key:       {key}"
+                 "  (back it up; the same key gives the same codes on every computer)"))
+    typer.echo(w("Schlüsselbund:       ", "Keyring:             ")
+               + (keyring_backend() or w("keiner (Extra 'carddav')", "none (extra 'carddav')")))
     if settings.local_address_book:
-        typer.echo(f"Lokales Adressbuch:  {settings.local_address_book}")
+        typer.echo(w(f"Lokales Adressbuch:  {settings.local_address_book}",
+                     f"Local address book:  {settings.local_address_book}"))
     typer.echo("OpenPGP:             " + (", ".join(pgp_module.engines()) or
-                                         "nicht verfügbar (Extra 'pgp' oder GnuPG)"))
+                                         w("nicht verfügbar (Extra 'pgp' oder GnuPG)",
+                                           "not available (extra 'pgp' or GnuPG)")))
     if settings.recipient_key:
-        typer.echo(f"Empfänger-Schlüssel: {settings.recipient_key}"
-                   f" (Fingerabdruck {settings.recipient_fingerprint or 'ungeprüft'})")
+        fingerprint = settings.recipient_fingerprint or w("ungeprüft", "unchecked")
+        typer.echo(w(f"Empfänger-Schlüssel: {settings.recipient_key}"
+                     f" (Fingerabdruck {fingerprint})",
+                     f"Recipient key:       {settings.recipient_key}"
+                     f" (fingerprint {fingerprint})"))
 
 
 def _show_accounts() -> None:
     """The configuration file and the CardDAV account."""
     k = load_config()
-    typer.echo(f"Konfiguration:       {config_path()}")
+    typer.echo(w(f"Konfiguration:       {config_path()}", f"Configuration:       {config_path()}"))
     if k.complete:
-        book = k.address_book or "einziges Adressbuch"
+        book = k.address_book or w("einziges Adressbuch", "the only address book")
         typer.echo(f"CardDAV:             {k.user} @ {k.url} ({book})")
     else:
-        typer.echo("CardDAV:             nicht eingerichtet")
+        typer.echo(w("CardDAV:             nicht eingerichtet", "CardDAV:             not set up"))

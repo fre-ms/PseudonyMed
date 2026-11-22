@@ -324,7 +324,7 @@ def _as_zip(raw: bytes, passphrase: str | None) -> bytes:
     try:
         decrypted = pgp_module.decrypt_with_passphrase(raw, passphrase)
     except pgp_module.PGPError as e:
-        raise BackupError(str(e)) from e
+        raise BackupError(*e.args) from e  # keeps the English form
     if not decrypted.startswith(b"PK"):
         raise BackupError(say("Entschlüsselt, aber kein ZIP-Archiv.",
                               "Decrypted, but not a ZIP archive."))

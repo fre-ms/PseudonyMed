@@ -15,7 +15,7 @@ uv run pseudonymed gui
 
 Tesseract wird als zweites OCR-Programm benutzt, wenn es installiert ist (macOS: `brew install tesseract tesseract-lang`, Ubuntu: `apt install tesseract-ocr tesseract-ocr-deu`); es wird an den üblichen Orten gefunden, auch wenn die App aus dem Finder startet. Nötig ist es nicht, RapidOCR ist enthalten. Wer Tesseract bevorzugt, trägt `backend = "tesseract"` unter `[ocr]` in die Konfigurationsdatei ein (`pseudonymed konfig` zeigt den Pfad) oder setzt `PSEUDONYMED_OCR=tesseract`.
 
-**Sprache.** Die Oberfläche folgt der Systemsprache; `--sprache en` oder `--sprache de` beim Start, das Menü *Sprache* im Fenster oder `PSEUDONYMED_SPRACHE=en` legen sie fest. In der englischen Oberfläche sind alle Meldungen, der Schritt „Kontrolle“ und die aus dem Fenster geschriebenen Berichte (`.bericht.json`, Vokabeldatei) englisch; die Kommandozeile und ihre Berichte bleiben deutsch. Pseudonyme wie `[geb. 1959]` oder `[Ort …]` bleiben in beiden Sprachen deutsch, weil sie Teil des deutschen Dokuments sind.
+**Sprache.** Die Oberfläche folgt der Systemsprache; `--sprache en` oder `--sprache de` beim Start, das Menü *Sprache* im Fenster oder `PSEUDONYMED_SPRACHE=en` legen sie fest. Die Kommandozeile folgt derselben Einstellung (`pseudonymed --sprache en <befehl>`, `PSEUDONYMED_SPRACHE`, `[gui] sprache`, sonst `LANG`). Auf Englisch sind alle Meldungen, Hilfetexte, der Schritt „Kontrolle“ und die Berichte (`.bericht.json`, Vokabeldatei) englisch; die Namen der Befehle und Optionen bleiben in beiden Sprachen deutsch (`pseudonymisieren`, `--ziel`), damit Skripte überall laufen. Pseudonyme wie `[geb. 1959]` oder `[Ort …]` bleiben in beiden Sprachen deutsch, weil sie Teil des deutschen Dokuments sind.
 
 ## Erster Start
 

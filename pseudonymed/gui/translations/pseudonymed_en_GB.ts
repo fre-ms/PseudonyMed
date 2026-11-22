@@ -594,7 +594,7 @@
     <message>
         <location filename="../control_page.py" line="111"/>
         <source>Aus wie vielen Menschen ein Angreifer wählt: Deutschland 83.600.000, oder das Einzugsgebiet der Sprechstunde, wenn der Absender bekannt ist</source>
-        <translation>How many people an attacker chooses from: Germany 83,600,000, or the catchment area of the practice when the sender is known</translation>
+        <translation>How many people an attacker chooses from: Germany 83,600,000, or the catchment area of the consultation service when the sender is known</translation>
     </message>
     <message>
         <location filename="../control_page.py" line="114"/>
@@ -604,7 +604,7 @@
     <message>
         <location filename="../control_page.py" line="116"/>
         <source>Ort der Sprechstunde, Klinik … (Komma)</source>
-        <translation>Place of the practice, clinic … (comma)</translation>
+        <translation>Place of the consultation service, clinic … (comma)</translation>
     </message>
     <message>
         <location filename="../control_page.py" line="118"/>

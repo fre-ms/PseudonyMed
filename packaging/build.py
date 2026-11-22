@@ -76,7 +76,8 @@ def sign_app(app: Path) -> None:
 
 
 def smoke_test() -> None:
-    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    # German, whatever the build machine's locale: the checks below read German output
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "PSEUDONYMED_SPRACHE": "de"}
     if sys.platform == "darwin":
         import plistlib
 
