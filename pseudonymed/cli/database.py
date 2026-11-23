@@ -13,8 +13,10 @@ from pseudonymed.cli.base import (
     LANGUAGE,
     StoreOption,
     abort,
-    app,
+    add_group,
+    command,
     error_message,
+    flags,
     shown,
     w,
 )
@@ -27,11 +29,10 @@ database_app = typer.Typer(
            "Pseudonym database and key: statistics, backup, restore."),
     no_args_is_help=True,
 )
-app.add_typer(database_app, name="datenbank")
+add_group(database_app, "datenbank", "database")
 
 
-@database_app.command(
-    "status",
+@command(database_app, "status", "status",
     help=w("Was gespeichert ist: Zuordnungen je Kategorie, Größe, Integrität, Schlüssel.",
            "What is stored: mappings per category, size, integrity, key."))
 def database_status(store: StoreOption = None) -> None:
@@ -45,8 +46,7 @@ def database_status(store: StoreOption = None) -> None:
         typer.echo(f"{feature:<{width}}  {value}")
 
 
-@database_app.command(
-    "zusatzdaten",
+@command(database_app, "zusatzdaten", "extra-data",
     help=w("Daten laden, die PseudonyMed nicht mitliefern darf, direkt aus der Quelle in die"
            " eigene\nDatenbank (bisher: Krankenanstalten in Österreich, BMASGPK).",
            "Load data that PseudonyMed may not ship, straight from the source into your own"
@@ -55,9 +55,9 @@ def load_extra_data(
     name: Annotated[str, typer.Argument(help=w("Welche Zusatzdaten: kliniken-at",
                                                "Which extra data: kliniken-at"))],
     file: Annotated[Path | None, typer.Option(
-        "--datei", help=w("Excel-Mappe des Ministeriums statt Abruf über das Netz",
-                          "The ministry's Excel workbook instead of fetching it over the"
-                          " network"))] = None,
+        *flags("--datei"), help=w("Excel-Mappe des Ministeriums statt Abruf über das Netz",
+                                  "The ministry's Excel workbook instead of fetching it over the"
+                                  " network"))] = None,
     store: StoreOption = None,
 ) -> None:
     """Load a supplementary data set (so far only the Austrian hospitals) into the lexicon."""
@@ -81,20 +81,19 @@ def load_extra_data(
     typer.echo(report.description(LANGUAGE))
 
 
-@database_app.command(
-    "speicherort",
+@command(database_app, "speicherort", "location",
     help=w("Datenbank und Schlüsseldatei an beliebigen Orten ablegen; ohne Angaben: anzeigen.",
            "Keep the database and the key file in any location; without options: show the"
            " locations."))
 def database_location(
     database: Annotated[Path | None, typer.Option(
-        "--datenbank", help=w("Neuer Pfad der Datenbank.",
-                              "New path of the database."))] = None,
+        *flags("--datenbank"), help=w("Neuer Pfad der Datenbank.",
+                                      "New path of the database."))] = None,
     key: Annotated[Path | None, typer.Option(
-        "--schluessel", help=w("Neuer Pfad der Schlüsseldatei.",
-                               "New path of the key file."))] = None,
+        *flags("--schluessel"), help=w("Neuer Pfad der Schlüsseldatei.",
+                                       "New path of the key file."))] = None,
     copy: Annotated[bool, typer.Option(
-        "--kopieren/--nicht-kopieren",
+        *flags("--kopieren/--nicht-kopieren"),
         help=w("Vorhandene Dateien an den neuen Ort kopieren (Originale werden umbenannt).",
                "Copy the existing files to the new location (the originals are renamed)."))]
     = True,
@@ -115,8 +114,7 @@ def database_location(
     typer.echo(v.description(LANGUAGE))
 
 
-@database_app.command(
-    "exportieren",
+@command(database_app, "exportieren", "export",
     help=w("Datenbank, Schlüssel und wahlweise Konfiguration und Vokabular sichern.",
            "Back up the database, the key and optionally the configuration and the"
            " vocabulary."))
@@ -125,10 +123,10 @@ def export_database(
         metavar=w("ziel", "target"),
         help=w("Zielordner oder Dateiname (.zip).", "Target folder or file name (.zip)."))],
     store: StoreOption = None,
-    config: Annotated[bool, typer.Option("--konfig/--ohne-konfig",
+    config: Annotated[bool, typer.Option(*flags("--konfig/--ohne-konfig"),
                                          help=w("konfig.toml einschließen.",
                                                 "Include konfig.toml."))] = True,
-    vocabulary: Annotated[bool, typer.Option("--vokabular/--ohne-vokabular",
+    vocabulary: Annotated[bool, typer.Option(*flags("--vokabular/--ohne-vokabular"),
                                              help=w("Nutzervokabular einschließen.",
                                                     "Include the user vocabulary."))] = True,
     passphrase: Annotated[str | None, typer.Option(
@@ -136,8 +134,9 @@ def export_database(
         help=w("Passphrase für das Archiv (sonst Abfrage).",
                "Passphrase for the archive (otherwise asked for)."))] = None,
     unencrypted: Annotated[bool, typer.Option(
-        "--unverschluesselt", help=w("Ohne Verschlüsselung schreiben (nicht empfohlen).",
-                                     "Write without encryption (not recommended)."))] = False,
+        *flags("--unverschluesselt"),
+        help=w("Ohne Verschlüsselung schreiben (nicht empfohlen).",
+               "Write without encryption (not recommended)."))] = False,
 ) -> None:
     """Write a backup archive, encrypted with a passphrase unless --unverschluesselt."""
     from pseudonymed.pseudonyms import backup as backup_mod
@@ -150,7 +149,7 @@ def export_database(
             typer.echo(w("Verschlüsselung braucht das Extra 'pgp' oder GnuPG; sonst"
                          " --unverschluesselt.",
                          "Encryption needs the extra 'pgp' or GnuPG; otherwise"
-                         " --unverschluesselt."), err=True)
+                         " --unencrypted."), err=True)
             raise typer.Exit(code=1)
         passphrase = typer.prompt(w("Passphrase für das Archiv", "Passphrase for the archive"),
                                   hide_input=True, confirmation_prompt=True)
@@ -166,15 +165,14 @@ def export_database(
                                           "  (UNENCRYPTED: holds the key and clear data)")))
 
 
-@database_app.command(
-    "importieren",
+@command(database_app, "importieren", "import",
     help=w("Ein Archiv wiederherstellen (ersetzen) oder in die Datenbank übernehmen.",
            "Restore an archive (replace) or merge it into the database."))
 def import_database(
     archive: Annotated[Path, typer.Argument(metavar=w("archiv", "archive"), exists=True,
                                             help=w("Sicherungsarchiv.", "Backup archive."))],
     store: StoreOption = None,
-    mode: Annotated[str, typer.Option("--modus",
+    mode: Annotated[str, typer.Option(*flags("--modus"),
                                       help=w("ersetzen oder zusammenfuehren.",
                                              "ersetzen (replace) or zusammenfuehren (merge)."))]
     = "ersetzen",
@@ -182,14 +180,14 @@ def import_database(
         "--passphrase", envvar=environment.names("SICHERUNG_PASSPHRASE"),
         help=w("Passphrase des Archivs (sonst Abfrage, falls verschlüsselt).",
                "Passphrase of the archive (otherwise asked for if it is encrypted)."))] = None,
-    config: Annotated[bool, typer.Option("--konfig/--ohne-konfig",
+    config: Annotated[bool, typer.Option(*flags("--konfig/--ohne-konfig"),
                                          help=w("Konfiguration übernehmen.",
                                                 "Take over the configuration."))] = True,
-    vocabulary: Annotated[bool, typer.Option("--vokabular/--ohne-vokabular",
+    vocabulary: Annotated[bool, typer.Option(*flags("--vokabular/--ohne-vokabular"),
                                              help=w("Nutzervokabular übernehmen.",
                                                     "Take over the user vocabulary."))] = True,
-    yes: Annotated[bool, typer.Option("--ja", help=w("Ohne Rückfrage.",
-                                                     "Without asking for confirmation."))]
+    yes: Annotated[bool, typer.Option(*flags("--ja"), help=w("Ohne Rückfrage.",
+                                                             "Without asking for confirmation."))]
     = False,
 ) -> None:
     """Check a backup archive, ask for confirmation and replace or merge the local store."""
@@ -197,7 +195,7 @@ def import_database(
 
     if mode not in backup_mod.MODES:
         abort(w(f"--modus muss eines von {', '.join(backup_mod.MODES)} sein.",
-                f"--modus must be one of {', '.join(backup_mod.MODES)}."))
+                f"--mode must be one of {', '.join(backup_mod.MODES)}."))
     if passphrase is None and not archive.read_bytes().startswith(b"PK"):
         passphrase = typer.prompt(w("Passphrase des Archivs", "Passphrase of the archive"),
                                   hide_input=True)
@@ -225,11 +223,10 @@ keys_app = typer.Typer(
            "OpenPGP keys for key capsules: pseudonyms that a recipient resolves."),
     no_args_is_help=True,
 )
-app.add_typer(keys_app, name="schluessel")
+add_group(keys_app, "schluessel", "keys")
 
 
-@keys_app.command(
-    "zeigen",
+@command(keys_app, "zeigen", "show",
     help=w("Fingerabdruck und Namen eines öffentlichen Schlüssels anzeigen (zum Abgleich).",
            "Show the fingerprint and the names of a public key (for comparison)."))
 def show_key(
@@ -251,8 +248,7 @@ def show_key(
         typer.echo(w(f"Gültig bis:    {z.expiry}", f"Valid until:   {z.expiry}"))
 
 
-@keys_app.command(
-    "erzeugen",
+@command(keys_app, "erzeugen", "create",
     help=w("Ein Schlüsselpaar für Empfänger ohne GnuPG erzeugen: öffentlichen Schlüssel\n"
            "veröffentlichen, den privaten sicher verwahren (er hat keine Passphrase).",
            "Create a key pair for recipients without GnuPG: publish the public key, keep the"
@@ -262,8 +258,8 @@ def create_key(
                                       help=w("Ihr Name.", "Your name."))],
     email: Annotated[str, typer.Option("--email", prompt=w("E-Mail", "E-mail"),
                                        help=w("Ihre E-Mail-Adresse.", "Your e-mail address."))],
-    target: Annotated[Path, typer.Option("--ziel", help=w("Ordner für die beiden Dateien.",
-                                                          "Folder for the two files."))]
+    target: Annotated[Path, typer.Option(*flags("--ziel"), help=w("Ordner für die beiden Dateien.",
+                                                                  "Folder for the two files."))]
     = Path("."),
 ) -> None:
     """Write a new OpenPGP key pair (public and private, no passphrase) into a folder."""

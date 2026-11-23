@@ -9,8 +9,10 @@ import typer
 
 from pseudonymed.cli.base import (
     abort,
-    app,
+    add_group,
+    command,
     error_message,
+    flags,
     list_metavar,
     w,
 )
@@ -20,11 +22,12 @@ medical_terms_app = typer.Typer(
            "Medical vocabulary that NER and the fuzzy OCR search must not touch."),
     no_args_is_help=True,
 )
-app.add_typer(medical_terms_app, name="fachbegriffe")
+add_group(medical_terms_app, "fachbegriffe", "medical-terms")
 
 
-@medical_terms_app.command("status", help=w("Umfang und Kategorien des Vokabulars anzeigen.",
-                                            "Show the size and categories of the vocabulary."))
+@command(medical_terms_app, "status", "status",
+         help=w("Umfang und Kategorien des Vokabulars anzeigen.",
+                "Show the size and categories of the vocabulary."))
 def medical_terms_status() -> None:
     """Print the number of protected terms per source and where the table lives."""
     from pseudonymed.detection import medical_terms as terms_module
@@ -38,16 +41,16 @@ def medical_terms_status() -> None:
     typer.echo(w(f"Tabelle vokabular in {path} (Schritt „3 Fachvokabular“,"
                  " 'fachbegriffe hinzufuegen|entfernen|exportieren|importieren')",
                  f"Table vokabular in {path} (step ‘3 Medical vocabulary’,"
-                 " 'fachbegriffe hinzufuegen|entfernen|exportieren|importieren')"))
+                 " 'medical-terms add|remove|export|import')"))
 
 
-@medical_terms_app.command("hinzufuegen", help=w("Begriffe ins Vokabular aufnehmen.",
-                                                 "Add terms to the vocabulary."))
+@command(medical_terms_app, "hinzufuegen", "add", help=w("Begriffe ins Vokabular aufnehmen.",
+                                                         "Add terms to the vocabulary."))
 def add_medical_terms(
     begriffe: Annotated[list[str], typer.Argument(
         metavar=list_metavar("terms"),
         help=w("Begriffe (auch mehrwortig).", "Terms (several words allowed)."))],
-    category: Annotated[str, typer.Option("--kategorie",
+    category: Annotated[str, typer.Option(*flags("--kategorie"),
                                           help=w("Kategorie in der Tabelle.",
                                                  "Category in the table."))]
     = "Nutzervokabular",
@@ -62,7 +65,7 @@ def add_medical_terms(
     typer.echo(w(f"{n} neue Begriffe ({category}).", f"{n} new term(s) ({category})."))
 
 
-@medical_terms_app.command("entfernen",
+@command(medical_terms_app, "entfernen", "remove",
                            help=w("Begriffe aus dem Vokabular löschen (auch mitgelieferte).",
                                   "Delete terms from the vocabulary (bundled ones too)."))
 def remove_medical_terms(
@@ -80,13 +83,13 @@ def remove_medical_terms(
     typer.echo(w(f"{n} Begriffe gelöscht.", f"{n} term(s) deleted."))
 
 
-@medical_terms_app.command("exportieren",
+@command(medical_terms_app, "exportieren", "export",
                            help=w("Das Vokabular als CSV (begriff,kategorie) schreiben.",
                                   "Write the vocabulary as CSV (begriff,kategorie)."))
 def export_medical_terms(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"),
                                          help=w("Zieldatei (.csv).", "Target file (.csv)."))],
-    category: Annotated[str, typer.Option("--kategorie",
+    category: Annotated[str, typer.Option(*flags("--kategorie"),
                                           help=w("Nur diese Kategorie.",
                                                  "Only this category."))] = "",
 ) -> None:
@@ -98,7 +101,7 @@ def export_medical_terms(
     typer.echo(w(f"{n} Begriffe nach {file} geschrieben.", f"{n} term(s) written to {file}."))
 
 
-@medical_terms_app.command("pruefen",
+@command(medical_terms_app, "pruefen", "check",
                            help=w("Prüfen, ob Wörter als Fachbegriffe geschützt sind.",
                                   "Check whether words are protected as medical terms."))
 def check_medical_terms(
@@ -119,7 +122,7 @@ def check_medical_terms(
         typer.echo(f"{word}: {verdict}")
 
 
-@medical_terms_app.command("ergaenzen", help=w(
+@command(medical_terms_app, "ergaenzen", "merge", help=w(
     "Begriffe einer Liste oder CSV in das Vokabular übernehmen (zusammenführen).",
     "Merge the terms of a list or CSV into the vocabulary."))
 def merge_medical_terms(
@@ -146,7 +149,7 @@ def merge_medical_terms(
                  f" now {count} protected terms"))
 
 
-@medical_terms_app.command("importieren", help=w(
+@command(medical_terms_app, "importieren", "import", help=w(
     "Begriffe aus MeSH-XML (NLM), ICD-10-GM/Alpha-ID (csv) oder einer Liste übernehmen.",
     "Import terms from MeSH XML (NLM), ICD-10-GM/Alpha-ID (csv) or a list."))
 def import_medical_terms(
@@ -158,9 +161,10 @@ def import_medical_terms(
     format_: Annotated[str, typer.Option("--format", help=w("liste, csv oder mesh-xml.",
                                                             "liste, csv or mesh-xml."))]
     = "liste",
-    column: Annotated[int, typer.Option("--spalte", help=w("Spalte (0-basiert) bei csv.",
-                                                           "Column (0-based) for csv."))] = 0,
-    delimiter: Annotated[str, typer.Option("--trennzeichen",
+    column: Annotated[int, typer.Option(*flags("--spalte"),
+                                        help=w("Spalte (0-basiert) bei csv.",
+                                               "Column (0-based) for csv."))] = 0,
+    delimiter: Annotated[str, typer.Option(*flags("--trennzeichen"),
                                            help=w("Trennzeichen bei csv.",
                                                   "Delimiter for csv."))]
     = ";",
@@ -184,11 +188,11 @@ identifiers_app = typer.Typer(
            "Identifiers beyond the patient data: professions, hospitals, studies, titles."),
     no_args_is_help=True,
 )
-app.add_typer(identifiers_app, name="identifikatoren")
+add_group(identifiers_app, "identifikatoren", "identifiers")
 
 
-@identifiers_app.command("status", help=w("Umfang je Klasse anzeigen.",
-                                          "Show the size of each class."))
+@command(identifiers_app, "status", "status", help=w("Umfang je Klasse anzeigen.",
+                                                     "Show the size of each class."))
 def identifiers_status() -> None:
     """Print the number of identifiers per class and the deleted bundled entries."""
     from pseudonymed.detection import identifiers as ident_module
@@ -207,7 +211,7 @@ def identifiers_status() -> None:
                  " step ‘2 Identifiers’."))
 
 
-@identifiers_app.command("hinzufuegen", help=w(
+@command(identifiers_app, "hinzufuegen", "add", help=w(
     "Eigene Identifikatoren aufnehmen (Arbeitgeber, Vereine, Einrichtungen …).",
     "Add your own identifiers (employers, clubs, institutions …)."))
 def add_identifiers(
@@ -215,10 +219,10 @@ def add_identifiers(
         metavar=list_metavar("terms"),
         help=w("Begriffe (auch mehrwortig).", "Terms (several words allowed)."))],
     category: Annotated[str, typer.Option(
-        "--klasse", help=w("Klinik, Beruf, Studie, Titel oder Sonstiges (eigene Klassen wie"
-                           " Sonstiges: überall geschwärzt).",
-                           "Klinik, Beruf, Studie, Titel or Sonstiges (own classes such as"
-                           " Sonstiges: redacted everywhere)."))] = "Sonstiges",
+        *flags("--klasse"), help=w("Klinik, Beruf, Studie, Titel oder Sonstiges (eigene Klassen wie"
+                                   " Sonstiges: überall geschwärzt).",
+                                   "Klinik, Beruf, Studie, Titel or Sonstiges (own classes such as"
+                                   " Sonstiges: redacted everywhere)."))] = "Sonstiges",
 ) -> None:
     """Add identifiers of one class to the identifier table."""
     from pseudonymed.detection import identifiers as ident_module
@@ -229,15 +233,15 @@ def add_identifiers(
                  f"{n} new identifier(s) ({category})."))
 
 
-@identifiers_app.command("entfernen", help=w(
+@command(identifiers_app, "entfernen", "remove", help=w(
     "Identifikatoren löschen (auch mitgelieferte; sie bleiben bei Updates gelöscht).",
     "Delete identifiers (bundled ones too; they stay deleted across updates)."))
 def remove_identifiers(
     begriffe: Annotated[list[str], typer.Argument(
         metavar=list_metavar("terms"),
         help=w("Begriffe, wie gespeichert.", "Terms, as stored."))],
-    category: Annotated[str, typer.Option("--klasse", help=w("Nur in dieser Klasse.",
-                                                             "Only in this class."))] = "",
+    category: Annotated[str, typer.Option(*flags("--klasse"), help=w("Nur in dieser Klasse.",
+                                                                     "Only in this class."))] = "",
 ) -> None:
     """Delete identifiers, optionally only those of one class."""
     from pseudonymed.detection import identifiers as ident_module
@@ -247,14 +251,14 @@ def remove_identifiers(
     typer.echo(w(f"{n} Identifikatoren gelöscht.", f"{n} identifier(s) deleted."))
 
 
-@identifiers_app.command("exportieren", help=w(
+@command(identifiers_app, "exportieren", "export", help=w(
     "Die Identifikatoren als CSV (begriff,klasse,quelle,angaben) schreiben.",
     "Write the identifiers as CSV (begriff,klasse,quelle,angaben)."))
 def export_identifiers(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"),
                                          help=w("Zieldatei (.csv).", "Target file (.csv)."))],
-    category: Annotated[str, typer.Option("--klasse", help=w("Nur diese Klasse.",
-                                                             "Only this class."))] = "",
+    category: Annotated[str, typer.Option(*flags("--klasse"), help=w("Nur diese Klasse.",
+                                                                     "Only this class."))] = "",
 ) -> None:
     """Write the identifiers (or one class of them) to a CSV file."""
     from pseudonymed.detection import identifiers as ident_module
@@ -265,14 +269,14 @@ def export_identifiers(
                  f"{n} identifier(s) written to {file}."))
 
 
-@identifiers_app.command("importieren", help=w(
+@command(identifiers_app, "importieren", "import", help=w(
     "Identifikatoren aus einer CSV oder Liste übernehmen.",
     "Import identifiers from a CSV or a list."))
 def import_identifiers(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"), exists=True,
                                          help=w("CSV (begriff[,klasse]) oder Liste.",
                                                 "CSV (begriff[,klasse]) or a list."))],
-    category: Annotated[str, typer.Option("--klasse",
+    category: Annotated[str, typer.Option(*flags("--klasse"),
                                           help=w("Klasse ohne Klassenspalte.",
                                                  "Class where there is no class column."))]
     = "Sonstiges",
@@ -289,7 +293,7 @@ def import_identifiers(
                  f"{new} new of {read_in} identifiers added."))
 
 
-@identifiers_app.command("pruefen", help=w(
+@command(identifiers_app, "pruefen", "check", help=w(
     "Zeigen, was die Analyse in einem Satz als Identifikator schwärzen würde (Titel nur\n"
     "vor erkannten Personen, hier nicht geprüft).",
     "Show what the analysis would redact as an identifier in a sentence (titles only"

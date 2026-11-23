@@ -26,7 +26,9 @@ from pseudonymed.cli.base import (
     abort,
     app,
     check_choice,
+    command,
     error_message,
+    flags,
     list_metavar,
     matching_decision,
     open_store,
@@ -128,7 +130,7 @@ def _warn_about_notes(p: Patient | None) -> None:
               " werden nicht automatisch geschwärzt; bei Bedarf 'kontakte export' nutzen und die"
               " Patientendatei ergänzen.",
               "Note: the contact card has notes. Relatives, referrers or terms from them are not"
-              " redacted automatically; if needed, use 'kontakte export' and add them to the"
+              " redacted automatically; if needed, use 'contacts export' and add them to the"
               " patient file."), err=True,
         )
 
@@ -218,7 +220,7 @@ def _process(file: Path, state: Path | None, run: _Run, sp: PseudonymStore) -> b
     return _report_result(res, file, person)
 
 
-@app.command("pseudonymisieren", help=_PSEUDONYMISE_HELP)
+@command(app, "pseudonymisieren", "pseudonymise", help=_PSEUDONYMISE_HELP)
 def pseudonymise(
     dateien: Annotated[list[Path], typer.Argument(
         metavar=list_metavar("files"),
@@ -231,31 +233,31 @@ def pseudonymise(
     num: NumberOption = None,
     config: ConfigOption = None,
     target: Annotated[Path | None, typer.Option(
-        "--ziel", "-z", help=w("Zielordner.", "Target folder."))] = None,
+        *flags("--ziel", "-z"), help=w("Zielordner.", "Target folder."))] = None,
     date: Annotated[str, typer.Option(
-        "--datum", help=w("Geburtsdatum als 'jahr' oder 'alter'.",
-                          "Date of birth as 'jahr' (year) or 'alter' (age)."))] = "jahr",
+        *flags("--datum"), help=w("Geburtsdatum als 'jahr' oder 'alter'.",
+                                  "Date of birth as 'jahr' (year) or 'alter' (age)."))] = "jahr",
     rasterise: Annotated[bool, typer.Option(
-        "--rastern", help=w("Ausgabe vollständig rastern.",
-                            "Rasterise the output completely."))] = False,
+        *flags("--rastern"), help=w("Ausgabe vollständig rastern.",
+                                    "Rasterise the output completely."))] = False,
     dpi: Annotated[int, typer.Option(
         "--dpi", help=w("Auflösung beim Rastern.", "Resolution when rasterising."))] = 200,
     text_file: Annotated[bool, typer.Option(
-        "--text/--kein-text", help=w("Textdatei in Lesereihenfolge schreiben.",
-                                     "Write a text file in reading order."))] = True,
+        *flags("--text/--kein-text"), help=w("Textdatei in Lesereihenfolge schreiben.",
+                                             "Write a text file in reading order."))] = True,
     markdown: Annotated[bool, typer.Option(
-        "--markdown/--kein-markdown", help=w("Zusätzlich eine Markdown-Datei schreiben.",
-                                             "Also write a Markdown file."))] = False,
+        *flags("--markdown/--kein-markdown"), help=w("Zusätzlich eine Markdown-Datei schreiben.",
+                                                     "Also write a Markdown file."))] = False,
     text_layer: Annotated[bool, typer.Option(
-        "--textebene/--keine-textebene",
+        *flags("--textebene/--keine-textebene"),
         help=w("OCR-Text unsichtbar in Scans einbetten (durchsuchbares PDF).",
                "Embed the OCR text invisibly in scans (searchable PDF)."))] = True,
     report: Annotated[bool, typer.Option(
-        "--bericht/--kein-bericht", help=w("Prüfbericht als JSON schreiben.",
-                                           "Write the audit report as JSON."))] = True,
+        *flags("--bericht/--kein-bericht"), help=w("Prüfbericht als JSON schreiben.",
+                                                   "Write the audit report as JSON."))] = True,
     notice: Annotated[bool, typer.Option(
-        "--vermerk/--ohne-vermerk", help=w("Vermerk in den PDF-Metadaten.",
-                                           "Note in the PDF metadata."))] = True,
+        *flags("--vermerk/--ohne-vermerk"), help=w("Vermerk in den PDF-Metadaten.",
+                                                   "Note in the PDF metadata."))] = True,
     store: StoreOption = None,
     schema: SchemaOption = "hash",
     new: NewOption = False,
@@ -265,84 +267,85 @@ def pseudonymise(
                         "OCR for scans/photos: auto, rapidocr, tesseract or aus (off)."))]
     = "auto",
     codes: Annotated[bool, typer.Option(
-        "--codes/--keine-codes", help=w("Barcodes und QR-Codes schwärzen.",
-                                        "Redact barcodes and QR codes."))] = True,
+        *flags("--codes/--keine-codes"), help=w("Barcodes und QR-Codes schwärzen.",
+                                                "Redact barcodes and QR codes."))] = True,
     preview: Annotated[str, typer.Option(
-        "--vorschau", help=w("Vorschaubilder: auto (nur bei OCR), immer oder nie.",
-                             "Preview images: auto (only with OCR), immer (always) or nie"
-                             " (never)."))] = "auto",
+        *flags("--vorschau"), help=w("Vorschaubilder: auto (nur bei OCR), immer oder nie.",
+                                     "Preview images: auto (only with OCR), immer (always) or nie"
+                                     " (never)."))] = "auto",
     unreadable: Annotated[str, typer.Option(
-        "--unlesbar", help=w("Von der OCR nicht lesbare Zeilen: schwaerzen oder lassen.",
-                             "Lines the OCR cannot read: schwaerzen (redact) or lassen"
-                             " (keep)."))]
+        *flags("--unlesbar"), help=w("Von der OCR nicht lesbare Zeilen: schwaerzen oder lassen.",
+                                     "Lines the OCR cannot read: schwaerzen (redact) or lassen"
+                                     " (keep)."))]
     = "schwaerzen",
     ner: Annotated[bool, typer.Option(
-        "--ner/--kein-ner", help=w("Unbekannte Personen und Orte per NER suchen (Extra 'ner').",
-                                   "Search for unknown persons and places with NER (extra"
-                                   " 'ner')."))]
+        *flags("--ner/--kein-ner"),
+        help=w("Unbekannte Personen und Orte per NER suchen (Extra 'ner').",
+               "Search for unknown persons and places with NER (extra"
+               " 'ner')."))]
     = False,
     medical_terms: Annotated[bool, typer.Option(
-        "--fachbegriffe/--keine-fachbegriffe",
+        *flags("--fachbegriffe/--keine-fachbegriffe"),
         help=w("Medizinische Fachbegriffe vor NER und unscharfer OCR-Suche schützen.",
                "Protect medical terms from NER and the fuzzy OCR search."))] = True,
     identifiers: Annotated[bool, typer.Option(
-        "--identifikatoren/--keine-identifikatoren",
+        *flags("--identifikatoren/--keine-identifikatoren"),
         help=w("Berufe, Kliniken, Studien und Titel schwärzen (Tabelle 'identifikatoren').",
                "Redact professions, hospitals, studies and titles (table"
-               " 'identifikatoren')."))]
+               " 'identifiers')."))]
     = True,
     drugs: Annotated[bool, typer.Option(
-        "--medikamente-schwaerzen/--medikamente-lassen",
+        *flags("--medikamente-schwaerzen/--medikamente-lassen"),
         help=w("Medikamente: die Substanz (Wirkstoff, Handelsname) schwärzen. Standard: stehen"
                " lassen, medizinischer Inhalt.",
                "Medications: redact the substance (active ingredient, trade name). Default: keep"
                " it, medical content."))] = False,
     doses: Annotated[bool, typer.Option(
-        "--dosierungen-schwaerzen/--dosierungen-lassen",
+        *flags("--dosierungen-schwaerzen/--dosierungen-lassen"),
         help=w("Medikamente: Dosierung und Verordnungsschema neben der Substanz schwärzen"
                " („500 mg 1-0-1“, „bei Bedarf“). Standard: stehen lassen.",
                "Medications: redact the dose and the prescription schedule next to the"
                " substance (‘500 mg 1-0-1’, ‘bei Bedarf’). Default: keep them."))] = False,
     lab_tests: Annotated[bool, typer.Option(
-        "--laborwerte-schwaerzen/--laborwerte-lassen",
+        *flags("--laborwerte-schwaerzen/--laborwerte-lassen"),
         help=w("Laborwerte: die Untersuchung (den Parameter, etwa „TSH“) schwärzen. Standard:"
                " stehen lassen.",
                "Lab values: redact the examination (the parameter, such as ‘TSH’). Default:"
                " keep it."))] = False,
     measurements: Annotated[bool, typer.Option(
-        "--messwerte-schwaerzen/--messwerte-lassen",
+        *flags("--messwerte-schwaerzen/--messwerte-lassen"),
         help=w("Laborwerte: den Messwert hinter der Untersuchung schwärzen („2,3 mU/l“)."
                " Standard: stehen lassen.",
                "Lab values: redact the measurement after the examination (‘2,3 mU/l’)."
                " Default: keep it."))] = False,
     fuzzy: Annotated[bool, typer.Option(
-        "--unscharf/--genau",
+        *flags("--unscharf/--genau"),
         help=w("Textdateien: abweichend geschriebene Namen unscharf suchen (Transkripte).",
                "Text files: fuzzy search for misspelt names (transcripts)."))] = True,
     clean_up: Annotated[str, typer.Option(
-        "--aufbereiten",
+        *flags("--aufbereiten"),
         help=w("Scans und Fotos vor der OCR aufbereiten (begradigen, Hintergrund,"
                " Hochskalieren): auto oder aus.",
                "Clean up scans and photos before the OCR (straighten, background, upscale):"
                " auto or aus (off)."))] = "auto",
     paper: Annotated[str, typer.Option(
-        "--papier",
+        *flags("--papier"),
         help=w("Seitengröße für Fotos und Bilder: a4, a5, a3, letter, legal oder bild"
                " (so groß wie das Bild).",
                "Paper size for photos and images: a4, a5, a3, letter, legal or bild"
                " (as large as the image)."))] = "a4",
     tables: Annotated[bool, typer.Option(
-        "--tabellen/--keine-tabellen",
+        *flags("--tabellen/--keine-tabellen"),
         help=w("Tesseract: Tabellengitter erkennen und die Zellen ohne Linien erneut lesen.",
                "Tesseract: recognise table grids and read the cells again without the"
                " lines."))]
     = True,
     vocabulary: Annotated[bool, typer.Option(
-        "--vokabular/--kein-vokabular",
+        *flags("--vokabular/--kein-vokabular"),
         help=w("Verworfene Rate-Treffer als <name>_pseudonym.vokabular.txt schreiben.",
                "Write the discarded guesses as <name>_pseudonym.vokabular.txt."))] = True,
     working_state: Annotated[bool, typer.Option(
-        "--arbeitsstand",
+        *flags("--arbeitsstand"),
         help=w("Vor dem Abschluss den Arbeitsstand neben die Ausgabe schreiben"
                " (<name>.arbeitsstand.pdf + .json, mit Klardaten): wieder aufnehmbar in der"
                " Oberfläche oder als Eingabe dieses Befehls.",
@@ -350,7 +353,7 @@ def pseudonymise(
                " (<name>.arbeitsstand.pdf + .json, with clear data): it can be resumed in the"
                " desktop app or as input to this command."))] = False,
     reanalyse: Annotated[bool, typer.Option(
-        "--neu-analysieren",
+        *flags("--neu-analysieren"),
         help=w("Einen Arbeitsstand als Eingabe mit den jetzigen Erkennungsoptionen erneut"
                " durchsuchen (Aufbereitung, Texterkennung, Kästen, Masken, Aufnahmen und"
                " verworfene Treffer bleiben); ohne den Schalter wird er abgeschlossen, wie er"
@@ -360,25 +363,25 @@ def pseudonymise(
                " discarded hits stay); without the switch it is finished as it was"
                " saved."))] = False,
     structured: Annotated[bool, typer.Option(
-        "--gliedern/--roh",
+        *flags("--gliedern/--roh"),
         help=w("OCR-Text als Markdown gliedern: Absätze zusammenfügen, Überschriften, Listen,"
                " Tabellen.",
                "Structure the OCR text as Markdown: join paragraphs, headings, lists,"
                " tables."))] = True,
     reference_population: Annotated[int | None, typer.Option(
-        "--referenzpopulation",
+        *flags("--referenzpopulation"),
         help=w("Restrisiko: aus wie vielen Menschen ein Angreifer wählt (Standard aus der"
                " Konfiguration, sonst 83.600.000 für Deutschland).",
                "Residual risk: how many people an attacker chooses from (default from the"
                " configuration, else 83,600,000 for Germany)."))] = None,
     own_places: Annotated[str | None, typer.Option(
-        "--eigene-orte",
+        *flags("--eigene-orte"),
         help=w("Restrisiko: Orte des Absenders (Sprechstunde, Klinik), die nicht"
                " als Patientenmerkmal zählen; Komma-getrennt.",
                "Residual risk: the sender's places (consultation service, clinic) that do"
                " not count as a feature of the patient; comma-separated."))] = None,
     recipient: Annotated[str | None, typer.Option(
-        "--empfaenger",
+        *flags("--empfaenger"),
         help=w("Öffentlicher OpenPGP-Schlüssel des Empfängers (Datei oder https-Adresse):"
                " Pseudonyme mit Einmalschlüssel, Zuordnung als verschlüsselte Kapsel"
                " <name>_pseudonym.kapsel.asc für den Empfänger; lokal wird nichts gespeichert.",
@@ -428,7 +431,7 @@ def pseudonymise(
 app.command("anonymisieren", hidden=True, help=_PSEUDONYMISE_HELP)(pseudonymise)
 
 
-@app.command("pruefen", help=w(
+@command(app, "pruefen", "check", help=w(
     "Gegenprobe an einer vorhandenen Datei: sind noch Identifikatoren enthalten?",
     "Re-check an existing file: does it still contain identifiers?"))
 def check(
@@ -525,7 +528,7 @@ def _mapping_from_store(
             abort(w(f"{len(matches)} Einträge gefunden; bitte eindeutig wählen"
                     " (siehe 'pseudonyme').",
                     f"{len(matches)} entries found; please choose one unambiguously"
-                    " (see 'pseudonyme')."))
+                    " (see 'pseudonyms')."))
         info = matches[0]
         return info, sp.mapping(info["schluessel"]), sp.codes()
 
@@ -545,7 +548,7 @@ def _output_reidentification(r: Reidentification, output: Path | None) -> None:
         raise typer.Exit(code=3)
 
 
-@app.command("rueckersetzen", help=w(
+@command(app, "rueckersetzen", "reidentify", help=w(
     "Pseudonyme im Text des Sprachmodells durch die Klardaten ersetzen (lokal).",
     "Replace the pseudonyms in the language model's text with the clear data (locally)."))
 def reidentify(
@@ -554,27 +557,27 @@ def reidentify(
         help=w("Text des Sprachmodells (sonst Standardeingabe).",
                "The language model's text (else standard input)."))] = None,
     code: Annotated[str | None, typer.Option(
-        "--kennung", "-k", "--buchstabe",
+        *flags("--kennung", "-k", "--buchstabe"),
         help=w("Pseudonym-Kennung, z. B. K7Q4MX oder A.",
                "Pseudonym code, e.g. K7Q4MX or A."))] = None,
     search: Annotated[str | None, typer.Option(
-        "--suche", "-s", help=w("Namensteil des Patienten.",
-                                "Part of the patient's name."))] = None,
+        *flags("--suche", "-s"), help=w("Namensteil des Patienten.",
+                                        "Part of the patient's name."))] = None,
     form: Annotated[str, typer.Option(
         "--form", help=w("'vollname' oder 'anrede'.",
                          "'vollname' (full name) or 'anrede' (form of address)."))]
     = "vollname",
     output: Annotated[Path | None, typer.Option(
-        "--ausgabe", "-o", help=w("Zieldatei.", "Target file."))] = None,
+        *flags("--ausgabe", "-o"), help=w("Zieldatei.", "Target file."))] = None,
     store: StoreOption = None,
     capsule: Annotated[Path | None, typer.Option(
-        "--kapsel", exists=True,
+        *flags("--kapsel"), exists=True,
         help=w("Schlüsselkapsel eines Absenders (<name>_pseudonym.kapsel.asc) statt der lokalen"
                " Datenbank.",
                "A sender's key capsule (<name>_pseudonym.kapsel.asc) instead of the local"
                " database."))] = None,
     private_key: Annotated[Path | None, typer.Option(
-        "--privater-schluessel", exists=True,
+        *flags("--privater-schluessel"), exists=True,
         help=w("Privater OpenPGP-Schlüssel als Datei; ohne Angabe entschlüsselt GnuPG aus dem"
                " Schlüsselbund.",
                "Private OpenPGP key as a file; without it GnuPG decrypts with the key from the"
@@ -595,13 +598,13 @@ def reidentify(
         info, mapping, known = _mapping_from_store(code, search, store)
     else:
         abort(w("Bitte --kennung, --suche oder --kapsel angeben.",
-                "Please give --kennung, --suche or --kapsel."))
+                "Please give --code, --search or --capsule."))
     text = text_file.read_text(encoding="utf-8") if text_file else sys.stdin.read()
     r = _reidentify(text, mapping, info, form=form, known_codes=known)
     _output_reidentification(r, output)
 
 
-@app.command("pseudonyme", help=w(
+@command(app, "pseudonyme", "pseudonyms", help=w(
     "Vergebene Kennungen auflisten, mit verknüpften Schreibweisen (nur lokal).",
     "List the codes issued, with their linked spellings (local only)."))
 def pseudonyms(store: StoreOption = None) -> None:

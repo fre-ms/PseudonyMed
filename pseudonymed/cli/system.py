@@ -12,6 +12,7 @@ from pseudonymed.cli.base import (
     EXPLICIT_LANGUAGE,
     StoreOption,
     app,
+    command,
     w,
 )
 from pseudonymed.config import (
@@ -27,8 +28,8 @@ from pseudonymed.pseudonyms.store import (
 )
 
 
-@app.command("gui", help=w("Grafische Oberfläche starten (Extra 'gui').",
-                           "Start the desktop interface (extra 'gui')."))
+@command(app, "gui", "gui", help=w("Grafische Oberfläche starten (Extra 'gui').",
+                                   "Start the desktop interface (extra 'gui')."))
 def gui() -> None:
     """Start the desktop, handing on a language given explicitly on the command line."""
     from pseudonymed.gui.app import main
@@ -36,8 +37,8 @@ def gui() -> None:
     raise typer.Exit(code=main(["--sprache", EXPLICIT_LANGUAGE] if EXPLICIT_LANGUAGE else []))
 
 
-@app.command("vorlage", help=w("JSON-Vorlage für eine Patientendatei ausgeben.",
-                               "Print a JSON template for a patient file."))
+@command(app, "vorlage", "template", help=w("JSON-Vorlage für eine Patientendatei ausgeben.",
+                                            "Print a JSON template for a patient file."))
 def template() -> None:
     """Print the JSON template of a patient file."""
     from pseudonymed.sources.manual import template as _template
@@ -45,7 +46,8 @@ def template() -> None:
     typer.echo(_template(), nl=False)
 
 
-@app.command("konfig", help=w("Version und Pfade anzeigen.", "Show the version and the paths."))
+@command(app, "konfig", "config",
+         help=w("Version und Pfade anzeigen.", "Show the version and the paths."))
 def config(store: StoreOption = None) -> None:
     """Print versions, tools, paths, keys and accounts of this installation."""
     import pymupdf

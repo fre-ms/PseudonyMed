@@ -14,9 +14,11 @@ from pseudonymed.cli.base import (
     NumberOption,
     StoreOption,
     abort,
-    app,
+    add_group,
+    command,
     connection,
     error_message,
+    flags,
     open_store,
     patient_line,
     search_contacts,
@@ -39,10 +41,10 @@ contacts_app = typer.Typer(
            "Patient search in the CardDAV address book (Nextcloud)."),
     no_args_is_help=True,
 )
-app.add_typer(contacts_app, name="kontakte")
+add_group(contacts_app, "kontakte", "contacts")
 
 
-@contacts_app.command("einrichten", help=w(
+@command(contacts_app, "einrichten", "setup", help=w(
     "Zugang einrichten: Adresse, Benutzer, App-Passwort (Nextcloud → Sicherheit).",
     "Set up access: address, user, app password (Nextcloud → Security)."))
 def set_up(
@@ -50,21 +52,22 @@ def set_up(
                                                        "Nextcloud address (https://…)"),
                                      help=w("Basisadresse der Nextcloud.",
                                             "Base address of the Nextcloud server."))],
-    user: Annotated[str, typer.Option("--benutzer", prompt=w("Benutzer", "User"),
+    user: Annotated[str, typer.Option(*flags("--benutzer"), prompt=w("Benutzer", "User"),
                                       help=w("Nextcloud-Benutzer.", "Nextcloud user."))],
     address_book: Annotated[str, typer.Option(
-        "--adressbuch", help=w("Adressbuch (URI oder Name), leer = einziges.",
-                               "Address book (URI or name), empty = the only one."))] = "",
+        *flags("--adressbuch"), help=w("Adressbuch (URI oder Name), leer = einziges.",
+                                       "Address book (URI or name), empty = the only one."))] = "",
     config: ConfigOption = None,
     keyring_backend: Annotated[bool, typer.Option(
-        "--schluesselbund/--kein-schluesselbund",
+        *flags("--schluesselbund/--kein-schluesselbund"),
         help=w("App-Passwort im Schlüsselbund des Betriebssystems ablegen.",
                "Keep the app password in the operating system's keyring."))] = True,
     password_in_file: Annotated[bool, typer.Option(
-        "--passwort-datei", help=w("Ohne Schlüsselbund: App-Passwort in der Konfigurationsdatei"
-                                   " (nur für den Benutzer lesbar) ablegen.",
-                                   "Without a keyring: keep the app password in the"
-                                   " configuration file (readable by the user only)."))] = False,
+        *flags("--passwort-datei"),
+        help=w("Ohne Schlüsselbund: App-Passwort in der Konfigurationsdatei"
+               " (nur für den Benutzer lesbar) ablegen.",
+               "Without a keyring: keep the app password in the"
+               " configuration file (readable by the user only)."))] = False,
 ) -> None:
     """Check the CardDAV access, store the app password and save the configuration."""
     password = (environment.variable("CARDDAV_PASSWORT")
@@ -91,7 +94,7 @@ def set_up(
             "Kein Schlüsselbund verfügbar (Extra 'carddav' installieren) – Passwort stattdessen"
             f" in {PASSWORD_ENV_VAR} setzen oder --passwort-datei wählen.",
             "No keyring available (install the extra 'carddav') – set the password in"
-            f" {PASSWORD_ENV_VAR} instead or choose --passwort-datei."), err=True,
+            f" {PASSWORD_ENV_VAR} instead or choose --password-file."), err=True,
         )
     path = save_config(k, config)
     typer.echo(w(f"Konfiguration gespeichert: {path}", f"Configuration saved: {path}"))
@@ -99,7 +102,7 @@ def set_up(
                + ", ".join(f"{b.name} ({b.uri})" for b in books))
 
 
-@contacts_app.command("lokal", help=w(
+@command(contacts_app, "lokal", "local", help=w(
     "Ein lokales Adressbuch (vCard-Datei oder Ordner) einrichten oder anzeigen.",
     "Set up or show a local address book (vCard file or folder)."))
 def local_contacts(
@@ -108,7 +111,7 @@ def local_contacts(
         help=w("vCard-Datei oder Ordner mit vCard-Dateien; ohne Angabe: anzeigen.",
                "vCard file or folder of vCard files; without one: show the current one."))]
     = None,
-    remove: Annotated[bool, typer.Option("--entfernen",
+    remove: Annotated[bool, typer.Option(*flags("--entfernen"),
                                          help=w("Lokales Adressbuch austragen.",
                                                 "Remove the local address book."))] = False,
     config: ConfigOption = None,
@@ -136,8 +139,9 @@ def local_contacts(
                  f"Local address book: {e.local_address_book} ({len(files)} file(s))."))
 
 
-@contacts_app.command("adressbuecher", help=w("Adressbücher des Benutzers auflisten.",
-                                              "List the user's address books."))
+@command(contacts_app, "adressbuecher", "address-books",
+         help=w("Adressbücher des Benutzers auflisten.",
+                "List the user's address books."))
 def address_books(config: ConfigOption = None) -> None:
     """Print URI and name of every address book on the CardDAV server."""
     client, _k = connection(config)
@@ -149,7 +153,7 @@ def address_books(config: ConfigOption = None) -> None:
         typer.echo(f"{b.uri:30}  {b.name}")
 
 
-@contacts_app.command("suchen", help=w(
+@command(contacts_app, "suchen", "search", help=w(
     "Kontakte suchen; zeigt vergebene Pseudonym-Buchstaben an.",
     "Search contacts; shows the pseudonym codes already assigned."))
 def run_search(
@@ -197,7 +201,7 @@ def _patient_text(p: Patient) -> str:
     return "\n".join(lines)
 
 
-@contacts_app.command("zeigen", help=w(
+@command(contacts_app, "zeigen", "show", help=w(
     "Abgeleitete Identifikatoren eines Kontakts anzeigen (nur lokal).",
     "Show the identifiers derived from a contact (locally only)."))
 def show_contact(
@@ -218,16 +222,16 @@ def show_contact(
         typer.echo(_patient_text(p))
 
 
-@contacts_app.command(help=w(
+@command(contacts_app, "export", "export", help=w(
     "Kontakt als Patientendatei speichern, um Angehörige, Zuweiser und Begriffe zu ergänzen.",
     "Save a contact as a patient file, to add relatives, referrers and terms to it."))
 def export(
     term: Annotated[str, typer.Argument(metavar=w("begriff", "term"),
                                         help=w("Suchbegriff.", "Search term."))],
-    output: Annotated[Path, typer.Option("--ausgabe", "-o",
+    output: Annotated[Path, typer.Option(*flags("--ausgabe", "-o"),
                                          help=w("Zieldatei (JSON).", "Target file (JSON)."))],
     num: NumberOption = None,
-    overwrite: Annotated[bool, typer.Option("--ueberschreiben",
+    overwrite: Annotated[bool, typer.Option(*flags("--ueberschreiben"),
                                             help=w("Vorhandene Datei ersetzen.",
                                                    "Replace an existing file."))] = False,
     config: ConfigOption = None,
@@ -236,7 +240,7 @@ def export(
     p = selection(search_contacts(term, config), term, num)
     if output.exists() and not overwrite:
         abort(w(f"{output} existiert bereits (--ueberschreiben).",
-                f"{output} already exists (--ueberschreiben)."))
+                f"{output} already exists (--overwrite)."))
     data = p.as_dict()
     data.setdefault("angehoerige", [])
     data.setdefault("zuweiser", [])

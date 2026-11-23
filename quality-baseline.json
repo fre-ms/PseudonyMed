@@ -1,10 +1,10 @@
 {
  "radon": {
-  "blocks": 1545,
+  "blocks": 1554,
   "mean_cc": 3.31,
   "grade_histogram": {
-   "A": 1287,
-   "B": 258
+   "A": 1294,
+   "B": 260
   },
   "functions_over_cc10": 0,
   "functions_over_cc20": 0,
@@ -20,7 +20,7 @@
    "pseudonymed/gui/review_page.py": 26.11,
    "pseudonymed/gui/cleanup_page.py": 29.12,
    "pseudonymed/gui/ocr_page.py": 30.06,
-   "pseudonymed/cli/documents.py": 31.29,
+   "pseudonymed/cli/documents.py": 31.26,
    "pseudonymed/working_state.py": 31.47,
    "pseudonymed/gui/export_page.py": 31.57,
    "pseudonymed/cli/database.py": 32.09,
@@ -35,6 +35,7 @@
    "pseudonymed/detection/medical_terms.py": 38.31,
    "pseudonymed/pseudonyms/statistics.py": 38.41,
    "pseudonymed/detection/fuzzy.py": 38.8,
+   "pseudonymed/cli/base.py": 39.07,
    "pseudonymed/gui/control_page.py": 39.8,
    "pseudonymed/detection/medical_content.py": 39.85,
    "pseudonymed/gui/documents_page.py": 40.42,
@@ -53,7 +54,6 @@
    "pseudonymed/gui/identifiers_page.py": 44.36,
    "pseudonymed/pipeline/pages.py": 44.72,
    "pseudonymed/core/model.py": 45.76,
-   "pseudonymed/cli/base.py": 45.76,
    "pseudonymed/detection/lexicon.py": 46.25,
    "pseudonymed/detection/ner.py": 46.46,
    "pseudonymed/pipeline/text_files.py": 46.58,
@@ -104,13 +104,13 @@
   "mi_min": 13.74
  },
  "complexipy": {
-  "functions": 1418,
+  "functions": 1426,
   "max_cognitive": 14,
   "functions_over_15": 0,
   "over_15": []
  },
  "structure": {
-  "functions": 1424,
+  "functions": 1434,
   "long_functions": 0,
   "long": [],
   "deeply_nested": 0,
@@ -136,7 +136,7 @@
   "detail": []
  },
  "docstrings": {
-  "coverage_pct": 95.6,
+  "coverage_pct": 95.5,
   "public_missing": 0,
   "public_missing_names": [],
   "note": null
@@ -146,8 +146,8 @@
   "detail": []
  },
  "coverage": {
-  "total_pct": 92.7,
-  "tests_passed": 644,
+  "total_pct": 92.6,
+  "tests_passed": 647,
   "suite_green": true,
   "by_module_pct": {
    "pseudonymed/cli/database.py": 76.3,
@@ -159,8 +159,8 @@
    "pseudonymed/gui/reidentify_page.py": 83.2,
    "pseudonymed/gui/address_book_dialog.py": 84.7,
    "pseudonymed/gui/patient_page.py": 84.7,
-   "pseudonymed/cli/base.py": 84.8,
    "pseudonymed/gui/export_page.py": 86.0,
+   "pseudonymed/cli/base.py": 86.2,
    "pseudonymed/gui/identifiers_page.py": 86.2,
    "pseudonymed/gui/list_page.py": 87.2,
    "pseudonymed/cli/documents.py": 87.6,

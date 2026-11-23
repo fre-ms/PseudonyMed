@@ -5,14 +5,19 @@ The command line speaks the language of the interface (:mod:`pseudonymed.languag
 ``LANGUAGE`` is fixed once when it starts, because Typer reads the help texts while the
 commands are declared.  Every text of the command line is written ``w(german, english)``;
 the core's messages and reports go through :func:`shown` and :func:`error_message`.
-Command and option names stay German in both languages, so that scripts run anywhere.
+Commands, groups and options answer to a German and an English name in both languages,
+so that scripts run anywhere: the help lists the commands under the names of its
+language (the others work hidden), and every option shows both names, its language's
+first (:func:`command`, :func:`add_group`, :func:`flags`).
 """
 
 from __future__ import annotations
 
+import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn, TypeVar
 
 import typer
 
@@ -43,6 +48,90 @@ def w(de: str, en: str) -> str:
     return en if english(LANGUAGE) else de
 
 
+# German option declarations and their English counterparts ("--a/--no-a" for switches)
+FLAGS_EN = {
+    "--adressbuch": "--address-book", "--arbeitsstand": "--working-state",
+    "--aufbereiten": "--clean-up", "--ausgabe": "--output", "--benutzer": "--user",
+    "--bericht/--kein-bericht": "--report/--no-report", "--buchstabe": "--letter",
+    "--codes/--keine-codes": "--codes/--no-codes", "--datei": "--file",
+    "--datenbank": "--database", "--datum": "--date",
+    "--dosierungen-schwaerzen/--dosierungen-lassen": "--redact-doses/--keep-doses",
+    "--eigene-orte": "--own-places", "--empfaenger": "--recipient", "--entfernen": "--remove",
+    "--fachbegriffe/--keine-fachbegriffe": "--medical-terms/--no-medical-terms",
+    "--gleich": "--same", "--gliedern/--roh": "--structure/--raw",
+    "--identifikatoren/--keine-identifikatoren": "--identifiers/--no-identifiers",
+    "--ja": "--yes", "--kapsel": "--capsule", "--kategorie": "--category",
+    "--kennung": "--code", "--klasse": "--class", "--konfig": "--config",
+    "--konfig/--ohne-konfig": "--config/--no-config", "--kontakt": "--contact",
+    "--kopieren/--nicht-kopieren": "--copy/--no-copy",
+    "--laborwerte-schwaerzen/--laborwerte-lassen": "--redact-lab-tests/--keep-lab-tests",
+    "--markdown/--kein-markdown": "--markdown/--no-markdown",
+    "--medikamente-schwaerzen/--medikamente-lassen": "--redact-drugs/--keep-drugs",
+    "--messwerte-schwaerzen/--messwerte-lassen": "--redact-measurements/--keep-measurements",
+    "--modus": "--mode", "--ner/--kein-ner": "--ner/--no-ner", "--neu": "--new",
+    "--neu-analysieren": "--reanalyse", "--nr": "--number", "--papier": "--paper",
+    "--passwort-datei": "--password-file", "--privater-schluessel": "--private-key",
+    "--rastern": "--rasterise", "--referenzpopulation": "--reference-population",
+    "--schluessel": "--key", "--schluesselbund/--kein-schluesselbund": "--keyring/--no-keyring",
+    "--spalte": "--column", "--speicher": "--store", "--sprache": "--language",
+    "--suche": "--search",
+    "--tabellen/--keine-tabellen": "--tables/--no-tables", "--text/--kein-text": "--text/--no-text",
+    "--textebene/--keine-textebene": "--text-layer/--no-text-layer",
+    "--trennzeichen": "--separator", "--ueberschreiben": "--overwrite",
+    "--unlesbar": "--unreadable", "--unscharf/--genau": "--fuzzy/--exact",
+    "--unverschluesselt": "--unencrypted", "--vermerk/--ohne-vermerk": "--notice/--no-notice",
+    "--vokabular/--kein-vokabular": "--vocabulary/--no-vocabulary",
+    "--vokabular/--ohne-vokabular": "--vocabulary/--no-vocabulary",
+    "--vorschau": "--preview", "--ziel": "--target",
+}
+
+
+def flags(*decls: str) -> tuple[str, ...]:
+    """The declarations of an option with their English names added: the German first in
+    German, the English first in English.  A switch whose English name is the German one
+    gets only its English negative (``" /--no-text"``)."""
+    added = []
+    for decl in decls:
+        en = FLAGS_EN.get(decl)
+        if en is None:
+            continue
+        if "/" in en and en.split("/")[0] == decl.split("/")[0]:
+            en = " /" + en.split("/", 1)[1]
+        added.append(en)
+    return (*added, *decls) if english(LANGUAGE) else (*decls, *added)
+
+
+def flag(name: str) -> str:
+    """An option's name as the command line's language calls it (for messages)."""
+    if not english(LANGUAGE):
+        return name
+    for decl, en in FLAGS_EN.items():
+        for de_part, en_part in zip(decl.split("/"), en.split("/"), strict=False):
+            if de_part == name:
+                return en_part
+    return name
+
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def command(group: typer.Typer, de: str, en: str, **settings: Any) -> Callable[[F], F]:
+    """Register a command under its German and its English name: the help lists the one of
+    the command line's language, the other works hidden."""
+    def register(func: F) -> F:
+        group.command(de, hidden=english(LANGUAGE) and en != de, **settings)(func)
+        if en != de:
+            group.command(en, hidden=not english(LANGUAGE), **settings)(func)
+        return func
+    return register
+
+
+def add_group(group: typer.Typer, de: str, en: str) -> None:
+    """Add a group of commands under its German and its English name, like :func:`command`."""
+    app.add_typer(group, name=de, hidden=english(LANGUAGE))
+    app.add_typer(group, name=en, hidden=not english(LANGUAGE))
+
+
 def list_metavar(en: str) -> str | None:
     """The metavar of a list argument: none in German, where Typer shows the German
     parameter name with its "..." (``{dateien}...``), ``en...`` in English."""
@@ -59,6 +148,62 @@ def error_message(e: BaseException) -> str:
     return optdoc_adapter.message(e, LANGUAGE)
 
 
+_OPTION_NAMES = re.compile(r"--?[\w-]+(?:,--?[\w-]+)+")
+
+
+class _BreakableNames:
+    """A Rich highlighter that sets the names of an option one under the other."""
+
+    def __init__(self, inner: Callable[[Any], Any]) -> None:
+        self.inner = inner
+
+    def __call__(self, text: Any) -> Any:
+        """Highlight like Typer, with a line break after each comma of ``--ziel,--target``."""
+        if isinstance(text, str) and _OPTION_NAMES.fullmatch(text):
+            text = text.replace(",", ",\n")
+        return self.inner(text)
+
+
+def _readable_help() -> None:
+    """Keep Typer's help readable with two names to every option.
+
+    Typer joins an option's names with a bare comma, which Rich cannot break: with a German
+    and an English name side by side the column grows until the help beside it is cut off
+    with an ellipsis, at 100 columns already.  One under the other, the column is as wide as
+    the longest single name, as with German names alone.  Where a terminal is narrow even
+    so, the tables fold an over-long word onto the next line instead of cutting it off
+    (Rich's default), so that no option, file name or variable goes missing."""
+    try:
+        from rich.table import Table
+        from rich.text import Text
+        from typer import rich_utils
+    except ImportError:  # without Rich, Typer prints Click's plain help, which wraps
+        return
+
+    class FoldingTable(Table):
+        """A table whose texts fold over-long words instead of cutting them off."""
+
+        def add_row(self, *renderables: Any, **settings: Any) -> None:
+            """Add the row with its texts folding, the parts of a help cell (``Columns``:
+            help, variable, default) as well; a column that never wraps stays as it is."""
+            for index, renderable in enumerate(renderables):
+                if index < len(self.columns) and self.columns[index].no_wrap:
+                    continue
+                for part in getattr(renderable, "renderables", [renderable]):
+                    if isinstance(part, Text) and part.overflow is None:
+                        part.overflow = "fold"
+            super().add_row(*renderables, **settings)
+
+    for name in ("highlighter", "negative_highlighter"):
+        current = getattr(rich_utils, name)
+        if not isinstance(current, _BreakableNames):
+            setattr(rich_utils, name, _BreakableNames(current))
+    setattr(rich_utils, "Table", FoldingTable)  # noqa: B010 (mypy forbids assigning a type)
+
+
+_readable_help()
+
+
 app = typer.Typer(
     help=w("PseudonyMed – Patientendokumente lokal pseudonymisieren, Pseudonyme später"
            " zurücksetzen.",
@@ -70,20 +215,21 @@ app = typer.Typer(
 
 StoreOption = Annotated[
     Path | None,
-    typer.Option("--speicher",
+    typer.Option(*flags("--speicher"),
                  help=w("Pfad der Pseudonym-Datenbank (Standard: Nutzerdatenordner).",
                         "Path of the pseudonym database (default: user data folder).")),
 ]
 ConfigOption = Annotated[
     Path | None,
-    typer.Option("--konfig", help=w("Konfigurationsdatei (Standard: Nutzer-Konfigordner).",
-                                    "Configuration file (default: user configuration folder).")),
+    typer.Option(*flags("--konfig"),
+                 help=w("Konfigurationsdatei (Standard: Nutzer-Konfigordner).",
+                        "Configuration file (default: user configuration folder).")),
 ]
 PatientOption = Annotated[
     Path | None,
     typer.Option("--patient", "-p", exists=True,
                  help=w("Patientendatei (JSON/TOML, siehe 'vorlage').",
-                        "Patient file (JSON/TOML, see 'vorlage').")),
+                        "Patient file (JSON/TOML, see 'template').")),
 ]
 VcfOption = Annotated[
     Path | None, typer.Option("--vcf", exists=True, help=w("Lokale vCard-Datei (.vcf).",
@@ -91,25 +237,25 @@ VcfOption = Annotated[
 ]
 ContactOption = Annotated[
     str | None,
-    typer.Option("--kontakt", "-k",
+    typer.Option(*flags("--kontakt", "-k"),
                  help=w("Suchbegriff im CardDAV-Adressbuch (Name, Geburtsjahr).",
                         "Search term in the CardDAV address book (name, year of birth).")),
 ]
 NumberOption = Annotated[int | None, typer.Option(
-    "--nr", help=w("Nummer des Treffers bei mehreren.",
-                   "Number of the match when there are several."))]
+    *flags("--nr"), help=w("Nummer des Treffers bei mehreren.",
+                           "Number of the match when there are several."))]
 SchemaOption = Annotated[
     str, typer.Option("--schema", help=w("Pseudonymschema: 'hash' (Standard) oder 'buchstabe'.",
                                          "Pseudonym scheme: 'hash' (default) or 'buchstabe'."))
 ]
 NewOption = Annotated[
-    bool, typer.Option("--neu", help=w("Bei unsicherem Abgleich als neue Person anlegen.",
-                                       "On an uncertain match, create a new person."))
+    bool, typer.Option(*flags("--neu"), help=w("Bei unsicherem Abgleich als neue Person anlegen.",
+                                               "On an uncertain match, create a new person."))
 ]
 SameOption = Annotated[
     str | None,
-    typer.Option("--gleich", help=w("Bei unsicherem Abgleich dieser Kennung zuordnen.",
-                                    "On an uncertain match, assign to this code.")),
+    typer.Option(*flags("--gleich"), help=w("Bei unsicherem Abgleich dieser Kennung zuordnen.",
+                                            "On an uncertain match, assign to this code.")),
 ]
 
 
@@ -126,6 +272,7 @@ def check_choice(option: str, value: str, allowed: tuple[str, ...]) -> None:
     if value in allowed:
         return
     quoted = [f"'{a}'" for a in allowed]
+    option = flag(option)
     abort(w(f"{option} muss {', '.join(quoted[:-1])} oder {quoted[-1]} sein.",
             f"{option} must be {', '.join(quoted[:-1])} or {quoted[-1]}."))
 
@@ -142,7 +289,7 @@ def matching_decision(new: bool, same: str | None) -> str | None:
     """The decision for an uncertain match as the store expects it: "neu", "gleich:<KENNUNG>"
     or None."""
     if new and same:
-        abort(w("Bitte nur --neu oder --gleich angeben.", "Please give only --neu or --gleich."))
+        abort(w("Bitte nur --neu oder --gleich angeben.", "Please give only --new or --same."))
     if new:
         return "neu"
     return f"gleich:{same.strip().upper()}" if same else None
@@ -160,7 +307,7 @@ def report_uncertain(p: Patient, uncertain: UncertainMatch) -> None:
         typer.echo(f"  {k.code}  {k.surname}, {k.first_name}  {w('geb.', 'born')} {born}"
                    f"  Score {k.score:.2f} ({fields})", err=True)
     typer.echo(w("Entscheiden mit --gleich KENNUNG (dieselbe Person) oder --neu (neue Person).",
-                 "Decide with --gleich CODE (the same person) or --neu (a new person)."),
+                 "Decide with --same CODE (the same person) or --new (a new person)."),
                err=True)
 
 
@@ -180,7 +327,7 @@ def connection(config: Path | None) -> tuple[CardDAVClient, CardDAVConfig]:
     k = load_config(config)
     if not k.complete:
         typer.echo(w("CardDAV ist nicht eingerichtet: zuerst 'pseudonymed kontakte einrichten'.",
-                     "CardDAV is not set up: first 'pseudonymed kontakte einrichten'."), err=True)
+                     "CardDAV is not set up: first 'pseudonymed contacts setup'."), err=True)
         raise typer.Exit(code=1)
     password = load_password(k)
     if not password:
@@ -204,8 +351,8 @@ def search_contacts(term: str, config: Path | None) -> list[Patient]:
         typer.echo(w("Kein Adressbuch eingerichtet: 'pseudonymed kontakte einrichten'"
                      " (Nextcloud) oder 'pseudonymed kontakte lokal DATEI' (vCard-Datei oder"
                      " Ordner).",
-                     "No address book set up: 'pseudonymed kontakte einrichten' (Nextcloud) or"
-                     " 'pseudonymed kontakte lokal FILE' (vCard file or folder)."), err=True)
+                     "No address book set up: 'pseudonymed contacts setup' (Nextcloud) or"
+                     " 'pseudonymed contacts local FILE' (vCard file or folder)."), err=True)
         raise typer.Exit(code=1)
     result = address_book.search(term, config)
     for failure in result.error:
@@ -232,11 +379,11 @@ def selection(patients: list[Patient], term: str, num: int | None) -> Patient:
         if 1 <= num <= len(patients):
             return patients[num - 1]
         abort(w(f"--nr muss zwischen 1 und {len(patients)} liegen.",
-                f"--nr must lie between 1 and {len(patients)}."))
+                f"--number must lie between 1 and {len(patients)}."))
     if len(patients) == 1:
         return patients[0]
     typer.echo(w("Mehrere Treffer, bitte mit --nr wählen:",
-                 "Several matches, please choose with --nr:"), err=True)
+                 "Several matches, please choose with --number:"), err=True)
     for i, p in enumerate(patients, 1):
         typer.echo(patient_line(i, p), err=True)
     raise typer.Exit(code=1)
@@ -259,7 +406,7 @@ def resolve_patient(
     """Exactly one source: patient file, local vCard file (optionally filtered) or CardDAV."""
     if patient is not None and (vcf is not None or contact):
         abort(w("Bitte nur eine Quelle angeben: --patient, --vcf oder --kontakt.",
-                "Please give only one source: --patient, --vcf or --kontakt."))
+                "Please give only one source: --patient, --vcf or --contact."))
     if patient is not None:
         return load_patient_or_abort(patient)
     if vcf is not None:
@@ -267,12 +414,12 @@ def resolve_patient(
     if contact:
         return selection(search_contacts(contact, config), contact, num)
     abort(w("Bitte --patient, --vcf oder --kontakt angeben.",
-            "Please give --patient, --vcf or --kontakt."))
+            "Please give --patient, --vcf or --contact."))
 
 @app.callback()
 def _main_command(
     language: Annotated[str | None, typer.Option(
-        "--sprache", "--language", metavar=w("SPRACHE", "LANGUAGE"),
+        *flags("--sprache"), metavar=w("SPRACHE", "LANGUAGE"),
         help=w("Sprache der Ausgaben: de oder en (sonst PSEUDONYMED_SPRACHE, Konfiguration,"
                " Systemsprache).",
                "Language of the output: de or en (else PSEUDONYMED_SPRACHE, configuration,"

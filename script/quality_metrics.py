@@ -205,12 +205,15 @@ def _functions(tree: ast.AST):
 
 
 def _is_cli_command(f: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """True for a Typer command (decorated with ``<app>.command(...)``): its parameters are
+    """True for a Typer command (decorated with ``<app>.command(...)``, or with PseudonyMed's
+    ``command(<app>, german, english, ...)`` that registers both names): its parameters are
     the command's options, the user-facing contract, so their number is not a design
     smell of the function."""
     for d in f.decorator_list:
         call = d.func if isinstance(d, ast.Call) else d
         if isinstance(call, ast.Attribute) and call.attr == "command":
+            return True
+        if isinstance(call, ast.Name) and call.id == "command":
             return True
     return False
 

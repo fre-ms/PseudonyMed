@@ -1,13 +1,15 @@
 """The command line speaks the interface language: German by default, English on request.
 
 The language is fixed when the command line starts, so these tests run it as a process of
-its own; command and option names are the same in both languages.
+its own.  Commands and options answer to their German and their English names in both
+languages; the help lists the commands of its language and shows that name first.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,15 +20,18 @@ from pseudonymed import language
 from pseudonymed.core.model import Patient
 
 
-def _run(arguments: list[str], tmp_path: Path, spoken: str | None) -> subprocess.CompletedProcess:
+def _run(arguments: list[str], tmp_path: Path, spoken: str | None,
+         columns: int = 100) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
     env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_LEXIKON="0",
-               COLUMNS="100", NO_COLOR="1", TERM="dumb", LANG="C.UTF-8",
+               COLUMNS=str(columns), NO_COLOR="1", TERM="dumb", LANG="C.UTF-8",
                PYTHONIOENCODING="utf-8")  # Windows writes a pipe in cp1252 otherwise
     if spoken:
         env["PSEUDONYMED_SPRACHE"] = spoken
-    return subprocess.run([sys.executable, "-m", "pseudonymed.cli", *arguments],
-                          capture_output=True, text=True, encoding="utf-8", env=env, timeout=600)
+    run = subprocess.run([sys.executable, "-m", "pseudonymed.cli", *arguments],
+                         capture_output=True, text=True, encoding="utf-8", env=env, timeout=600)
+    run.stdout = re.sub(r"\x1b\[[0-9;]*m", "", run.stdout)  # the CI forces coloured help
+    return run
 
 
 def test_output_that_is_not_utf8_replaces_instead_of_failing(tmp_path: Path) -> None:
@@ -66,17 +71,55 @@ def test_help_in_both_languages(tmp_path: Path) -> None:
     assert german.returncode == english.returncode == 0
     assert "Patientendokumente lokal pseudonymisieren" in german.stdout
     assert "pseudonymise patient documents locally" in english.stdout
-    assert "pseudonymisieren" in english.stdout  # the command names stay
-    sub = _run(["pseudonymisieren", "--help"], tmp_path, "en")
-    assert "Patient file" in sub.stdout and "--ziel" in sub.stdout, sub.stdout
-    assert "Patientendatei" not in sub.stdout
+    assert "│ pseudonymise " in english.stdout and "│ pseudonymisieren " not in english.stdout
+    assert "│ pseudonymisieren " in german.stdout and "│ pseudonymise " not in german.stdout
+    assert "│ database " in english.stdout and "│ datenbank " in german.stdout
+    assert _one_under_other("--language", "--sprache", english.stdout), english.stdout
+    sub = _run(["pseudonymise", "--help"], tmp_path, "en")
+    assert "Patient file" in sub.stdout and "Patientendatei" not in sub.stdout
+    assert _one_under_other("--target", "--ziel", sub.stdout), sub.stdout
+    assert _one_under_other("--no-text", "--kein-text", sub.stdout)
+    sub = _run(["pseudonymisieren", "--help"], tmp_path, "de")
+    assert _one_under_other("--ziel", "--target", sub.stdout), sub.stdout
+    assert _one_under_other("--kein-text", "--no-text", sub.stdout)
+
+
+def _one_under_other(first: str, second: str, help_text: str) -> bool:
+    """Whether the help shows an option's two names in one cell, ``first,`` above ``second``."""
+    pattern = rf"(?<![\w-]){first},[^\n]*\n[^\n]*(?<![\w-]){second}(?![\w-])"
+    return re.search(pattern, help_text) is not None
+
+
+def test_a_narrow_help_cuts_nothing_off(tmp_path: Path) -> None:
+    """With two names to an option, 80 columns still show every word: Rich folds instead of
+    ending a word with an ellipsis (a guard over the patch to Typer in ``cli/base.py``)."""
+    for spoken, arguments in (("de", ["pseudonymisieren", "--help"]),
+                              ("en", ["database", "export", "--help"])):
+        run = _run(arguments, tmp_path, spoken, columns=80)
+        assert run.returncode == 0 and "…" not in run.stdout, run.stdout
+
+
+def test_both_names_work_in_either_language(tmp_path: Path) -> None:
+    """German names in the English command line and English ones in the German line."""
+    from typer.testing import CliRunner
+
+    from pseudonymed.cli import app
+
+    runner = CliRunner()
+    for arguments in (["database", "status"], ["datenbank", "status"],
+                      ["medical-terms", "check", "Hirninfarkt"], ["config", "--store",
+                                                                  str(tmp_path / "s.sqlite")]):
+        result = runner.invoke(app, arguments)
+        assert result.exit_code == 0, (arguments, result.output)
+    english = _run(["datenbank", "status"], tmp_path, "en")
+    assert english.returncode == 0 and "Key present" in english.stdout, english.stdout
 
 
 def test_a_run_reports_in_english(tmp_path: Path, report_pdf: Path, patient: Patient) -> None:
     patient_file = tmp_path / "patient.json"
     patient_file.write_text(json.dumps(patient.as_dict(), ensure_ascii=False), encoding="utf-8")
-    run = _run(["pseudonymisieren", str(report_pdf), "--patient", str(patient_file),
-                "--ziel", str(tmp_path / "out")], tmp_path, "en")
+    run = _run(["pseudonymise", str(report_pdf), "--patient", str(patient_file),
+                "--target", str(tmp_path / "out")], tmp_path, "en")
     assert run.returncode == 0, run.stderr
     assert "audit report" in run.stdout and "Re-check: passed" in run.stdout, run.stdout
     assert "Prüfbericht" not in run.stdout and "Gegenprobe" not in run.stdout
