@@ -103,6 +103,35 @@ def full_name_pattern(first_names: list[str], surname: str) -> str | None:
     return f"{L}(?:{'|'.join(variants)}){R}"
 
 
+# Words after which a surname may stand shortened to its initial ("Herr K.", "Pat. K.").
+# "Patient" written out is left aside: the pseudonym "Patient K" at the end of a sentence would
+# read as such an initial to the re-check.
+_ADDRESSED = r"(?:Herrn?|Hrn?\.?|Frau|Fr\.|Pat\.)"
+# Capitalised words that may begin a sentence after the initial.  Any other capitalised word
+# on the same line is taken for a surname, and the initial for that person's first name.
+_SENTENCE_STARTS = (
+    r"(?:Ab|Aktuell|Am|An|Auch|Auf|Aufgrund|Aus|Außerdem|Bei|Bis|Da|Dabei|Daher|Dann|Das|Dem|Den"
+    r"|Der|Des|Deshalb|Die|Diese|Dieser|Dieses|Durch|Ein|Eine|Er|Es|Für|Hier|Ihm|Ihn|Ihr|Ihre|Im"
+    r"|In|Kein|Keine|Mit|Nach|Noch|Nun|Sein|Seine|Seit|Sie|Über|Unter|Vom|Von|Vor|Wegen|Wir|Zu"
+    r"|Zudem|Zum|Zur|Zusätzlich)"
+)
+
+
+def surname_initial_pattern(surname: str) -> str | None:
+    """The surname shortened to its initial after a form of address: "Herr K.", "Frau K.",
+    "Pat. K.".  Only the initial with its full stop is the match (group ``wert``).
+
+    "Herr K. Meier" is someone else, whose first name begins with K: a capitalised word
+    after the initial on the same line rules the match out, unless it is a word that begins
+    a sentence ("Herr K. Die Untersuchung ...")."""
+    initials = {f[0] for f in forms(surname) if f[:1].isalpha() and f[:1].isupper()}
+    if not initials:
+        return None
+    letter = "(?:" + "|".join(sorted(re.escape(i) for i in initials)) + ")"
+    return (rf"{L}{_ADDRESSED}\s+(?P<wert>{letter}\.)"
+            rf"(?![ \t]*(?!{_SENTENCE_STARTS}{R})[A-ZÄÖÜ][a-zäöüß])")
+
+
 def title_name_pattern(first_names: list[str], surname: str) -> str | None:
     """Name with optional academic titles in front ("Dr. med. Anna Schmidt", "Dr. Schmidt").
 

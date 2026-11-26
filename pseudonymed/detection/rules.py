@@ -49,11 +49,14 @@ def _rule(id_: str, muster: str | None, kind: Kind, pseudonym: str, priority: in
 
 
 def _name_rules(prefix: str, person: Person, pseudonym: str, role: Role) -> list[Rule]:
-    """Full name, surname, parts of a compound surname, first names and the birth name."""
+    """Full name, surname, the surname shortened to its initial after a form of address,
+    parts of a compound surname, first names and the birth name."""
     rules = _rule(f"{prefix}.vollname", v.full_name_pattern(person.first_names, person.surname),
                   Kind.NAME, pseudonym, 30, role)
     rules += _rule(f"{prefix}.nachname", v.name_pattern(person.surname), Kind.SURNAME,
                    pseudonym, 20, role)
+    rules += _rule(f"{prefix}.nachname.initial", v.surname_initial_pattern(person.surname),
+                   Kind.SURNAME, pseudonym, 5, role)
     for part in v.surname_parts(person.surname):
         rules += _rule(f"{prefix}.nachname.teil", v.name_pattern(part), Kind.SURNAME, pseudonym,
                        10, role)

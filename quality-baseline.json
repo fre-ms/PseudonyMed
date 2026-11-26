@@ -1,10 +1,10 @@
 {
  "radon": {
-  "blocks": 1554,
-  "mean_cc": 3.31,
+  "blocks": 1555,
+  "mean_cc": 3.32,
   "grade_histogram": {
    "A": 1294,
-   "B": 260
+   "B": 261
   },
   "functions_over_cc10": 0,
   "functions_over_cc20": 0,
@@ -44,10 +44,10 @@
    "pseudonymed/gui/reidentify_page.py": 40.85,
    "pseudonymed/detection/vocabulary.py": 41.48,
    "pseudonymed/pipeline/reading.py": 42.03,
-   "pseudonymed/detection/variants.py": 42.41,
    "pseudonymed/document/text_file.py": 42.57,
+   "pseudonymed/detection/variants.py": 42.99,
    "pseudonymed/cli/lists.py": 43.25,
-   "pseudonymed/detection/rules.py": 43.31,
+   "pseudonymed/detection/rules.py": 43.49,
    "pseudonymed/gui/vocabulary_page.py": 43.82,
    "pseudonymed/pipeline/finish.py": 43.92,
    "pseudonymed/pipeline/preparation.py": 44.14,
@@ -104,13 +104,13 @@
   "mi_min": 13.74
  },
  "complexipy": {
-  "functions": 1426,
+  "functions": 1427,
   "max_cognitive": 14,
   "functions_over_15": 0,
   "over_15": []
  },
  "structure": {
-  "functions": 1434,
+  "functions": 1435,
   "long_functions": 0,
   "long": [],
   "deeply_nested": 0,
@@ -147,7 +147,7 @@
  },
  "coverage": {
   "total_pct": 92.6,
-  "tests_passed": 647,
+  "tests_passed": 648,
   "suite_green": true,
   "by_module_pct": {
    "pseudonymed/cli/database.py": 76.3,
@@ -176,7 +176,7 @@
    "pseudonymed/gui/views.py": 92.1,
    "pseudonymed/detection/medical_terms.py": 92.3,
    "pseudonymed/gui/vocabulary_page.py": 92.4,
-   "pseudonymed/detection/variants.py": 92.7,
+   "pseudonymed/detection/variants.py": 92.5,
    "pseudonymed/pseudonyms/backup.py": 93.0,
    "pseudonymed/gui/control_page.py": 93.5,
    "pseudonymed/pseudonyms/patient_code.py": 93.7,

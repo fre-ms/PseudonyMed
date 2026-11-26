@@ -36,6 +36,22 @@ def test_longest_match_wins() -> None:
     assert text[a:b] == "Max Müller"
 
 
+def test_surname_as_an_initial_after_a_form_of_address() -> None:
+    """ "Herr M." is the patient Müller; "Herr M. Schmidt" is someone whose first name begins
+    with M, and "Morbus M." is no person at all."""
+    p = _patient()
+    rules = rules_for(p, PseudonymAssignment(p, "A"))
+    text = ("Da Herr M. zunehmend unruhig war, haben wir Herrn M. beobachtet. Pat. M. schlief. "
+            "Wir sahen Fr. M. Die Untersuchung blieb ohne Befund.\nDer Bruder, Herr M. Schmidt, "
+            "kam später. Ein Morbus M. liegt nicht vor, Herr K. war nicht da.")
+    found = [(text[a:b], r.id) for a, b, r in find_in_text(text, rules)]
+    assert found == [("M.", "name.nachname.initial")] * 4
+    oe = Patient(surname="Özdemir", first_name="Aylin", sex="w", birth_date=dt.date(1980, 3, 4))
+    found = [text[a:b] for text in ("Frau Ö. kam allein.", "Frau O. kam allein.")
+             for a, b, _r in find_in_text(text, rules_for(oe, PseudonymAssignment(oe, "B")))]
+    assert found == ["Ö.", "O."]
+
+
 def test_adjacent_matches_merge() -> None:
     p = _patient()
     doc = pymupdf.open()
