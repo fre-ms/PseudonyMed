@@ -16,18 +16,21 @@ the fallback when the database cannot be opened.
 
 Matching is case-insensitive, tolerates German inflection (-s, -n, -en, -e,
 -es, -er, -em, -ern), hyphenated compounds ("Parkinson-Syndrom") and umlaut
-transliteration; multi-word terms are matched as a whole.
+transliteration; multi-word terms are matched as a whole.  The matcher itself was written
+here and lives in lexcor now (:class:`lexcor.cover.Cover`), which other programs share;
+this module keeps what is PseudonyMed's: the lists, where they are stored, and the head
+nouns after which a name is an eponym.
 """
 
 from __future__ import annotations
 
 import csv
 import gzip
-import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from lexcor.cover import Cover
 
 from pseudonymed import environment
 from pseudonymed.core.text import say
@@ -35,11 +38,6 @@ from pseudonymed.core.text import say
 BASE = Path(__file__).resolve().parent.parent / "data" / "fachbegriffe_de.txt.gz"
 BODY_PARTS = Path(__file__).resolve().parent.parent / "data" / "koerperteile_de.txt"
 FINDINGS_TERMS = Path(__file__).resolve().parent.parent / "data" / "befundbegriffe_de.txt"
-_TOKEN = re.compile(r"[^\W\d_][\w\-]*|\d+[\w\-]*")
-_SUFFIXES = ("ern", "en", "es", "er", "em", "e", "n", "s")
-_TRANS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
-_BRACKET = re.compile(r"\s*\([^)]*\)\s*$")
-MAX_WORDS = 5
 # Head nouns after which the first part of a hyphenated term is an eponym that appears on
 # its own in reports ("Babinski-Zeichen" -> "Babinski positiv").  Anatomy and chemistry heads
 # are deliberately absent: "Müller-Gang" or "Berlin-Blau" must not protect the surname Müller
@@ -58,157 +56,41 @@ def data_folder() -> Path:
     return environment.data_folder() / "fachbegriffe"
 
 
-def _norm(word: str) -> str:
-    """Case-folded word without surrounding punctuation."""
-    return word.casefold().strip(" .,;:!?\"'()[]")
-
-
-def _forms(term: str) -> set[str]:
-    """The normalised term as written and with umlauts transliterated (never the empty string)."""
-    n = _norm(term)
-    return {n, n.translate(_TRANS)} - {""}
-
-
-def _leading_eponym(word: str) -> str | None:
-    """The eponym in front of an eponym head ("Babinski" of "Babinski-Zeichen"), else None.
-    Only two-part terms with a first part of four or more characters qualify: "Berlin-Blau"
-    has a chemistry head, and in "Konigsmark-Hollander-Berlin-Syndrom" the town matters more."""
-    parts = word.split("-")
-    if len(parts) == 2 and parts[1] in _EPONYM_HEADS and len(parts[0]) >= 4:
-        return parts[0]
-    return None
-
-
-def _follows(normed: list[str], i: int, sequence: tuple[str, ...]) -> bool:
-    """Do the normalised tokens from ``i`` on spell the phrase ``sequence``, each token as written
-    or with umlauts transliterated?"""
-    if i + len(sequence) > len(normed):
-        return False
-    return all(n == f or n.translate(_TRANS) == f
-               for n, f in zip(normed[i:i + len(sequence)], sequence, strict=True))
-
-
-def _fully_covered(text: str, a: int, b: int, spans: list[tuple[int, int]]) -> bool:
-    """Does every token of ``text[a:b]`` lie inside one of ``spans`` (phrases count as a
-    whole)?"""
-    return all(any(s[0] <= m.start() and m.end() <= s[1] for s in spans)
-               for m in _TOKEN.finditer(text, a, b))
-
-
-@dataclass
 class MedicalTerms:
-    """The merged vocabulary with its matcher."""
+    """The merged vocabulary with its matcher: lexcor's cover with PseudonyMed's eponym heads,
+    and the record of which list brought how many terms."""
 
-    single_words: set[str] = field(default_factory=set)
-    multi_words: dict[str, set[tuple[str, ...]]] = field(default_factory=dict)
-    sources: list[tuple[str, int]] = field(default_factory=list)
+    def __init__(self) -> None:
+        """Starts empty."""
+        self.cover = Cover(heads=_EPONYM_HEADS)
+        self.sources: list[tuple[str, int]] = []
 
     @property
     def count(self) -> int:
         """Number of terms held: single words plus whole phrases."""
-        return len(self.single_words) + sum(len(v) for v in self.multi_words.values())
+        return len(self.cover.single) + sum(len(v) for v in self.cover.phrases.values())
 
     def add(self, terms: Iterable[str], source: str = "") -> int:
         """Adds raw terms in both umlaut spellings (comments and entries under three characters
         skipped, a trailing bracket removed); returns how many were taken and records that
         count under ``source`` when one is given."""
-        n = 0
-        for raw in terms:
-            term = _BRACKET.sub("", raw.strip())
-            if len(term) < 3 or term.startswith("#"):
-                continue
-            for form in _forms(term):
-                self._remember(form)
-            n += 1
+        n = self.cover.add(t for t in terms if not t.strip().startswith("#"))
         if source:
             self.sources.append((source, n))
         return n
 
-    def _remember(self, form: str) -> None:
-        """Files one normalised form as a single word or, up to ``MAX_WORDS`` tokens, as a
-        whole phrase; parts of "Berliner Blau" must not protect "Berlin"."""
-        tokens = tuple(t for t in re.split(r"[\s/]+", form) if t)
-        if not tokens:
-            return
-        if len(tokens) == 1:
-            self._remember_single_word(tokens[0])
-        elif len(tokens) <= MAX_WORDS:
-            self.multi_words.setdefault(tokens[0], set()).add(tokens)
-
-    def _remember_single_word(self, word: str) -> None:
-        """Adds a single word and, for "Babinski-Zeichen", the eponym "Babinski" that reports
-        use on its own."""
-        self.single_words.add(word)
-        eponym = _leading_eponym(word)
-        if eponym:
-            self.single_words.add(eponym)
-
     def is_medical_term(self, word: str) -> bool:
         """Single word, inflected forms and hyphen parts included."""
-        return any(self._form_known(form) for form in _forms(word))
-
-    def _form_known(self, form: str) -> bool:
-        """Is one normalised form listed, an inflected form of a listed word, or a hyphenated
-        compound with a listed part ("Parkinson-Syndrom", "Herz-")?"""
-        if form in self.single_words or self._stemmed(form):
-            return True
-        if "-" in form and any(self._part_known(t) for t in form.split("-")):
-            return True
-        return form.endswith("-") and form[:-1] in self.single_words
-
-    def _part_known(self, part: str) -> bool:
-        """A hyphen part of at least three characters that is listed, inflected or not."""
-        return len(part) >= 3 and (part in self.single_words or self._stemmed(part))
-
-    def _stemmed(self, t: str) -> bool:
-        """Is ``t`` a listed word with a German inflection suffix on a stem of four or more
-        characters?"""
-        return any(t.endswith(s) and len(t) - len(s) >= 4 and t[: -len(s)] in self.single_words
-                   for s in _SUFFIXES)
+        return self.cover.is_term(word)
 
     def spans(self, text: str) -> list[tuple[int, int]]:
         """Character spans of medical terms in ``text`` (multi-word first, then single)."""
-        tokens = [(m.start(), m.end(), m.group(0)) for m in _TOKEN.finditer(text)]
-        normed = [_norm(w) for _a, _b, w in tokens]
-        occupied = [False] * len(tokens)
-        result: list[tuple[int, int]] = []
-        for i, (a, _b, _w) in enumerate(tokens):
-            n = self._phrase_length(normed, i)
-            if n:
-                result.append((a, tokens[i + n - 1][1]))
-                occupied[i:i + n] = [True] * n
-        result += [(a, b) for i, (a, b, w) in enumerate(tokens)
-                   if not occupied[i] and self._counts_alone(w)]
-        result.sort()
-        return result
-
-    def _phrase_length(self, normed: list[str], i: int) -> int:
-        """Token count of the longest listed phrase that starts at token ``i`` (0 when none);
-        the first token is looked up as written and with umlauts transliterated."""
-        candidates = self.multi_words.get(normed[i]) or self.multi_words.get(
-            normed[i].translate(_TRANS))
-        if not candidates:
-            return 0
-        for sequence in sorted(candidates, key=len, reverse=True):
-            if _follows(normed, i, sequence):
-                return len(sequence)
-        return 0
-
-    def _counts_alone(self, word: str) -> bool:
-        """Is a lone token a protected term?  Words of up to three letters count only when
-        they start with a capital: "hat" is a verb, "Ohr", "Arm" and "HAT" are terms."""
-        if len(word) <= 3 and not word[:1].isupper():
-            return False
-        return self.is_medical_term(word)
+        return self.cover.spans(text)
 
     def is_protected(self, text: str, a: int, b: int, spans: list[tuple[int, int]] | None = None,
                      whole: bool = False) -> bool:
         """Does ``text[a:b]`` touch a protected term (or, with ``whole``, consist of them)?"""
-        spans = self.spans(text) if spans is None else spans
-        touched = [s for s in spans if a < s[1] and b > s[0]]
-        if not touched:
-            return False
-        return not whole or _fully_covered(text, a, b, touched)
+        return self.cover.covers(text, a, b, spans, whole)
 
 
 # -- loading ---------------------------------------------------------------------------------------

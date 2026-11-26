@@ -1,10 +1,10 @@
 {
  "radon": {
-  "blocks": 1558,
-  "mean_cc": 3.31,
+  "blocks": 1547,
+  "mean_cc": 3.3,
   "grade_histogram": {
-   "A": 1297,
-   "B": 261
+   "A": 1291,
+   "B": 256
   },
   "functions_over_cc10": 0,
   "functions_over_cc20": 0,
@@ -32,7 +32,6 @@
    "pseudonymed/detection/number_words.py": 35.58,
    "pseudonymed/sources/carddav.py": 35.87,
    "pseudonymed/cli/contacts.py": 36.83,
-   "pseudonymed/detection/medical_terms.py": 38.31,
    "pseudonymed/pseudonyms/statistics.py": 38.41,
    "pseudonymed/detection/fuzzy.py": 38.8,
    "pseudonymed/cli/base.py": 39.36,
@@ -67,6 +66,7 @@
    "pseudonymed/pipeline/detect.py": 54.19,
    "pseudonymed/gui/list_page.py": 55.41,
    "pseudonymed/gui/main_window.py": 55.72,
+   "pseudonymed/detection/medical_terms.py": 56.05,
    "pseudonymed/pseudonyms/patient_code.py": 58.71,
    "pseudonymed/pipeline/output.py": 59.63,
    "pseudonymed/checks/report.py": 59.92,
@@ -104,13 +104,13 @@
   "mi_min": 13.74
  },
  "complexipy": {
-  "functions": 1430,
+  "functions": 1419,
   "max_cognitive": 14,
   "functions_over_15": 0,
   "over_15": []
  },
  "structure": {
-  "functions": 1438,
+  "functions": 1427,
   "long_functions": 0,
   "long": [],
   "deeply_nested": 0,
@@ -146,8 +146,8 @@
   "detail": []
  },
  "coverage": {
-  "total_pct": 92.7,
-  "tests_passed": 650,
+  "total_pct": 92.6,
+  "tests_passed": 647,
   "suite_green": true,
   "by_module_pct": {
    "pseudonymed/cli/database.py": 76.9,
@@ -165,6 +165,7 @@
    "pseudonymed/cli/base.py": 87.3,
    "pseudonymed/cli/documents.py": 87.5,
    "pseudonymed/working_state.py": 87.6,
+   "pseudonymed/detection/medical_terms.py": 87.9,
    "pseudonymed/sources/manual.py": 88.2,
    "pseudonymed/cli/system.py": 89.2,
    "pseudonymed/detection/codes.py": 89.3,
@@ -174,7 +175,6 @@
    "pseudonymed/pipeline/finish.py": 91.4,
    "pseudonymed/cli/contacts.py": 91.8,
    "pseudonymed/gui/views.py": 92.1,
-   "pseudonymed/detection/medical_terms.py": 92.3,
    "pseudonymed/gui/vocabulary_page.py": 92.4,
    "pseudonymed/detection/variants.py": 92.5,
    "pseudonymed/pseudonyms/backup.py": 93.0,

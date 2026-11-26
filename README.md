@@ -30,7 +30,7 @@ uv sync --extra ocr --extra codes --extra gui
 uv run pseudonymed --help
 ```
 
-Loading, clean-up and OCR come from [optdoc](https://github.com/fre-ms/optdoc), a package of its own that other applications share; uv installs the released tag that `pyproject.toml` names (`v0.1.0`).
+Loading, clean-up and OCR come from [optdoc](https://github.com/fre-ms/optdoc), and the matcher for medical vocabulary from [lexcor](https://github.com/fre-ms/lexcor): packages of their own that other applications share. uv installs the released tags that `pyproject.toml` names.
 
 On first start PseudonyMed creates the pseudonym database and the secret key in the user data folder (`pseudonymed config` shows where; `PSEUDONYMED_DATENORDNER` overrides the folder, for a portable installation on an encrypted stick for instance). Back the key up.
 
@@ -169,7 +169,7 @@ uv run --group build python packaging/build.py   # folder distribution plus smok
 
 `.github/workflows/release.yml` builds the three platforms on a tag `v*` and uploads the archives as artefacts.
 
-Layout: `pseudonymed/core` (data model), `document` (text files and transcripts, and the adapter to optdoc, which loads PDFs and images incl. HEIC, cleans them up and reads text layer and OCR), `detection` (rules, generic and label patterns, fuzzy OCR search, barcodes), `redaction` (redaction of text and pixels, clean-up, rasterising), `checks` (re-check incl. OCR, report, previews), `gui` (PySide6 pages over a Qt-free session model), `pseudonyms` (assignment, SQLite store, re-identification), `sources` (patient file, vCard reader, CardDAV client), `config.py` (configuration and keyring), `working_state.py` (saved working states), `pipeline/` (the pipeline, one module per phase), `cli/` (one module per command group). The identifiers are English; the files PseudonyMed writes (patient files, reports, working states, capsules, backups, settings) keep their German keys, translated at the boundary by the `STORED_KEYS` tables (`pseudonymed/core/stored.py`).
+Layout: `pseudonymed/core` (data model), `document` (text files and transcripts, and the adapter to optdoc, which loads PDFs and images incl. HEIC, cleans them up and reads text layer and OCR), `detection` (rules, generic and label patterns, fuzzy OCR search, barcodes; the medical vocabulary with its matcher from lexcor), `redaction` (redaction of text and pixels, clean-up, rasterising), `checks` (re-check incl. OCR, report, previews), `gui` (PySide6 pages over a Qt-free session model), `pseudonyms` (assignment, SQLite store, re-identification), `sources` (patient file, vCard reader, CardDAV client), `config.py` (configuration and keyring), `working_state.py` (saved working states), `pipeline/` (the pipeline, one module per phase), `cli/` (one module per command group). The identifiers are English; the files PseudonyMed writes (patient files, reports, working states, capsules, backups, settings) keep their German keys, translated at the boundary by the `STORED_KEYS` tables (`pseudonymed/core/stored.py`).
 
 ## Bundled data
 

@@ -1,4 +1,8 @@
-"""Helpers of the vocabulary matcher: eponym heads, phrase matching, whole-term cover, lists."""
+"""PseudonyMed's vocabulary over lexcor's matcher: what the adapter adds, and the lists.
+
+The matcher's inner workings (which first parts are eponyms, how phrases are followed, when
+a span is wholly covered) are tested in lexcor, where the matcher lives.
+"""
 
 from __future__ import annotations
 
@@ -10,58 +14,35 @@ import pytest
 from pseudonymed.detection import medical_terms as terms_module
 
 
-def test_eponym_front_part() -> None:
-    assert terms_module._leading_eponym("babinski-zeichen") == "babinski"
-    assert terms_module._leading_eponym("berlin-blau") is None  # chemistry head
-    assert terms_module._leading_eponym("konigsmark-hollander-berlin-syndrom") is None
-    assert terms_module._leading_eponym("abc-test") is None  # first part too short
-    assert terms_module._leading_eponym("parkinson") is None
-
-
-def test_follows_with_umlauts() -> None:
-    normed = ["morbus", "parkinson", "hüft-tep", "rechts"]
-    assert terms_module._follows(normed, 0, ("morbus", "parkinson"))
-    assert terms_module._follows(normed, 2, ("hueft-tep", "rechts"))
-    assert not terms_module._follows(normed, 1, ("parkinson", "links"))
-    assert not terms_module._follows(normed, 3, ("rechts", "oben"))  # runs past the end
-
-
-def test_fully_covered() -> None:
-    text = "Morbus Parkinson in Berlin"
-    spans = [(0, 16)]
-    assert terms_module._fully_covered(text, 0, 16, spans)
-    assert terms_module._fully_covered(text, 7, 16, spans)
-    assert not terms_module._fully_covered(text, 0, 26, spans)
-    assert terms_module._fully_covered(text, 16, 17, spans)  # no token in a bare space
-
-
-def test_remember_forms() -> None:
+def test_terms_are_taken_counted_and_traced_to_their_list() -> None:
     fb = terms_module.MedicalTerms()
     n = fb.add(["Bauch (Anatomie)", "# Kommentar", "ab", "Tabletten/Kapseln",
                 "eins zwei drei vier fünf sechs", "Trömner-Reflex"])
     assert n == 4  # the six-word phrase counts as taken but is too long to be filed
-    assert fb.single_words == {"bauch", "trömner-reflex", "troemner-reflex", "trömner", "troemner"}
-    assert fb.multi_words == {"tabletten": {("tabletten", "kapseln")}}
-    assert fb.sources == []
+    assert fb.cover.single == {"bauch", "trömner-reflex", "troemner-reflex", "trömner",
+                               "troemner"}
+    assert fb.cover.phrases == {"tabletten": {("tabletten", "kapseln")}}
+    assert fb.count == 6 and fb.sources == []
+    assert fb.add(["Herz", "# Kopf"], "Liste") == 1 and fb.sources == [("Liste", 1)]
 
 
-def test_phrase_length_longest_first() -> None:
+def test_the_eponym_heads_are_pseudonymeds() -> None:
     fb = terms_module.MedicalTerms()
-    fb.add(["Morbus Parkinson", "Morbus Parkinson Stadium III", "Hüft-TEP rechts"])
-    normed = ["morbus", "parkinson", "stadium", "iii", "hueft-tep", "rechts"]
-    assert fb._phrase_length(normed, 0) == 4
-    assert fb._phrase_length(normed[:2], 0) == 2
-    assert fb._phrase_length(normed, 4) == 2
-    assert fb._phrase_length(normed, 1) == 0
+    fb.add(["Babinski-Zeichen", "Lasègue-Manöver", "Berlin-Blau", "Müller-Gang"])
+    assert fb.is_medical_term("Babinski") and fb.is_medical_term("Lasègue")
+    # anatomy and chemistry heads protect neither the town nor the surname
+    assert not fb.is_medical_term("Berlin") and not fb.is_medical_term("Müller")
 
 
-def test_counts_short_words_individually() -> None:
+def test_protection_asks_the_matcher() -> None:
     fb = terms_module.MedicalTerms()
-    fb.add(["Ohr", "hat", "Bauch"])
-    assert fb._counts_alone("Ohr") and fb._counts_alone("HAT")
-    assert not fb._counts_alone("hat") and not fb._counts_alone("ohr")
-    assert fb._counts_alone("bauches")  # longer than three letters: case does not matter
-    assert not fb._counts_alone("Bauer")
+    fb.add(["Morbus Parkinson", "Ohr", "Bauch"])
+    text = "Morbus Parkinson in Berlin, das Ohr frei, ohr nicht, Bauches."
+    spans = fb.spans(text)
+    assert [text[a:b] for a, b in spans] == ["Morbus Parkinson", "Ohr", "Bauches"]
+    assert fb.is_protected(text, 0, 16, spans, whole=True)
+    assert fb.is_protected(text, 7, 26, spans) and not fb.is_protected(text, 7, 26, spans, True)
+    assert not fb.is_protected(text, 20, 26)
 
 
 def test_user_lists_and_loading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

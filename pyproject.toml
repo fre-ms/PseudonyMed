@@ -22,6 +22,8 @@ dependencies = [
   "pymupdf>=1.25,<2",
   # loading, clean-up, OCR, page text, structure: the document layer lives in optdoc
   "optdoc>=0.1.0",
+  # the matcher for the vocabulary that guesswork must leave alone: the term layer lives in lexcor
+  "lexcor>=0.1.0",
   "platformdirs>=4",
   "typer>=0.12",
 ]
@@ -66,6 +68,7 @@ quality = [
 [tool.uv.sources]
 # a released tag, not the working tree next door: PseudonyMed moves to a new optdoc on purpose
 optdoc = { git = "https://github.com/fre-ms/optdoc", tag = "v0.1.0" }
+lexcor = { git = "https://github.com/fre-ms/lexcor", tag = "v0.1.0" }
 
 [build-system]
 requires = ["hatchling"]

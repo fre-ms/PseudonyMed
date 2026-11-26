@@ -39,6 +39,7 @@ binaries += collect_dynamic_libs("pillow_heif")
 binaries += collect_dynamic_libs("zxingcpp")
 hiddenimports += collect_submodules("pseudonymed")
 hiddenimports += collect_submodules("optdoc")  # loading, clean-up, OCR: the document layer
+hiddenimports += collect_submodules("lexcor")  # the matcher for medical vocabulary
 hiddenimports += ["pillow_heif", "zxingcpp", "PIL.Image", "PIL.ImageFilter", "PIL.ImageOps",
                   "shapely", "cv2", "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]
 
