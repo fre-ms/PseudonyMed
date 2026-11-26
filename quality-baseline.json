@@ -1,10 +1,10 @@
 {
  "radon": {
-  "blocks": 1547,
+  "blocks": 1560,
   "mean_cc": 3.3,
   "grade_histogram": {
-   "A": 1291,
-   "B": 256
+   "A": 1302,
+   "B": 258
   },
   "functions_over_cc10": 0,
   "functions_over_cc20": 0,
@@ -23,8 +23,8 @@
    "pseudonymed/working_state.py": 31.47,
    "pseudonymed/gui/export_page.py": 31.57,
    "pseudonymed/cli/documents.py": 32.06,
-   "pseudonymed/cli/database.py": 32.49,
    "pseudonymed/gui/database_page.py": 32.72,
+   "pseudonymed/cli/database.py": 33.97,
    "pseudonymed/pseudonyms/store.py": 34.43,
    "pseudonymed/gui/patient_page.py": 34.78,
    "pseudonymed/gui/analysis_page.py": 34.87,
@@ -67,6 +67,7 @@
    "pseudonymed/gui/list_page.py": 55.41,
    "pseudonymed/gui/main_window.py": 55.72,
    "pseudonymed/detection/medical_terms.py": 56.05,
+   "pseudonymed/detection/handover.py": 57.93,
    "pseudonymed/pseudonyms/patient_code.py": 58.71,
    "pseudonymed/pipeline/output.py": 59.63,
    "pseudonymed/checks/report.py": 59.92,
@@ -104,13 +105,13 @@
   "mi_min": 13.74
  },
  "complexipy": {
-  "functions": 1419,
+  "functions": 1429,
   "max_cognitive": 14,
   "functions_over_15": 0,
   "over_15": []
  },
  "structure": {
-  "functions": 1427,
+  "functions": 1437,
   "long_functions": 0,
   "long": [],
   "deeply_nested": 0,
@@ -147,11 +148,11 @@
  },
  "coverage": {
   "total_pct": 92.6,
-  "tests_passed": 647,
+  "tests_passed": 651,
   "suite_green": true,
   "by_module_pct": {
-   "pseudonymed/cli/database.py": 76.9,
    "pseudonymed/gui/app.py": 77.3,
+   "pseudonymed/cli/database.py": 77.8,
    "pseudonymed/cli/lists.py": 80.7,
    "pseudonymed/gui/analysis_page.py": 80.8,
    "pseudonymed/gui/database_page.py": 81.2,
@@ -198,6 +199,7 @@
    "pseudonymed/pipeline/text_files.py": 96.5,
    "pseudonymed/detection/identifiers.py": 96.7,
    "pseudonymed/sources/vcf.py": 96.7,
+   "pseudonymed/detection/handover.py": 96.8,
    "pseudonymed/detection/vocabulary.py": 97.0,
    "pseudonymed/pipeline/preparation.py": 97.0,
    "pseudonymed/detection/lexicon.py": 97.3,

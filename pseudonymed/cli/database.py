@@ -49,6 +49,51 @@ def database_status(store: StoreOption = None) -> None:
         typer.echo(f"{feature:<{width}}  {value}")
 
 
+@command(database_app, "auslagern", "hand-over", help=w(
+    "Fachvokabular und Identifikatoren als Pakete in die Ablagen von lexterm und lexident"
+    " schreiben\n(eine Kopie: PseudonyMeds Tabellen bleiben, wie sie sind).",
+    "Write the vocabulary and the identifiers as packages into the stores of lexterm and"
+    " lexident (a copy: PseudonyMed's tables stay as they are)."))
+def hand_over(
+    target: Annotated[Path | None, typer.Option(
+        *flags("--ziel"), help=w("Ordner der beiden Ablagen (Standard: Datenordner von lexterm"
+                                 " und lexident).",
+                                 "Folder of the two stores (default: the data folder of"
+                                 " lexterm and lexident)."))] = None,
+    store: StoreOption = None,
+    yes: Annotated[bool, typer.Option(*flags("--ja"), help=w("Ohne Rückfrage.",
+                                                             "Without asking for confirmation."))]
+    = False,
+) -> None:
+    """Copy the vocabulary and the identifier rows into lexterm's and lexident's stores,
+    check what was written and list the packages."""
+    import lexcor
+
+    from pseudonymed.detection import handover
+
+    folder = target if target is not None else lexcor.store.data_folder()
+    if not yes and not typer.confirm(
+            w(f"Fachvokabular und Identifikatoren nach {folder} schreiben?",
+              f"Write the vocabulary and the identifiers to {folder}?")):
+        raise typer.Exit(code=1)
+    try:
+        report = handover.hand_over(folder, store)
+    except (handover.HandoverError, lexcor.StoreError, OSError) as e:
+        abort(error_message(e), cause=e)
+    for written in (report.vocabulary, report.identifiers):
+        typer.echo(str(written.store))
+        if written.kept is not None:
+            typer.echo(w(f"  vorher gesichert als {written.kept.name}",
+                         f"  kept as it was in {written.kept.name}"))
+        for title, concepts, terms in written.packages:
+            typer.echo(f"  {terms:>7}  {title}" + ("" if terms == concepts else w(
+                f"  ({concepts} Einträge)", f"  ({concepts} entries)")))
+    typer.echo(w("Geprüft: Die Ablagen enthalten, was PseudonyMed hält. PseudonyMed liest"
+                 " weiter seine eigenen Tabellen.",
+                 "Checked: the stores hold what PseudonyMed holds. PseudonyMed goes on"
+                 " reading its own tables."))
+
+
 @command(database_app, "zusatzdaten", "extra-data",
     help=w("Daten laden, die PseudonyMed nicht mitliefern darf, direkt aus der Quelle in die"
            " eigene\nDatenbank (bisher: Krankenanstalten in Österreich, BMASGPK).",
