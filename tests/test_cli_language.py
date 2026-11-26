@@ -115,6 +115,30 @@ def test_both_names_work_in_either_language(tmp_path: Path) -> None:
     assert english.returncode == 0 and "Key present" in english.stdout, english.stdout
 
 
+def test_the_english_line_names_the_english_values(tmp_path: Path) -> None:
+    """Help, defaults and messages name the words of the language; both words are taken."""
+    english = _run(["pseudonymise", "--help"], tmp_path, "en").stdout
+    for words in ("'year'", "'age'", "never.", "keep.", "tesseract or off.", "or image",
+                  "[default: year]", "[default: redact]"):
+        assert words in english, (words, english)
+    for words in ("[default: jahr]", "immer", "(off)", "'alter'"):
+        assert words not in english, words
+    german = _run(["pseudonymisieren", "--help"], tmp_path, "de").stdout
+    assert "'jahr'" in german and "[default: jahr]" in german and "'year'" not in german
+    document = tmp_path / "x.txt"
+    document.write_text("x", encoding="utf-8")
+    for spoken, option, message in (
+            ("en", "--date", "--date must be 'year' or 'age'."),
+            ("de", "--date", "--datum muss 'jahr' oder 'alter' sein.")):
+        run = _run(["pseudonymise", str(document), "--patient", str(document), option, "x"],
+                   tmp_path, spoken)
+        assert run.returncode == 1 and message in run.stderr, run.stderr
+    run = _run(["database", "import", str(document), "--mode", "x"], tmp_path, "en")
+    assert run.returncode == 1 and "--mode must be 'replace' or 'merge'." in run.stderr
+    run = _run(["database", "extra-data", "x"], tmp_path, "en")
+    assert run.returncode == 2 and "hospitals-at" in run.stderr
+
+
 def test_a_run_reports_in_english(tmp_path: Path, report_pdf: Path, patient: Patient) -> None:
     patient_file = tmp_path / "patient.json"
     patient_file.write_text(json.dumps(patient.as_dict(), ensure_ascii=False), encoding="utf-8")

@@ -109,7 +109,7 @@ records on Bloom-filter encodings of the names (Schnell, Bachteler & Reiher
 not needed for a single local store and is not implemented.
 
 The previous scheme, a running letter (`Patient A`, `B`, …), remains
-available with `--schema buchstabe`; existing entries keep their identifier
+available with `--schema letter`; existing entries keep their identifier
 whatever the scheme.
 
 ## 3 Streets and towns

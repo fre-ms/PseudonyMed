@@ -8,7 +8,9 @@ the core's messages and reports go through :func:`shown` and :func:`error_messag
 Commands, groups and options answer to a German and an English name in both languages,
 so that scripts run anywhere: the help lists the commands under the names of its
 language (the others work hidden), and every option shows both names, its language's
-first (:func:`command`, :func:`add_group`, :func:`flags`).
+first (:func:`command`, :func:`add_group`, :func:`flags`).  An option that takes one of a
+few words answers to the German and the English word alike (:func:`choice`); the help names
+the words of its language.
 """
 
 from __future__ import annotations
@@ -110,6 +112,31 @@ def flag(name: str) -> str:
             if de_part == name:
                 return en_part
     return name
+
+
+# the German words that options take as their value, and the English ones that stand for them
+VALUES_EN = {
+    "alter": "age", "anrede": "salutation", "aus": "off", "bild": "image",
+    "buchstabe": "letter", "ersetzen": "replace", "immer": "always", "jahr": "year",
+    "kliniken-at": "hospitals-at", "lassen": "keep", "liste": "list", "nie": "never",
+    "schwaerzen": "redact", "vollname": "full-name", "zusammenfuehren": "merge",
+}
+
+
+def value_name(word: str) -> str:
+    """A value of an option as the command line's language calls it (help, defaults,
+    messages)."""
+    return VALUES_EN.get(word, word) if english(LANGUAGE) else word
+
+
+def german(given: str, allowed: tuple[str, ...]) -> str:
+    """The word the core knows for a value given in either language: the one of ``allowed``
+    whose English word was given, every other value as it came."""
+    if given not in allowed:
+        for word in allowed:
+            if VALUES_EN.get(word) == given:
+                return word
+    return given
 
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -246,7 +273,7 @@ NumberOption = Annotated[int | None, typer.Option(
                            "Number of the match when there are several."))]
 SchemaOption = Annotated[
     str, typer.Option("--schema", help=w("Pseudonymschema: 'hash' (Standard) oder 'buchstabe'.",
-                                         "Pseudonym scheme: 'hash' (default) or 'buchstabe'."))
+                                         "Pseudonym scheme: 'hash' (default) or 'letter'."))
 ]
 NewOption = Annotated[
     bool, typer.Option(*flags("--neu"), help=w("Bei unsicherem Abgleich als neue Person anlegen.",
@@ -267,22 +294,27 @@ def abort(message: str, code: int = 1, cause: BaseException | None = None) -> No
     raise typer.Exit(code=code)
 
 
-def check_choice(option: str, value: str, allowed: tuple[str, ...]) -> None:
-    """Stop with "--option muss 'a', 'b' oder 'c' sein." unless ``value`` is one of them."""
-    if value in allowed:
-        return
-    quoted = [f"'{a}'" for a in allowed]
+def choice(option: str, given: str, allowed: tuple[str, ...]) -> str:
+    """The value of an option that takes one of a few words, as the core knows it: the
+    German word, whether that or its English one was given.  Any other value stops the
+    command with "--option muss 'a', 'b' oder 'c' sein."."""
+    word = german(given, allowed)
+    if word in allowed:
+        return word
+    quoted = [f"'{value_name(a)}'" for a in allowed]
     option = flag(option)
     abort(w(f"{option} muss {', '.join(quoted[:-1])} oder {quoted[-1]} sein.",
             f"{option} must be {', '.join(quoted[:-1])} or {quoted[-1]}."))
 
 
+def scheme(schema: str) -> str:
+    """The pseudonym scheme as the store knows it; an unknown one ends the command."""
+    return choice("--schema", schema, SCHEMATA)
+
+
 def open_store(path: Path | None, schema: str = "hash") -> PseudonymStore:
     """The pseudonym store at ``path`` (default location without), with a valid schema."""
-    if schema not in SCHEMATA:
-        abort(w(f"--schema muss eines von {', '.join(SCHEMATA)} sein.",
-                f"--schema must be one of {', '.join(SCHEMATA)}."))
-    return PseudonymStore(path, schema=schema)
+    return PseudonymStore(path, schema=scheme(schema))
 
 
 def matching_decision(new: bool, same: str | None) -> str | None:

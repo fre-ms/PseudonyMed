@@ -14,10 +14,13 @@ from pseudonymed.cli.base import (
     StoreOption,
     abort,
     add_group,
+    choice,
     command,
     error_message,
     flags,
+    german,
     shown,
+    value_name,
     w,
 )
 from pseudonymed.pseudonyms.store import (
@@ -53,7 +56,7 @@ def database_status(store: StoreOption = None) -> None:
            " database (so far: hospitals in Austria, BMASGPK)."))
 def load_extra_data(
     name: Annotated[str, typer.Argument(help=w("Welche Zusatzdaten: kliniken-at",
-                                               "Which extra data: kliniken-at"))],
+                                               "Which extra data: hospitals-at"))],
     file: Annotated[Path | None, typer.Option(
         *flags("--datei"), help=w("Excel-Mappe des Ministeriums statt Abruf über das Netz",
                                   "The ministry's Excel workbook instead of fetching it over the"
@@ -64,9 +67,9 @@ def load_extra_data(
     from pseudonymed.detection import extra_data as extra_data_mod
     from pseudonymed.detection.vocabulary import Vocabulary
 
-    if name != "kliniken-at":
+    if german(name, ("kliniken-at",)) != "kliniken-at":
         raise typer.BadParameter(w("bekannt ist nur: kliniken-at",
-                                   "the only one known is kliniken-at"))
+                                   "the only one known is hospitals-at"))
     typer.echo(w(extra_data_mod.CLINICS_AT_NOTE,
                  "Source: Federal Ministry of Labour, Social Affairs, Health, Care and Consumer"
                  " Protection (BMASGPK), list of hospitals in Austria. The ministry permits"
@@ -174,8 +177,8 @@ def import_database(
     store: StoreOption = None,
     mode: Annotated[str, typer.Option(*flags("--modus"),
                                       help=w("ersetzen oder zusammenfuehren.",
-                                             "ersetzen (replace) or zusammenfuehren (merge)."))]
-    = "ersetzen",
+                                             "replace or merge."))]
+    = value_name("ersetzen"),
     passphrase: Annotated[str | None, typer.Option(
         "--passphrase", envvar=environment.names("SICHERUNG_PASSPHRASE"),
         help=w("Passphrase des Archivs (sonst Abfrage, falls verschlüsselt).",
@@ -193,9 +196,7 @@ def import_database(
     """Check a backup archive, ask for confirmation and replace or merge the local store."""
     from pseudonymed.pseudonyms import backup as backup_mod
 
-    if mode not in backup_mod.MODES:
-        abort(w(f"--modus muss eines von {', '.join(backup_mod.MODES)} sein.",
-                f"--mode must be one of {', '.join(backup_mod.MODES)}."))
+    mode = choice("--modus", mode, backup_mod.MODES)
     if passphrase is None and not archive.read_bytes().startswith(b"PK"):
         passphrase = typer.prompt(w("Passphrase des Archivs", "Passphrase of the archive"),
                                   hide_input=True)

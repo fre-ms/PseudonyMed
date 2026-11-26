@@ -13,7 +13,9 @@ from pseudonymed.cli.base import (
     command,
     error_message,
     flags,
+    german,
     list_metavar,
+    value_name,
     w,
 )
 
@@ -159,8 +161,8 @@ def import_medical_terms(
                                       help=w("Name der Liste im Datenordner.",
                                              "Name of the list in the data folder."))],
     format_: Annotated[str, typer.Option("--format", help=w("liste, csv oder mesh-xml.",
-                                                            "liste, csv or mesh-xml."))]
-    = "liste",
+                                                            "list, csv or mesh-xml."))]
+    = value_name("liste"),
     column: Annotated[int, typer.Option(*flags("--spalte"),
                                         help=w("Spalte (0-basiert) bei csv.",
                                                "Column (0-based) for csv."))] = 0,
@@ -173,7 +175,8 @@ def import_medical_terms(
     from pseudonymed.detection import medical_terms as terms_module
 
     try:
-        target, n = terms_module.import_file(file, name, format_, column, delimiter)
+        target, n = terms_module.import_file(file, name, german(format_, ("liste",)), column,
+                                             delimiter)
     except (ValueError, OSError) as e:
         abort(error_message(e), cause=e)
     count = terms_module.standard().count

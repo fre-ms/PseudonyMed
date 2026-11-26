@@ -84,6 +84,47 @@ def test_round_trip_via_cli(tmp_path: Path, report_pdf: Path, patient: Patient) 
     assert r.exit_code == 0 and _code(r.output) == k  # existing entry wins over the scheme
 
 
+def test_values_answer_to_their_german_and_their_english_word(
+        tmp_path: Path, report_pdf: Path, patient: Patient) -> None:
+    """An option that takes one of a few words takes the English word like the German one."""
+    from pseudonymed.cli import base
+
+    assert base.german("letter", ("hash", "buchstabe")) == "buchstabe"
+    assert base.german("letter", ("a4", "letter", "bild")) == "letter"  # a paper size itself
+    assert base.german("image", ("bild",)) == "bild" and base.german("x", ("bild",)) == "x"
+    assert base.choice("--datum", "age", ("jahr", "alter")) == "alter"
+    assert base.choice("--datum", "alter", ("jahr", "alter")) == "alter"
+
+    pfile = _patient_file(tmp_path, patient)
+    store = tmp_path / "store.sqlite"
+    texts = []
+    for folder, words in (("de", ["--datum", "alter", "--vorschau", "nie", "--unlesbar",
+                                  "lassen", "--aufbereiten", "aus", "--ocr", "aus", "--papier",
+                                  "bild", "--schema", "buchstabe"]),
+                          ("en", ["--date", "age", "--preview", "never", "--unreadable",
+                                  "keep", "--clean-up", "off", "--ocr", "off", "--paper",
+                                  "image", "--schema", "letter"])):
+        r = runner.invoke(app, ["pseudonymisieren", str(report_pdf), "--patient", str(pfile),
+                                "--speicher", str(store), "--ziel", str(tmp_path / folder),
+                                *words])
+        assert r.exit_code == 0, r.output
+        texts.append((tmp_path / folder / "befund_pseudonym.txt").read_text(encoding="utf-8"))
+    assert texts[0] == texts[1] and "[Alter " in texts[0] and "Patient A" in texts[0]
+
+    letter = tmp_path / "brief.txt"
+    letter.write_text("Patient A kam.", encoding="utf-8")
+    forms = [runner.invoke(app, ["rueckersetzen", str(letter), "--kennung", "A", "--form", form,
+                                 "--speicher", str(store)]) for form in ("anrede", "salutation")]
+    assert forms[0].exit_code == forms[1].exit_code == 0, forms[1].output
+    assert forms[0].output == forms[1].output and patient.surname in forms[1].output
+    r = runner.invoke(app, ["rueckersetzen", str(letter), "--kennung", "A", "--form", "x",
+                            "--speicher", str(store)])
+    assert r.exit_code == 1 and "--form muss 'vollname' oder 'anrede' sein." in r.output
+    r = runner.invoke(app, ["datenbank", "import", str(letter), "--modus", "x", "--speicher",
+                            str(store)])
+    assert r.exit_code == 1 and "'ersetzen' oder 'zusammenfuehren'" in r.output
+
+
 def test_template_and_config(tmp_path: Path) -> None:
     r = runner.invoke(app, ["vorlage"])
     assert r.exit_code == 0 and json.loads(r.output)["nachname"] == ""

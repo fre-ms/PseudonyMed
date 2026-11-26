@@ -25,16 +25,19 @@ from pseudonymed.cli.base import (
     VcfOption,
     abort,
     app,
-    check_choice,
+    choice,
     command,
     error_message,
     flags,
+    german,
     list_metavar,
     matching_decision,
     open_store,
     report_uncertain,
     resolve_patient,
+    scheme,
     shown,
+    value_name,
     w,
 )
 from pseudonymed.config import (
@@ -95,17 +98,20 @@ def _load_recipient(recipient: str | None) -> Certificate | None:
     return certificate
 
 
-def _check_choices(paper: str, unreadable: str, date: str, preview: str,
-                   clean_up: str) -> None:
-    """End the command when one of the free-text options holds an unknown value."""
+def _choices(paper: str, unreadable: str, date: str, preview: str, clean_up: str,
+             ocr: str) -> tuple[str, str, str, str, str, str]:
+    """The options that take one of a few words, each as the core knows it (the German word,
+    whether that or its English one was given); an unknown value ends the command."""
+    paper = german(paper, ("bild",))
     try:
         optdoc_adapter.paper_size(paper)
     except ValueError as e:
         abort(error_message(e), cause=e)
-    check_choice("--unlesbar", unreadable, ("schwaerzen", "lassen"))
-    check_choice("--datum", date, ("jahr", "alter"))
-    check_choice("--vorschau", preview, ("auto", "immer", "nie"))
-    check_choice("--aufbereiten", clean_up, ("auto", "aus"))
+    return (paper, choice("--unlesbar", unreadable, ("schwaerzen", "lassen")),
+            choice("--datum", date, ("jahr", "alter")),
+            choice("--vorschau", preview, ("auto", "immer", "nie")),
+            choice("--aufbereiten", clean_up, ("auto", "aus")),
+            german(ocr, ("aus",)))  # an unknown engine is the reader's to refuse
 
 
 def _recipient_fields(certificate: Certificate | None) -> tuple[str, str]:
@@ -236,7 +242,7 @@ def pseudonymise(
         *flags("--ziel", "-z"), help=w("Zielordner.", "Target folder."))] = None,
     date: Annotated[str, typer.Option(
         *flags("--datum"), help=w("Geburtsdatum als 'jahr' oder 'alter'.",
-                                  "Date of birth as 'jahr' (year) or 'alter' (age)."))] = "jahr",
+                                  "Date of birth as 'year' or 'age'."))] = value_name("jahr"),
     rasterise: Annotated[bool, typer.Option(
         *flags("--rastern"), help=w("Ausgabe vollständig rastern.",
                                     "Rasterise the output completely."))] = False,
@@ -264,20 +270,19 @@ def pseudonymise(
     same: SameOption = None,
     ocr: Annotated[str, typer.Option(
         "--ocr", help=w("OCR für Scans/Fotos: auto, rapidocr, tesseract oder aus.",
-                        "OCR for scans/photos: auto, rapidocr, tesseract or aus (off)."))]
+                        "OCR for scans/photos: auto, rapidocr, tesseract or off."))]
     = "auto",
     codes: Annotated[bool, typer.Option(
         *flags("--codes/--keine-codes"), help=w("Barcodes und QR-Codes schwärzen.",
                                                 "Redact barcodes and QR codes."))] = True,
     preview: Annotated[str, typer.Option(
         *flags("--vorschau"), help=w("Vorschaubilder: auto (nur bei OCR), immer oder nie.",
-                                     "Preview images: auto (only with OCR), immer (always) or nie"
-                                     " (never)."))] = "auto",
+                                     "Preview images: auto (only with OCR), always or"
+                                     " never."))] = "auto",
     unreadable: Annotated[str, typer.Option(
         *flags("--unlesbar"), help=w("Von der OCR nicht lesbare Zeilen: schwaerzen oder lassen.",
-                                     "Lines the OCR cannot read: schwaerzen (redact) or lassen"
-                                     " (keep)."))]
-    = "schwaerzen",
+                                     "Lines the OCR cannot read: redact or keep."))]
+    = value_name("schwaerzen"),
     ner: Annotated[bool, typer.Option(
         *flags("--ner/--kein-ner"),
         help=w("Unbekannte Personen und Orte per NER suchen (Extra 'ner').",
@@ -327,12 +332,12 @@ def pseudonymise(
         help=w("Scans und Fotos vor der OCR aufbereiten (begradigen, Hintergrund,"
                " Hochskalieren): auto oder aus.",
                "Clean up scans and photos before the OCR (straighten, background, upscale):"
-               " auto or aus (off)."))] = "auto",
+               " auto or off."))] = "auto",
     paper: Annotated[str, typer.Option(
         *flags("--papier"),
         help=w("Seitengröße für Fotos und Bilder: a4, a5, a3, letter, legal oder bild"
                " (so groß wie das Bild).",
-               "Paper size for photos and images: a4, a5, a3, letter, legal or bild"
+               "Paper size for photos and images: a4, a5, a3, letter, legal or image"
                " (as large as the image)."))] = "a4",
     tables: Annotated[bool, typer.Option(
         *flags("--tabellen/--keine-tabellen"),
@@ -393,7 +398,9 @@ def pseudonymise(
     """Pseudonymise every input (document, text or saved working state) for one patient
     and print its report; exit code 2 when an input was not released."""
     certificate = _load_recipient(recipient)
-    _check_choices(paper, unreadable, date, preview, clean_up)
+    paper, unreadable, date, preview, clean_up, ocr = _choices(
+        paper, unreadable, date, preview, clean_up, ocr)
+    schema = scheme(schema)
     states = {file: state_mod.is_working_state(file) for file in dateien}
     if certificate and any(states.values()):
         abort(w("Ein Arbeitsstand lässt sich nicht für einen Empfänger abschließen"
@@ -565,8 +572,8 @@ def reidentify(
                                         "Part of the patient's name."))] = None,
     form: Annotated[str, typer.Option(
         "--form", help=w("'vollname' oder 'anrede'.",
-                         "'vollname' (full name) or 'anrede' (form of address)."))]
-    = "vollname",
+                         "'full-name' or 'salutation' (Herr or Frau with the surname)."))]
+    = value_name("vollname"),
     output: Annotated[Path | None, typer.Option(
         *flags("--ausgabe", "-o"), help=w("Zieldatei.", "Target file."))] = None,
     store: StoreOption = None,
@@ -591,7 +598,7 @@ def reidentify(
     the mapping from the local store or from a sender's capsule."""
     from pseudonymed.pseudonyms.reidentification import reidentify as _reidentify
 
-    check_choice("--form", form, ("vollname", "anrede"))
+    form = choice("--form", form, ("vollname", "anrede"))
     if capsule is not None:
         info, mapping, known = _mapping_from_capsule(capsule, private_key, passphrase, store)
     elif code or search:

@@ -346,7 +346,7 @@ def import_file(path: Path, name: str, format_: str = "liste", column: int = 0,
         terms = _read_list(path)
     else:
         raise ValueError(say(f"Unbekanntes Format: {format_!r} (liste, csv, mesh-xml)",
-                             f"Unknown format: {format_!r} (liste, csv, mesh-xml)"))
+                             f"Unknown format: {format_!r} (list, csv, mesh-xml)"))
     from pseudonymed.detection import vocabulary as vocab_mod
 
     with vocab_mod.Vocabulary() as v:
