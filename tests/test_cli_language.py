@@ -37,6 +37,13 @@ def _run(arguments: list[str], tmp_path: Path, spoken: str | None,
     return run
 
 
+def _flat(help_text: str) -> str:
+    """The help as one run of words: the frames of its panels out, wrapped lines joined.
+    Where a line breaks depends on the terminal (Windows gives the help one column less),
+    so words a test looks for may stand on two lines."""
+    return " ".join(re.sub(r"[│╭╮╰╯─]", " ", help_text).split())
+
+
 def test_output_that_is_not_utf8_replaces_instead_of_failing(tmp_path: Path) -> None:
     """A run whose output is cp1252 (a redirected Windows console) still ends normally."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
@@ -118,15 +125,17 @@ def test_both_names_work_in_either_language(tmp_path: Path) -> None:
     assert english.returncode == 0 and "Key present" in english.stdout, english.stdout
 
 
-def test_the_english_line_names_the_english_values(tmp_path: Path) -> None:
-    """Help, defaults and messages name the words of the language; both words are taken."""
-    english = _run(["pseudonymise", "--help"], tmp_path, "en").stdout
+@pytest.mark.parametrize("columns", [100, 99])
+def test_the_english_line_names_the_english_values(tmp_path: Path, columns: int) -> None:
+    """Help, defaults and messages name the words of the language; both words are taken.
+    At 99 columns the help wraps as it does on Windows at 100."""
+    english = _flat(_run(["pseudonymise", "--help"], tmp_path, "en", columns).stdout)
     for words in ("'year'", "'age'", "never.", "keep.", "tesseract or off.", "auto or off.",
                   "[default: year]", "[default: redact]"):
         assert words in english, (words, english)
     for words in ("[default: jahr]", "immer", "(off)", "'alter'"):
         assert words not in english, words
-    german = _run(["pseudonymisieren", "--help"], tmp_path, "de").stdout
+    german = _flat(_run(["pseudonymisieren", "--help"], tmp_path, "de", columns).stdout)
     assert "'jahr'" in german and "[default: jahr]" in german and "'year'" not in german
     document = tmp_path / "x.txt"
     document.write_text("x", encoding="utf-8")
