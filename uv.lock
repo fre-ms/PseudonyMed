@@ -839,21 +839,21 @@ wheels = [
 
 [[package]]
 name = "lexcor"
-version = "0.2.1"
-source = { git = "https://github.com/fre-ms/lexcor?tag=v0.2.1#28fa1c2534e0f08223a7202080462b52fefd7ea7" }
+version = "0.2.5"
+source = { git = "https://github.com/fre-ms/lexcor?tag=v0.2.5#88d5f4319151b0023553db04286c502ceaa19fa6" }
 
 [[package]]
 name = "lexident"
-version = "0.2.1"
-source = { git = "https://github.com/fre-ms/lexident?tag=v0.2.1#a64d766fca0ff57e9ddd47c2ea830cb67b96dd4b" }
+version = "0.2.2"
+source = { git = "https://github.com/fre-ms/lexident?tag=v0.2.2#ecf4465170af23378dfbadbe411c0df5b51879d5" }
 dependencies = [
     { name = "lexcor" },
 ]
 
 [[package]]
 name = "lexterm"
-version = "0.2.1"
-source = { git = "https://github.com/fre-ms/lexterm?tag=v0.2.1#05d30cdb3f77ae0dc593348634e1c3be64b6af77" }
+version = "0.2.5"
+source = { git = "https://github.com/fre-ms/lexterm?tag=v0.2.5#b6618d224c2f7d25b8e74574a8139f7729550e6a" }
 dependencies = [
     { name = "lexcor" },
 ]
@@ -1721,9 +1721,9 @@ quality = [
 requires-dist = [
     { name = "de-core-news-md", marker = "extra == 'ner'", url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_md-3.8.0/de_core_news_md-3.8.0-py3-none-any.whl" },
     { name = "keyring", marker = "extra == 'carddav'", specifier = ">=25" },
-    { name = "lexcor", git = "https://github.com/fre-ms/lexcor?tag=v0.2.1" },
-    { name = "lexident", git = "https://github.com/fre-ms/lexident?tag=v0.2.1" },
-    { name = "lexterm", git = "https://github.com/fre-ms/lexterm?tag=v0.2.1" },
+    { name = "lexcor", git = "https://github.com/fre-ms/lexcor?tag=v0.2.5" },
+    { name = "lexident", git = "https://github.com/fre-ms/lexident?tag=v0.2.2" },
+    { name = "lexterm", git = "https://github.com/fre-ms/lexterm?tag=v0.2.5" },
     { name = "optdoc", git = "https://github.com/fre-ms/optdoc?tag=v0.1.0" },
     { name = "optdoc", extras = ["ocr"], marker = "extra == 'ocr'", git = "https://github.com/fre-ms/optdoc?tag=v0.1.0" },
     { name = "pillow", marker = "extra == 'codes'", specifier = ">=10" },
