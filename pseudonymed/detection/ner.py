@@ -8,6 +8,11 @@ text; those hits get their own reproducible pseudonyms ("Person K7Q4MX",
 re-check, and medical eponyms (Alzheimer, Parkinson, Babinski ...) are
 excluded; everything it finds is shown in the review step for a decision.
 
+What context says outweighs every list: a word after a salutation, a title or a kinship word
+("Dr. Becker", "Frau Iris Nagel") is a person, and the name of a German municipality after a
+preposition of place ("aus Pirna", "in Essen") is a place, even where an eponym or a protected
+medical term has the same spelling.  Without such context a list still decides.
+
 Install: ``uv sync --extra ner`` and a model, for example
 ``uv pip install
 https://github.com/explosion/spacy-models/releases/download/de_core_news_md-3.8.0/de_core_news_md-3.8.0-py3-none-any.whl``.
@@ -36,24 +41,35 @@ _TITLES = {"dr", "prof", "med", "dent", "phil", "pd", "dipl", "univ", "herr", "h
            "fr", "hr", "mr", "mrs", "ms", "kollege", "kollegin", "ehefrau", "ehemann", "gattin",
            "gatte", "tochter", "sohn", "mutter", "vater", "schwester", "bruder", "partner",
            "partnerin", "betreuer", "betreuerin", "patient", "patientin", "pat"}
-# Diseases, signs, scores and syndromes named after people: not patients.
+# Diseases, signs, scores and syndromes named after people: not patients.  Only names that
+# are rare as names of people here; an eponym that is a common name ("Becker", "Weber",
+# "Hoffmann") is no reason to leave a person unredacted (see RETIRED_EPONYMS).
 EPONYMS = {
-    "alzheimer", "parkinson", "huntington", "crohn", "hodgkin", "basedow", "hashimoto", "wilson",
+    "alzheimer", "parkinson", "huntington", "crohn", "hodgkin", "basedow", "hashimoto",
     "bechterew", "dupuytren", "addison", "cushing", "down", "asperger", "tourette", "korsakow",
-    "wernicke", "broca", "babinski", "romberg", "lasègue", "lasegue", "glasgow", "barthel",
-    "hamilton", "beck", "epworth", "apgar", "rankin", "trendelenburg", "kernig", "brudzinski",
-    "hoffmann", "tinel", "phalen", "schober", "lhermitte", "charcot", "guillain", "barré", "barre",
-    "bell", "horner", "menière", "ménière", "meniere", "raynaud", "sjögren", "sjogren", "behçet",
-    "behcet", "kaposi", "burkitt", "wegener", "takayasu", "paget", "perthes", "scheuermann",
-    "osgood", "schlatter", "marfan", "ehlers", "danlos", "turner", "klinefelter", "prader",
-    "willi", "angelman", "rett", "lewy", "pick", "binswanger", "creutzfeldt", "jakob",
-    "gerstmann", "landau", "kleffner", "west", "lennox", "gastaut", "dravet", "rolando",
-    "jackson", "todd", "wallenberg", "weber", "millard", "gubler", "foville", "brown", "séquard",
-    "sequard", "adie", "argyll", "robertson", "marcus", "gunn", "uhthoff", "hallervorden",
-    "spatz", "fahr", "steele", "richardson", "olszewski", "shy", "drager", "meige", "sydenham",
-    "friedreich", "duchenne", "becker", "erb", "lambert", "eaton", "miller", "fisher",
+    "wernicke", "broca", "babinski", "romberg", "lasègue", "lasegue", "glasgow",
+    "epworth", "apgar", "rankin", "trendelenburg", "kernig", "brudzinski",
+    "tinel", "phalen", "lhermitte", "charcot", "guillain", "barré", "barre",
+    "horner", "menière", "ménière", "meniere", "raynaud", "sjögren", "sjogren", "behçet",
+    "behcet", "kaposi", "burkitt", "takayasu", "paget", "perthes", "scheuermann",
+    "osgood", "schlatter", "marfan", "danlos", "klinefelter", "prader",
+    "angelman", "rett", "lewy", "binswanger", "creutzfeldt",
+    "gerstmann", "kleffner", "lennox", "gastaut", "dravet", "rolando",
+    "wallenberg", "gubler", "foville", "séquard",
+    "sequard", "adie", "argyll", "uhthoff", "hallervorden",
+    "olszewski", "shy", "drager", "meige", "sydenham",
+    "friedreich", "duchenne",
     "morbus", "syndrom", "zeichen", "test", "score", "skala",
 }
+# Eponyms struck from the list on 27 November 2026: names common among people (or a town:
+# Landau), which kept "Dr. Becker" or "Herr Hoffmann" from being redacted.  A store that still
+# holds them in its list of eponyms hides them (:mod:`pseudonymed.detection.vocabulary`).
+RETIRED_EPONYMS = frozenset({
+    "barthel", "beck", "becker", "bell", "brown", "eaton", "ehlers", "erb", "fahr", "fisher",
+    "gunn", "hamilton", "hoffmann", "jackson", "jakob", "lambert", "landau", "marcus", "millard",
+    "miller", "pick", "richardson", "robertson", "schober", "spatz", "steele", "todd", "turner",
+    "weber", "wegener", "west", "willi", "wilson",
+})
 
 
 def available_model() -> str | None:
@@ -136,6 +152,23 @@ _PERSON_CONTEXT = re.compile(
     r"|Betreuer(?:in)?|Familie|Fam\.)\s*$)|(?:[A-ZÄÖÜ][a-zäöüß]+\s+$)", re.IGNORECASE)
 _PLACE_CONTEXT = re.compile(r"\b(?:in|aus|nach|bei|von|wohnhaft in|Ort|Wohnort|Stadt|Gemeinde|PLZ"
                             r"|\d{5})\s*$", re.IGNORECASE)
+# what makes a word a person or a place whatever a list says: a salutation, title or kinship
+# word right before a person; a preposition of place (or a postcode) right before a place
+_NAMED = re.compile(
+    r"\b(?:Herrn?|Frau|Hr\.|Fr\.|Dr\.|Prof\.|PD|med\.|dent\.|phil\.|Dipl\.(?:-\w+\.?)?"
+    r"|Kolleg(?:e|in)|Schwester|Pfleger(?:in)?|Ehemann|Ehefrau|Gatt(?:e|in)|Mutter|Vater"
+    r"|Tochter|Sohn|Bruder|Partner(?:in)?|Betreuer(?:in)?|Familie|Fam\.)\s*$", re.IGNORECASE)
+_PLACED = re.compile(r"\b(?:in|aus|nach|wohnhaft in|wohnt in|Wohnort:?|PLZ|\d{5})\s*$",
+                     re.IGNORECASE)
+
+
+def _in_context(label: str, text: str, start: int) -> bool:
+    """Does what stands right before the entity make it a person (salutation, title,
+    kinship word) or a place (a preposition of place, a postcode)?"""
+    preceding = text[max(0, start - 30):start]
+    if label == "PER":
+        return _NAMED.search(preceding) is not None
+    return label in ("LOC", "GPE") and _PLACED.search(preceding) is not None
 
 
 def _context_before(e: Span, text: str) -> bool:
@@ -184,6 +217,13 @@ def _plausible_place(core: str) -> bool:
     return len(core) >= 3 and core.lower() not in EPONYMS and core[:1].isupper()
 
 
+def _municipality(core: str) -> bool:
+    """Is the word the name of a German municipality?"""
+    from pseudonymed.checks.residual_risk import municipality_names
+
+    return core.lower() in municipality_names()
+
+
 _PARTIAL_NAMES = (Kind.SURNAME, Kind.FIRST_NAME, Kind.BIRTH_NAME)
 
 
@@ -195,6 +235,7 @@ class _Candidate:
     kind: Kind
     rule: str
     pseudonym: str
+    named: bool = False  # context made it a person or a place: no list spares it
 
     def hit(self, page: PageText, a: int, b: int, source: str) -> Hit:
         """The hit over ``seite.text[a:b]`` with its boxes and font size."""
@@ -205,20 +246,42 @@ class _Candidate:
         )
 
 
-def _candidate_from(label: str, text: str, assignment: PseudonymAssignment) -> _Candidate | None:
+def _candidate_from(label: str, text: str, assignment: PseudonymAssignment,
+                    context: bool = False) -> _Candidate | None:
     """The hit an entity would become, or None for anything but a plausible person or place.
+    A person whom a salutation, title or kinship word names (in ``text`` or, ``context``,
+    right before it) is plausible however the list of eponyms spells the name; so is a
+    German municipality after a preposition of place (``context``).
 
     The pseudonym is coded here, before the later steps decide whether the hit survives:
     ``assignment`` records every name it codes, in order, and that record must not change.
     """
     if label == "PER":
-        core = _person_core(text)
-        if _plausible_name(core):
-            return _Candidate(core, Kind.NAME, "ner.person", assignment.unknown_person(core))
-    elif label in ("LOC", "GPE"):
-        core = text.strip(_EDGE_CHARS)
-        if _plausible_place(core):
-            return _Candidate(core, Kind.PLACE, "ner.ort", assignment.unknown_place(core))
+        return _person_from(text, assignment, context)
+    if label in ("LOC", "GPE"):
+        return _place_from(text, assignment, context)
+    return None
+
+
+def _person_from(text: str, assignment: PseudonymAssignment,
+                 context: bool) -> _Candidate | None:
+    """A person: named by a salutation, title or kinship word (in the entity or, with
+    ``context``, before it), or else a plausible name that is no eponym."""
+    core = _person_core(text)
+    named = context or core != text.strip(_EDGE_CHARS)
+    if (named and len(core) >= 3 and _capitalised(core.split())) or _plausible_name(core):
+        return _Candidate(core, Kind.NAME, "ner.person", assignment.unknown_person(core), named)
+    return None
+
+
+def _place_from(text: str, assignment: PseudonymAssignment,
+                context: bool) -> _Candidate | None:
+    """A place: a German municipality after a preposition of place (``context``), or else
+    a plausible place that is no eponym."""
+    core = text.strip(_EDGE_CHARS)
+    placed = context and len(core) >= 3 and core[:1].isupper() and _municipality(core)
+    if placed or _plausible_place(core):
+        return _Candidate(core, Kind.PLACE, "ner.ort", assignment.unknown_place(core), placed)
     return None
 
 
@@ -279,7 +342,9 @@ def find_ner(
 
     Entities made up of medical terms of ``medical_terms`` are left alone (and
     listed in ``spared`` when given): "Morbus Wilson" or "Babinski" is not
-    a patient, "Erika Hoffmann" still is although Hoffmann names a sign.
+    a patient, "Erika Hoffmann" still is although Hoffmann names a sign.  Context
+    outweighs the vocabulary: "Frau Iris Nagel" is a person and "aus Pirna" a place,
+    although iris, nail and Pirna (a protein) are medical terms.
     A hit that only overlaps existing hits is dropped,
     with one exception: when the entity completely contains hits on a lone
     surname or first name (the rules saw "Flantz" in "Hildegund Flantz"), those
@@ -289,14 +354,15 @@ def find_ner(
     matches: list[Hit] = []
     protection = _VocabularyGuard.of(page.text, medical_terms, spared)
     for start, end, label, text in ner.entities(page.text):
-        candidate = _candidate_from(label, text, assignment)
+        candidate = _candidate_from(label, text, assignment,
+                                    _in_context(label, page.text, start))
         if candidate is None:
             continue
         a = page.text.find(candidate.core, start, end + 1)
         if a < 0:
             continue
         b = a + len(candidate.core)
-        if protection.protects(a, b, candidate.core):
+        if not candidate.named and protection.protects(a, b, candidate.core):
             continue
         displaced = _displaced_partial_matches(a, b, existing, matches)
         if displaced is None:

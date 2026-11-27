@@ -157,3 +157,58 @@ def test_vocabulary_protection_counts_spared() -> None:
     assert spared == ["Morbus Fabry"]
     without = ner_module._VocabularyGuard.of(text, None, None)
     assert not without.protects(0, len("Morbus Fabry"), "Morbus Fabry")
+
+
+def test_no_common_name_is_an_eponym() -> None:
+    """The names struck on 27 November 2026 are common among people; none is an eponym
+    any more, and the rare ones stay."""
+    assert ner_module.RETIRED_EPONYMS.isdisjoint(ner_module.EPONYMS)
+    assert {"becker", "weber", "hoffmann", "wilson", "jakob"} <= ner_module.RETIRED_EPONYMS
+    assert {"alzheimer", "parkinson", "babinski", "lasègue"} <= ner_module.EPONYMS
+
+
+class _Entities:
+    """A model that names the entities it is given, in the order given."""
+
+    def __init__(self, *found: tuple[str, str]) -> None:
+        self.found = found
+
+    def entities(self, text: str) -> list[tuple[int, int, str, str]]:
+        out, at = [], 0
+        for words, label in self.found:
+            start = text.index(words, at)
+            out.append((start, start + len(words), label, words))
+            at = start + len(words)
+        return out
+
+
+def test_context_outweighs_the_lists(patient: Patient) -> None:
+    """A salutation, title or kinship word makes a person of a name the lists know as an
+    eponym or a medical term; a preposition of place makes a place of a municipality."""
+    from pseudonymed.document.text_file import text_page
+
+    alone = dataclasses.replace(patient, relatives=[], referrers=[])
+    v = PseudonymAssignment(alone, "K7Q4MX", secret=bytes(32))
+    # without context the eponym list decides, with it the person counts
+    assert ner_module._candidate_from("PER", "Parkinson", v) is None
+    named = ner_module._candidate_from("PER", "Parkinson", v, context=True)
+    assert named is not None and named.named and named.core == "Parkinson"
+    assert ner_module._candidate_from("PER", "Dr. Parkinson", v).named  # type: ignore[union-attr]
+    # a municipality after a preposition of place is a place; elsewhere a list decides
+    assert ner_module._candidate_from("LOC", "Essen", v, context=True).named  # type: ignore[union-attr]
+    assert ner_module._candidate_from("LOC", "Glasgow", v, context=True) is None  # no town here
+    text = ("Frau Iris Nagel begleitete ihn. Iris Nagel unauffällig. Er wohnt in Haar, das Haar"
+            " ist dünn. Babinski negativ.")
+    assert ner_module._in_context("PER", text, text.index("Iris"))
+    assert not ner_module._in_context("PER", text, text.index("Iris Nagel unauff"))
+    assert ner_module._in_context("LOC", text, text.index("Haar,"))
+    assert not ner_module._in_context("LOC", text, text.index("Haar ist"))
+    page = text_page(text)
+    model = _Entities(("Iris Nagel", "PER"), ("Iris Nagel", "PER"), ("Haar", "LOC"),
+                      ("Haar", "LOC"), ("Babinski", "PER"))
+    spared: list[str] = []
+    found = ner_module.find_ner(page, model, v, [], medical_terms=terms_module.load(),  # type: ignore[arg-type]
+                                spared=spared)
+    assert [(text[f.start:f.end], f.start) for f in found] == [
+        ("Iris Nagel", 5), ("Haar", text.index("Haar,"))]
+    assert spared == ["Iris Nagel", "Haar"]  # without context the vocabulary spares them

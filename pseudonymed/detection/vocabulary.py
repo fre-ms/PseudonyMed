@@ -408,12 +408,28 @@ class Vocabulary(StoreTable):
     # -- bundled lists ---------------------------------------------------------------------------
     def seed(self) -> dict[str, int]:
         """Install every bundled list that is not among the store's own lists; what the
-        overlay hides in one stays hidden.  Returns the number of terms of each list
+        overlay hides in one stays hidden.  Eponyms struck from the bundled list are hidden
+        where a store still holds them.  Returns the number of terms of each list
         installed."""
         held = {info.url for info in own_lists(self.store)}
         missing = [k for k in BUNDLED if self.store.local_url(k) not in held]
-        return {k: self.store.add_package(_package(k, bundled()[k])).concepts
-                for k in missing if k in bundled()}
+        installed = {k: self.store.add_package(_package(k, bundled()[k])).concepts
+                     for k in missing if k in bundled()}
+        self._retire()
+        return installed
+
+    def _retire(self) -> None:
+        """Hide the eponyms struck from the bundled list (common names of people, which kept
+        them from being redacted) in the store's list of eponyms, as a deletion of the
+        user's would: terms the user added to that list stay."""
+        from pseudonymed.detection.ner import RETIRED_EPONYMS
+
+        url = self.store.local_url(CATEGORY_EPONYMS)
+        if url not in {info.url for info in own_lists(self.store)}:
+            return
+        overlay.hide(self.store, [Change(url, e.code, "hide", e.term, e.language)
+                                  for e in self.store.entries([url])
+                                  if e.term.lower() in RETIRED_EPONYMS])
 
     def restore(self) -> dict[str, int]:
         """Bring back what is missing of the bundled lists: the terms deleted from them,

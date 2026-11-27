@@ -117,14 +117,14 @@ def test_many_terms_are_hidden_in_one_step(fresh: Path) -> None:
     """A whole category deleted at once gets the same lines in the overlay as its terms
     deleted one by one would, written together."""
     with vocab_mod.Vocabulary() as v:
-        eponyms, url = vocab_mod.bundled()[EPONYMS], v.store.local_url(EPONYMS)
-        assert len(eponyms) >= overlay.MANY
+        findings, url = vocab_mod.bundled()[FINDINGS], v.store.local_url(FINDINGS)
+        assert len(findings) >= overlay.MANY
         version = v.version()
-        assert v.remove(eponyms) == len(eponyms) and v.version() == version + 1
-        assert v.store.overlay(url) == [Change(url, e, "hide") for e in sorted(eponyms)]
-        assert EPONYMS not in dict(v.categories())
+        assert v.remove(findings) == len(findings) and v.version() == version + 1
+        assert v.store.overlay(url) == [Change(url, e, "hide") for e in sorted(findings)]
+        assert FINDINGS not in dict(v.categories())
         assert v.remove(["Wade"]) == 1 and v.version() == version + 2  # a single one as ever
-        assert v.restore()[EPONYMS] == len(eponyms) and v.store.overlay(url) == []
+        assert v.restore()[FINDINGS] == len(findings) and v.store.overlay(url) == []
 
 
 def test_the_bundled_lists_come_back_on_request(fresh: Path) -> None:
@@ -318,3 +318,20 @@ def test_vocabulary_page(qapp: QApplication, fresh: Path, tmp_path: Path) -> Non
     assert "Nutzervokabular" in window.analyse.vocabulary_info.text() or \
         window.analyse.refresh() is None
     window.close()
+
+
+def test_a_store_hides_the_eponyms_struck_from_the_list(fresh: Path) -> None:
+    """A store that still holds a common name in its list of eponyms hides it, as a
+    deletion would, and keeps what the user added to that list."""
+    with vocab_mod.Vocabulary() as v:
+        url = v.store.local_url(vocab_mod.CATEGORY_EPONYMS)
+        assert "becker" not in {e.term for e in v.store.entries([url])}  # a new store lacks it
+        v.store.add_package(Package(url=url, name=vocab_mod.CATEGORY_EPONYMS,
+                                    title=vocab_mod.CATEGORY_EPONYMS, language="de", concepts=[
+            Concept(term, terms=[Term(term, "de")])
+            for term in ("babinski", "becker", "hoffmann", "flantz")]))
+    with vocab_mod.Vocabulary() as v:  # the store as an older PseudonyMed left it
+        assert sorted(e.term for e in v.store.entries([url])) == ["babinski", "flantz"]
+        assert len(v.store.overlay(url)) == 2
+    with vocab_mod.Vocabulary() as v:  # nothing more to do a second time
+        assert len(v.store.overlay(url)) == 2

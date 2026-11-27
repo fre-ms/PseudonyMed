@@ -205,6 +205,20 @@ def municipality_index() -> tuple[TermIndex, str]:
     return _municipalities
 
 
+_municipality_names: frozenset[str] | None = None
+
+
+def municipality_names() -> frozenset[str]:
+    """Every name of a German municipality, in lower case, common words among them ("Essen",
+    "Haar"): for a word that context already marks as a place ("in Essen")."""
+    global _municipality_names
+    if _municipality_names is None:
+        _municipality_names = frozenset(
+            line["name"].split(",")[0].strip().lower() for line in _read(MUNICIPALITIES)[1]
+        ) if MUNICIPALITIES.exists() else frozenset()
+    return _municipality_names
+
+
 def disease_index() -> tuple[TermIndex, str]:
     """Index of rare-disease names and synonyms → Erkrankung, read once from the Orphanet table."""
     global _diseases
