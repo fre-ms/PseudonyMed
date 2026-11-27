@@ -46,6 +46,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.document.chain import DocumentChain
 from pseudonymed.gui.session import Document, Session
 from pseudonymed.gui.translation import interface_language, shown, shown_error
 
@@ -290,16 +291,16 @@ class ChainStepPage(QWidget):
             self._display()
             return
         chain = d.chain
-        self._run(lambda: chain.bring(self.step), lambda opened: self._brought(d, opened),
+        self._run(lambda: chain.bring_up(self.step), lambda notes: self._brought(d, notes),
                   self.tr("Der Schritt wird auf das gebracht, was die Schritte davor jetzt"
                           " geben …"))
 
-    def _brought(self, d: Document, opened: Any) -> None:
-        """The step is open on what the steps before it give: put it in place, say what
-        became of a person's decisions, and show the page."""
+    def _brought(self, d: Document, notes: Any) -> None:
+        """The step is open on what the steps before it give and put in place (off the
+        window's thread, with the chain's lock, so that no other work has its projects
+        closed under it): say what became of a person's decisions, and show the page."""
         if d.chain is None:
             return
-        notes = d.chain.put(opened)
         self.status.setText(" ".join(shown(note) for note in notes))
         if d is self.document:
             self._display()
@@ -333,15 +334,20 @@ class ChainStepPage(QWidget):
 
     def _find_regions(self, n: int, then: Callable[[], None]) -> None:
         """Read page ``n`` and find its areas, then let the panel go on."""
-        project = self.panel.project
-        self._run(lambda: project.regions(n), lambda _r: then(),
+        project, chain = self.panel.project, self._chain()
+        self._run(lambda: chain.holding(lambda: project.regions(n)), lambda _r: then(),
                   self.words("finding_regions", number=n + 1))
 
     def _read_page(self, n: int, then: Callable[[], None]) -> None:
         """Read page ``n``, then let the panel go on."""
-        project = self.panel.project
-        self._run(lambda: project.read(n), lambda _r: then(),
+        project, chain = self.panel.project, self._chain()
+        self._run(lambda: chain.holding(lambda: project.read(n)), lambda _r: then(),
                   self.words("reading_page", number=n + 1, total=len(project.pages)))
+
+    def _chain(self) -> DocumentChain:
+        """The chain of the document shown, whose lock the panel's work holds."""
+        assert self.document is not None and self.document.chain is not None
+        return self.document.chain
 
     def _worked_in(self, *_given: object) -> None:
         """A person changed something in the step: the analysis of the document is to be

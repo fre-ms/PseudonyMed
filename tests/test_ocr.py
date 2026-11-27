@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from ocrdoc import filters as filters_module
 from ocrdoc import ocr as ocr_module
 from ocrdoc.ocr import OCRWord, page_text_from_words
 from optdoc import cleanup as cleanup_module
@@ -99,6 +100,39 @@ def test_photo_as_png(tmp_path: Path, report_pdf: Path, patient: Patient,
     res = pseudonymise(image, patient, store=store)
     assert res.released, as_text(res.report)
     assert res.report.pages == 1 and found_plain_data(res.text, patient) == []
+
+
+@needs_backend
+@pytest.mark.skipif(not filters_module.available(), reason="OpenCV fehlt")
+def test_what_ocr_did_not_see_does_not_leave(tmp_path: Path, report_pdf: Path,
+                                             patient: Patient, store: PseudonymStore) -> None:
+    """A stamp in blue on a scan: ocrdoc takes coloured ink away before OCR reads the page
+    (its suggestion), so nothing in the stamp is read or searched.  The page passed on is
+    the page as read: the stamp is gone from it too, as it was when the clean-up changed the
+    page itself, and the report says so."""
+    with pymupdf.open(report_pdf) as d:
+        page = d[0]
+        for k in range(4):
+            page.insert_text((60, 640 + 22 * k), "Dr. med. Blaustempel, Lindenweg 7",
+                             fontsize=16, color=(0.1, 0.2, 0.9))
+        stamped = tmp_path / "gestempelt.pdf"
+        d.save(stamped)
+    scan = _scan(stamped, tmp_path / "scan.pdf")
+
+    def coloured(doc: pymupdf.Document) -> float:
+        image, _scale = filters_module.render(doc[0], 72)
+        return float(filters_module.colour_share(image))
+
+    with pymupdf.open(scan) as d:
+        assert coloured(d) > 0.003  # enough for ocrdoc to take the colour away
+    res = pseudonymise(scan, patient, store=store)
+    assert any("wie die Texterkennung sie las" in n for n in res.report.notes)
+    assert "Blaustempel" not in res.text
+    with pymupdf.open(res.target_pdf) as d:
+        assert coloured(d) < 0.0005
+        b = docrepro_adapter.backend(BACKENDS[0])
+        after = ocr_module.recognise_page(d[0], b, 0).text
+    assert "Blaustempel" not in after and "Lindenweg" not in after
 
 
 def test_without_backend_no_release(tmp_path: Path, report_pdf: Path, patient: Patient,

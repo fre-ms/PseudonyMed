@@ -18,13 +18,22 @@ again: that is what PseudonyMed's working state keeps (:mod:`pseudonymed.working
 
 Everything the steps write on the way goes into a private folder of the chain's own
 (:attr:`DocumentChain.work`), which :meth:`DocumentChain.close` removes.
+
+One piece of work at a time: the window's steps and the analysis each work off the window's
+thread, and two of them on one chain would read and close the same projects (MuPDF is not
+made for that).  Whatever opens, puts in place, reads or closes a step holds
+:attr:`DocumentChain.lock`; work on a step's project from outside (reading a page, finding
+its areas) takes it as well.
 """
 
 from __future__ import annotations
 
 import copy
+import functools
 import shutil
 import tempfile
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -40,6 +49,17 @@ from pseudonymed.core.text import Text, say
 
 STEPS = ("typdoc", "optdoc", "ocrdoc")  # docrepro's steps PseudonyMed works with, in order
 _FRESH = b"fresh"  # what a step stands on that starts without a configuration document
+
+
+def _locked[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+    """The method with the chain's lock held (the chain is its first argument)."""
+    @functools.wraps(method)
+    def run(*args: P.args, **kwargs: P.kwargs) -> R:
+        chain = args[0]
+        assert isinstance(chain, DocumentChain)
+        with chain.lock:
+            return method(*args, **kwargs)
+    return run
 
 
 @dataclass(eq=False)
@@ -99,11 +119,13 @@ def _note(stage: Stage, decided: bool, done: Opened) -> list[Text]:
 class DocumentChain:
     """docrepro's chain on one original and the steps PseudonyMed works with, opened one
     after another (see the module).  Open with :meth:`open`, release with :meth:`close`.
-    ``work`` is the chain's private folder for what the steps write on the way."""
+    ``work`` is the chain's private folder for what the steps write on the way; ``lock``
+    is held by whatever works on the chain (see the module)."""
 
     def __init__(self, chain: Chain, work: Path) -> None:
         self.chain = chain
         self.work = work
+        self.lock = threading.RLock()
         self.stages = [Stage(step, adapter) for step, adapter in chain.steps
                        if step.name in STEPS and step.name in chain.used]
         self.folders: list[Path] = [work]  # removed on closing: the private folder, and more
@@ -153,6 +175,7 @@ class DocumentChain:
                 found[stage.name] = stage.adapter.config(stage.project)
         return found
 
+    @_locked
     def document(self) -> dict[str, Any]:
         """The chain document as the chain stands, every step in use opened first (a step
         in use needs its configuration document)."""
@@ -190,6 +213,7 @@ class DocumentChain:
             return list(self.chain.originals)
         return self.chain.original
 
+    @_locked
     def output(self, name: str, pending: dict[str, Any] | None = None) -> Path:
         """The file a step gives as it stands, written once for what it was made from (in a
         folder of its own each time, so that an old project can still be closed)."""
@@ -215,6 +239,7 @@ class DocumentChain:
         return stage is not None and stage.project is not None \
             and stage.basis == self._basis(stage)
 
+    @_locked
     def bring(self, name: str) -> list[Opened]:
         """Open every step in use up to ``name`` that is not open on what the steps before
         it give now, in their order, each with what it held (its project's configuration
@@ -249,6 +274,7 @@ class DocumentChain:
             project, anew = self.chain.opened(stage.adapter, given, None, folder), True
         return Opened(stage, project, given, basis, list(stage.adapter.dropped(project)), anew)
 
+    @_locked
     def put(self, opened: list[Opened]) -> list[Text]:
         """Put the steps opened anew in place, their old projects closed; returns what
         became of a person's decisions in them (nothing where there were none)."""
@@ -262,11 +288,25 @@ class DocumentChain:
             notes += _note(stage, decided, done)
         return notes
 
+    @_locked
     def ensure(self, name: str) -> Any:
         """The project of a step, opened (with the steps before it) on what they give now."""
         self.put(self.bring(name))
         return self.project(name)
 
+    @_locked
+    def bring_up(self, name: str) -> list[Text]:
+        """Open the steps up to ``name`` on what the steps before them give now and put
+        them in place, in one go (:meth:`bring`, :meth:`put`); returns what became of a
+        person's decisions in them."""
+        return self.put(self.bring(name))
+
+    def holding[R](self, work: Callable[[], R]) -> R:
+        """Do ``work`` on a step's project with the chain's lock held."""
+        with self.lock:
+            return work()
+
+    @_locked
     def reset(self, name: str, settings: dict[str, Any]) -> None:
         """Start a step afresh with new ``settings`` (another OCR engine): what it held
         goes, and it is opened anew when it is next needed."""
@@ -277,6 +317,7 @@ class DocumentChain:
             stage.adapter.close(stage.project)
             stage.project, stage.basis, stage.output = None, None, None
 
+    @_locked
     def close(self) -> None:
         """Close every project and remove the private folder (and the folders handed to
         the chain with it, :attr:`folders`)."""

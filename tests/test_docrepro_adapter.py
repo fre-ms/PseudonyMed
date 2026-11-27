@@ -6,6 +6,7 @@ PseudonyMed works it."""
 from __future__ import annotations
 
 import dataclasses
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -151,6 +152,26 @@ def test_a_person_decides_and_a_step_before_changes(tmp_path: Path, report_pdf: 
     assert chain.project("ocrdoc") is None and chain.chain.settings["reader"] == "tesseract"
     assert chain.ensure("ocrdoc").options.reader == "tesseract"
     chain.close()
+
+
+def test_one_piece_of_work_on_a_chain_at_a_time(report_pdf: Path) -> None:
+    """Work on a chain from two threads (a step of the window, the analysis) takes turns:
+    while one holds the chain, the other waits before it opens, puts in place or closes a
+    step's project."""
+    chain = DocumentChain.open(report_pdf, chain_settings(PipelineOptions(ocr="aus")))
+    done = threading.Event()
+    try:
+        with chain.lock:
+            other = threading.Thread(target=lambda: (chain.bring_up("ocrdoc"), done.set()))
+            other.start()
+            assert not done.wait(0.3)  # waits for the lock
+            assert chain.project("ocrdoc") is None
+        assert done.wait(60)
+        other.join()
+        assert chain.current("ocrdoc")
+        assert chain.holding(lambda: chain.project("ocrdoc")) is not None
+    finally:
+        chain.close()
 
 
 def test_a_chain_document_of_another_original(tmp_path: Path, report_pdf: Path) -> None:

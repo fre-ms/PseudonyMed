@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pymupdf
+from ocrdoc import filters as filters_module
 from ocrdoc import ocr as ocr_module
 from ocrdoc import structure as structure_module
+from ocrdoc.filters import Filters
 from ocrdoc.pagetext import read_text_layer
 from optdoc import cleanup as cleanup_module
 
@@ -162,6 +164,58 @@ def _page_entry(project: Any, doc: pymupdf.Document, n: int) -> PageEntry:
     return entry
 
 
+def ink_filters(f: Filters | None) -> Filters | None:
+    """Those of a page's filters that take ink away before OCR reads it (coloured ink,
+    ruled lines, everything but black and white, as the OCR applied them); None where
+    none does."""
+    if f is None:
+        return None
+    seen = Filters(remove_colour=f.remove_colour, remove_lines=f.remove_lines,
+                   black_white=f.black_white and not f.letter_mode)
+    return seen if seen.active else None
+
+
+def show_as_read(docs: tuple[pymupdf.Document, ...], entry: PageEntry) -> bool:
+    """Put on an image page of ``docs`` what OCR saw of it: where its filters took ink away
+    (a stamp or a signature in blue, by ocrdoc's suggestion as soon as a page is a little
+    coloured), the page shows it taken away.  What OCR never saw cannot be searched, and so
+    must not leave unread: PseudonyMed passes on the page as it was read, as it did when
+    the clean-up changed the page itself.  docrepro keeps a page's colours, and its own
+    outputs stay so.  The rendering is the OCR's (its resolution, the same filters), so the
+    page is made again alike from the chain document.  Returns True where it changed."""
+    seen = ink_filters(entry.filters)
+    if seen is None or not entry.is_image_page or not filters_module.available():
+        return False
+    import cv2
+
+    run = filters_module.pipeline(seen)
+    assert run is not None
+    image, _scale = filters_module.render(docs[0][entry.number], entry.ocr_dpi)
+    shown = run(image)
+    ok, data = (cv2.imencode(".png", shown) if seen.black_white
+                else cv2.imencode(".jpg", shown, [cv2.IMWRITE_JPEG_QUALITY, 90]))
+    if not ok:
+        raise RuntimeError("page image")
+    rect = docs[0][entry.number].rect
+    for doc in docs:
+        cleanup_module.put_page_image(doc, entry.number, data.tobytes(), rect.width, rect.height)
+    return True
+
+
+def _shown_as_read(docs: tuple[pymupdf.Document, ...], pages: list[PageEntry]) -> list[str]:
+    """Every page of ``docs`` put as OCR read it (:func:`show_as_read`); the note for the
+    report that names them, where there are any."""
+    numbers = ", ".join(str(s.number + 1) for s in pages if show_as_read(docs, s))
+    if not numbers:
+        return []
+    return [say(f"Seite(n) {numbers} so weitergegeben, wie die Texterkennung sie las: ohne"
+                " farbige Tinte, Linien oder Grautöne, die ihre Filter wegnahmen (was nicht"
+                " gelesen wurde, kann nicht geprüft werden).",
+                f"Page(s) {numbers} passed on as the text recognition read them: without the"
+                " coloured ink, lines or shades of grey its filters took away (what was not"
+                " read cannot be checked).")]
+
+
 def _plans(chain: DocumentChain) -> dict[int, cleanup_module.CleanupPlan]:
     """The preparation optdoc applied, by page (from 0): the pages a plan changed."""
     project = chain.project("optdoc")
@@ -179,13 +233,22 @@ def read_chain(chain: DocumentChain, opt: PipelineOptions, source: Path | None =
                progress: Progress | None = None) -> Reading:
     """The reading of a document from its chain, which stays open (the caller's): every
     page ocrdoc has not read yet is read, then the prepared document and the pages are
-    taken as ocrdoc has them.  ``source`` names the outputs (default: the original)."""
+    taken as ocrdoc has them.  ``source`` names the outputs (default: the original).  The
+    chain's lock is held throughout."""
+    with chain.lock:
+        return _read_chain(chain, opt, source, progress)
+
+
+def _read_chain(chain: DocumentChain, opt: PipelineOptions, source: Path | None,
+                progress: Progress | None) -> Reading:
+    """:func:`read_chain` with the lock held."""
     project = chain.ensure("ocrdoc")
     project.read_all(progress)
     data = project.doc.tobytes(no_new_id=True)  # the prepared document as ocrdoc read it
     doc, original = pymupdf.open("pdf", data), pymupdf.open("pdf", data)
     try:
         pages = [_page_entry(project, doc, n) for n in range(len(doc))]
+        as_read = _shown_as_read((doc, original), pages)
         without_text = [n + 1 for n in range(len(doc))
                         if project.needs_ocr(n) and pages[n].ocr is None]
         backend = project.engine() if any(s.ocr is not None for s in pages) else None
@@ -195,6 +258,7 @@ def read_chain(chain: DocumentChain, opt: PipelineOptions, source: Path | None =
         close_documents(doc, original)
         raise
     warnings, notes = _reading_notes(plan, without_text, pages, project.reader_name())
+    notes += as_read
     return Reading(source=source or chain.chain.original, opt=opt, doc=doc, original=original,
                    backend=backend, pages=pages, without_text=without_text, plan=plan,
                    chain=document, original_data=chain.chain.original.read_bytes(),

@@ -54,8 +54,9 @@ class PageEntry:
     def read_ocr(self, page: object, backend: ocr_module.OCRBackend) -> PageText:
         """Read the redacted page again for the re-check, as ocrdoc read it: at this page's
         resolution times its upscaling, through its filters, but for one: coloured ink is
-        not taken away, since it stays on the page (optdoc keeps a page's colours), and
-        whatever is still legible in it must be found."""
+        not taken away.  Where the OCR's filters took it away, the page passed on shows it
+        taken away as well (:func:`pseudonymed.pipeline.reading.show_as_read`); whatever
+        coloured ink is still on the page must be read, and found where it is legible."""
         chosen = replace(self.filters or Filters(), remove_colour=False)
         factor = max(1, chosen.upscale)
         run = filters_module.pipeline(chosen) if filters_module.available() else None

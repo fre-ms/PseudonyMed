@@ -351,10 +351,11 @@ class Session:
         """Reading phase for one document: docrepro's chain brought up to ocrdoc, which
         reads every page it has not read yet (``progress`` hears page and pages); text
         files have nothing to read."""
-        if d.chain is None:
+        chain = d.chain
+        if chain is None:
             return
         try:
-            d.chain.ensure("ocrdoc").read_all(progress)
+            chain.holding(lambda: chain.ensure("ocrdoc").read_all(progress))
         except Exception as e:
             d.error = str(e)
             raise
