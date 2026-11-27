@@ -1,7 +1,8 @@
-"""Backup and restore of database and key; statistics per category."""
+"""Backup and restore of database, key and vocabulary; statistics per category."""
 
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -11,13 +12,15 @@ from typer.testing import CliRunner
 
 from pseudonymed.cli import app
 from pseudonymed.core.model import Patient
+from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.pipeline import PipelineOptions, pseudonymise
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms import statistics as stats_mod
-from pseudonymed.pseudonyms.store import PseudonymStore
+from pseudonymed.pseudonyms.store import PseudonymStore, default_path
 from tests.synthetic import synthetic_patient
 from tests.test_gui import qapp  # noqa: F401
+from tests.test_vocabulary_move import edited_rows, former_table
 
 
 def _populated(folder: Path, report_pdf: Path, patient: Patient) -> Path:
@@ -51,8 +54,7 @@ def test_statistics_and_categories(tmp_path: Path, report_pdf: Path, patient: Pa
 def test_export_and_restore(tmp_path: Path, report_pdf: Path, patient: Patient,
                             monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
-    (tmp_path / "daten" / "fachbegriffe").mkdir(parents=True)
-    (tmp_path / "daten" / "fachbegriffe" / "nutzervokabular.txt").write_text("Flantzlegacy\n")
+    (tmp_path / "daten").mkdir()
     (tmp_path / "daten" / "konfig.toml").write_text('[gui]\nsprache = "de"\n')
     db = _populated(tmp_path, report_pdf, patient)
     with PseudonymStore(db) as sp:
@@ -64,28 +66,23 @@ def test_export_and_restore(tmp_path: Path, report_pdf: Path, patient: Patient,
     assert archive.parent == tmp_path / "sicherung" and archive.suffix == ".zip"
     with zipfile.ZipFile(archive) as z:
         names = set(z.namelist())
-    assert {"manifest.json", "pseudonyme.sqlite", "pseudonymschluessel.txt",
-            "konfig.toml"} <= names
-    assert "fachbegriffe/nutzervokabular.txt" not in names  # taken over into the table
+    assert names == {"manifest.json", "pseudonyme.sqlite", "pseudonymschluessel.txt",
+                     "konfig.toml", "vokabular.csv"}
     m = backup_mod.check(archive)
-    assert m.patients == 1 and m.mappings >= 8 and m.config and m.vocabulary == 0
+    assert m.patients == 1 and m.mappings >= 8 and m.config and m.vocabulary
+    assert m.version == 2 and "· Vokabular" in m.description()
     assert m.key_id == stats_mod.statistics(db).key_id
     # restore into an empty place: same identifiers, same mapping, same key
     new = tmp_path / "neu" / "pseudonyme.sqlite"
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "neu"))
     b = backup_mod.import_file(archive, new)
     assert b.mode == "ersetzen" and b.new_patients == 1 and b.key_replaced
-    assert b.config_replaced and b.vocabulary_files == 0 and b.prior_backups == []
+    assert b.config_replaced and b.vocabulary_terms > 39000 and b.prior_backups == []
     with PseudonymStore(new) as store2:
         assert store2.find()[0]["kennung"] == code
         assert store2.mapping(patient.key()) == mapping
         assert store2.code_for(patient).code == code  # the key came along
     assert (tmp_path / "neu" / "konfig.toml").exists()
-    from pseudonymed.detection import vocabulary as vocab_mod
-
-    # the old per-file list went into the default database of the original data folder
-    with vocab_mod.Vocabulary(tmp_path / "daten" / "pseudonyme.sqlite", seed=False) as v:
-        assert v.contains("Flantzlegacy")
     # restore over an existing database sets the old one aside
     b2 = backup_mod.import_file(archive, new)
     assert len(b2.prior_backups) == 2 and all(p.exists() for p in b2.prior_backups)
@@ -125,6 +122,108 @@ def test_merge(tmp_path: Path, report_pdf: Path, patient: Patient,
         backup_mod.import_file(archive_a, third, mode="zusammenfuehren")
     with pytest.raises(backup_mod.BackupError):
         backup_mod.import_file(archive_a, third, mode="egal")
+
+
+def test_the_vocabulary_travels_as_a_csv(tmp_path: Path,
+                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """The archive carries the vocabulary beside the database: merging adds what is new,
+    restoring makes it exactly what it was, and an archive without it leaves it alone."""
+    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    PseudonymStore().close()  # the database and the key file the backup insists on
+    with vocab_mod.Vocabulary() as v:
+        v.add(["Sicherungsbegriff"], "Test")
+        v.remove(["Wade"])
+        saved = v.all_items()
+    archive = backup_mod.export(tmp_path / "s.zip")
+    without = backup_mod.export(tmp_path / "ohne.zip", vocabulary=False)
+    assert backup_mod.check(archive).vocabulary and not backup_mod.check(without).vocabulary
+    with zipfile.ZipFile(archive) as z:
+        words = z.read("vokabular.csv").decode("utf-8")
+        (tmp_path / "archiv.sqlite").write_bytes(z.read("pseudonyme.sqlite"))
+    assert words.startswith("begriff,kategorie\n") and "\nSicherungsbegriff,Test\n" in words
+    assert "\nWade," not in words and len(words.splitlines()) == len(saved) + 1
+    assert vocab_mod.table_terms(tmp_path / "archiv.sqlite") is None  # not in the database
+    with vocab_mod.Vocabulary() as v:  # the vocabulary changes after the backup
+        v.remove(["Sicherungsbegriff", "Kopf"])
+        v.add(["Danachbegriff"], "Danach")
+        v.add(["Wade"], "Test")
+        changed = v.all_items()
+    for mode in backup_mod.MODES:  # an archive without it leaves it alone
+        backup_mod.import_file(without, mode=mode)
+        backup_mod.import_file(archive, mode=mode, vocabulary=False)
+    with vocab_mod.Vocabulary() as v:
+        assert v.all_items() == changed
+    merged = backup_mod.import_file(archive, mode="zusammenfuehren")
+    assert merged.new_vocabulary == 2  # the two terms deleted since
+    assert "2 neue Vokabeln" in merged.description()
+    assert "2 new vocabulary terms" in merged.description("en")
+    with vocab_mod.Vocabulary() as v:
+        assert v.contains("Sicherungsbegriff") and v.contains("Kopf")
+        assert v.contains("Danachbegriff")
+        assert [k for b, k, _a in v.all_items(search="Wade") if b == "Wade"] == ["Test"]
+    restored = backup_mod.import_file(archive)
+    assert restored.vocabulary_terms == len(saved)
+    assert f"Vokabular mit {len(saved)} Begriffen" in restored.description()
+    assert f"vocabulary of {len(saved)} terms" in restored.description("en")
+    with vocab_mod.Vocabulary() as v:
+        assert v.all_items() == saved and not v.contains("Danachbegriff")
+
+
+def _former_archive(archive: Path, rows: list[tuple[str, str]]) -> Path:
+    """The archive as PseudonyMed wrote it while the vocabulary lived in the database: the
+    table inside the database, no CSV, format 1."""
+    with zipfile.ZipFile(archive) as z:
+        files = {name: z.read(name) for name in z.namelist()}
+    database = archive.with_suffix(".sqlite")
+    database.write_bytes(files["pseudonyme.sqlite"])
+    former_table(database, rows)
+    files["pseudonyme.sqlite"] = database.read_bytes()
+    manifest = json.loads(files.pop("manifest.json"))
+    manifest["version"] = manifest[backup_mod._MARK] = 1
+    manifest["dateien"] = {name: {"sha256": backup_mod._sha(data), "bytes": len(data)}
+                           for name, data in files.items()}
+    former = archive.with_name("frueher.zip")
+    with zipfile.ZipFile(former, "w") as z:
+        z.writestr("manifest.json", json.dumps(manifest))
+        for name, data in files.items():
+            z.writestr(name, data)
+    return former
+
+
+def test_an_archive_of_before_brings_its_table(tmp_path: Path,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """An archive made while the vocabulary was a table of the database: merging adds the
+    table's terms, restoring makes the vocabulary the table's, and the restored database
+    keeps no table either way."""
+    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    PseudonymStore().close()
+    with vocab_mod.Vocabulary() as v:
+        v.add(["Heutebegriff"], "Heute")
+    rows = edited_rows()
+    former = _former_archive(backup_mod.export(tmp_path / "neu.zip", vocabulary=False), rows)
+    assert not backup_mod.check(former).vocabulary and backup_mod.check(former).version == 1
+    merged = backup_mod.import_file(former, mode="zusammenfuehren")
+    assert merged.new_vocabulary == 4  # the four terms that are not bundled
+    with vocab_mod.Vocabulary() as v:
+        assert v.contains("Flantzitis") and v.contains("Heutebegriff") and v.contains("Wolf")
+    restored = backup_mod.import_file(former)
+    assert restored.vocabulary_terms == len(rows)
+    assert vocab_mod.table_terms(default_path()) is None
+    with vocab_mod.Vocabulary() as v:
+        assert sorted((b, k) for b, k, _a in v.all_items()) == sorted(rows)
+        assert not v.contains("Heutebegriff") and not v.contains("Wolf")
+        v.add(["Nachherbegriff"], "Test")
+    # left out on request: the vocabulary stays, and the table does not come back with it
+    backup_mod.import_file(former, vocabulary=False)
+    assert vocab_mod.table_terms(default_path()) is None
+    with vocab_mod.Vocabulary() as v:
+        assert v.contains("Nachherbegriff")
+    # restored into another database: the vocabulary is one, whichever database it came with
+    other = tmp_path / "andere" / "p.sqlite"
+    assert backup_mod.import_file(former, other).vocabulary_terms == len(rows)
+    assert vocab_mod.table_terms(other) is None
+    with vocab_mod.Vocabulary() as v:
+        assert not v.contains("Nachherbegriff") and v.count() == len(rows)
 
 
 @pytest.mark.skipif(not pgp_module.available(), reason="weder pysequoia noch GnuPG")

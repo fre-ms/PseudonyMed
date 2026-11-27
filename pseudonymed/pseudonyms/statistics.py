@@ -11,9 +11,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lexcor import StoreError
+
 from pseudonymed.config import config_path
 from pseudonymed.core.text import say
-from pseudonymed.detection.medical_terms import data_folder as vocabulary_folder
+from pseudonymed.detection.vocabulary import Vocabulary
 from pseudonymed.pseudonyms.store import default_key_path, default_path, key_path_for
 
 CATEGORIES = [  # pseudonym prefix -> label (first match wins)
@@ -72,7 +74,6 @@ class Statistics:
     integrity: str = ""
     pages: int = 0
     free_pages: int = 0
-    vocabulary_files: int = 0
     vocabulary_terms: int = 0
     vocabulary_categories: list[tuple[str, int]] = field(default_factory=list)
     lexicon_categories: list[tuple[str, str, int]] = field(default_factory=list)
@@ -158,15 +159,16 @@ def store_paths(store_path: Path | None) -> tuple[Path, Path]:
 
 
 def statistics(store_path: Path | None = None) -> Statistics:
-    """Describe the pseudonym store at ``store_path`` (default: the configured one)
-    without changing it; a database that cannot be read reports the error as integrity."""
+    """Describe the pseudonym store at ``store_path`` (default: the configured one) and
+    the vocabulary in lexterm's store without changing either; a database that cannot be
+    read reports the error as integrity."""
     db, key = store_paths(store_path)
     st = Statistics(path=db, key_path=key, exists=db.exists(),
                     config_present=config_path().exists())
     if key.exists():
         st.key_present = True
         st.key_id = _key_file_code(key)
-    st.vocabulary_files = len(vocabulary_files(vocabulary_folder()))
+    _count_vocabulary(st)
     if not db.exists():
         return st
     st.size = db.stat().st_size
@@ -188,11 +190,15 @@ def _key_file_code(key: Path) -> str:
         return "unlesbar"
 
 
-def vocabulary_files(folder: Path) -> list[Path]:
-    """Vocabulary list files (``.txt``, ``.gz``) of a folder, sorted; none without the folder."""
-    if not folder.is_dir():
-        return []
-    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix in (".txt", ".gz"))
+def _count_vocabulary(st: Statistics) -> None:
+    """The terms of the vocabulary and of each category, as the store holds them now; a
+    store that is not there yet or cannot be read counts as empty."""
+    try:
+        with Vocabulary(readonly=True) as vocabulary:
+            st.vocabulary_terms = vocabulary.count()
+            st.vocabulary_categories = vocabulary.categories()
+    except (StoreError, sqlite3.Error, OSError):
+        pass
 
 
 def _one(v: sqlite3.Connection, sql: str, default: Any = 0) -> Any:
@@ -226,10 +232,6 @@ def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
     st.integrity = str(_one(v, "PRAGMA integrity_check", "?"))
     st.pages = _one(v, "PRAGMA page_count")
     st.free_pages = _one(v, "PRAGMA freelist_count")
-    st.vocabulary_terms = _one(v, "SELECT COUNT(*) FROM vokabular")
-    st.vocabulary_categories = [(k, n) for k, n in _all_rows(
-        v, "SELECT kategorie, COUNT(*) FROM vokabular GROUP BY kategorie"
-        " ORDER BY COUNT(*) DESC, kategorie")]
     from pseudonymed.detection.extra_data import loaded_sources
     from pseudonymed.detection.lexicon import per_class
 

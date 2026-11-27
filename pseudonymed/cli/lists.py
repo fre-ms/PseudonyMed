@@ -31,7 +31,7 @@ add_group(medical_terms_app, "fachbegriffe", "medical-terms")
          help=w("Umfang und Kategorien des Vokabulars anzeigen.",
                 "Show the size and categories of the vocabulary."))
 def medical_terms_status() -> None:
-    """Print the number of protected terms per source and where the table lives."""
+    """Print the number of protected terms per source and where the store lives."""
     from pseudonymed.detection import medical_terms as terms_module
     from pseudonymed.detection import vocabulary as vocab_mod
 
@@ -40,9 +40,9 @@ def medical_terms_status() -> None:
     for name, n in fb.sources:
         typer.echo(f"  {n:>7}  {name}")
     path = vocab_mod.default_path()
-    typer.echo(w(f"Tabelle vokabular in {path} (Schritt „3 Fachvokabular“,"
+    typer.echo(w(f"Ablage {path} (Schritt „3 Fachvokabular“,"
                  " 'fachbegriffe hinzufuegen|entfernen|exportieren|importieren')",
-                 f"Table vokabular in {path} (step ‘3 Medical vocabulary’,"
+                 f"Store {path} (step ‘3 Medical vocabulary’,"
                  " 'medical-terms add|remove|export|import')"))
 
 
@@ -53,11 +53,11 @@ def add_medical_terms(
         metavar=list_metavar("terms"),
         help=w("Begriffe (auch mehrwortig).", "Terms (several words allowed)."))],
     category: Annotated[str, typer.Option(*flags("--kategorie"),
-                                          help=w("Kategorie in der Tabelle.",
-                                                 "Category in the table."))]
+                                          help=w("Kategorie des Vokabulars.",
+                                                 "Category of the vocabulary."))]
     = "Nutzervokabular",
 ) -> None:
-    """Add terms to the vocabulary table under a category."""
+    """Add terms to the vocabulary under a category."""
     from pseudonymed.detection import medical_terms as terms_module
     from pseudonymed.detection import vocabulary as vocab_mod
 
@@ -75,7 +75,7 @@ def remove_medical_terms(
         metavar=list_metavar("terms"),
         help=w("Begriffe, genau wie gespeichert.", "Terms, exactly as stored."))],
 ) -> None:
-    """Delete terms from the vocabulary table."""
+    """Delete terms from the vocabulary."""
     from pseudonymed.detection import medical_terms as terms_module
     from pseudonymed.detection import vocabulary as vocab_mod
 
@@ -133,8 +133,8 @@ def merge_medical_terms(
         help=w("Liste, ein Begriff je Zeile, z. B. eine <name>_pseudonym.vokabular.txt.",
                "List with one term per line, e.g. a <name>_pseudonym.vokabular.txt."))],
     name: Annotated[str, typer.Option("--name",
-                                      help=w("Eigene Liste im Datenordner.",
-                                             "Your own list in the data folder."))]
+                                      help=w("Kategorie, in die die Begriffe kommen.",
+                                             "Category the terms go to."))]
     = "nutzervokabular",
 ) -> None:
     """Merge a list or CSV of terms into the vocabulary."""
@@ -158,8 +158,8 @@ def import_medical_terms(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"), exists=True,
                                          help=w("Quelldatei.", "Source file."))],
     name: Annotated[str, typer.Option("--name",
-                                      help=w("Name der Liste im Datenordner.",
-                                             "Name of the list in the data folder."))],
+                                      help=w("Kategorie, in die die Begriffe kommen.",
+                                             "Category the terms go to."))],
     format_: Annotated[str, typer.Option("--format", help=w("liste, csv oder mesh-xml.",
                                                             "list, csv or mesh-xml."))]
     = value_name("liste"),

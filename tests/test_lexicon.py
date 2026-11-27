@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pseudonymed.detection import lexicon
-from pseudonymed.detection.vocabulary import Vocabulary
+from pseudonymed.detection.identifiers import IdentifierTable
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def lexicon_on(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_loads_bundled_categories(tmp_path: Path, lexicon_on: None) -> None:
-    with Vocabulary(tmp_path / "p.sqlite") as v:
+    with IdentifierTable(tmp_path / "p.sqlite") as v:
         categories = {k: (r, n) for k, r, n in lexicon.per_class(v.connection)}
         for category in ("Anatomie", "Medikament", "Erkrankung", "Laborwert", "Befund", "Eponym"):
             role, count = categories[category]
@@ -47,7 +47,7 @@ def test_reloaded_only_when_data_changed(tmp_path: Path, lexicon_on: None,
                 "Bäckerin,Beruf,29202,Bäcker,\nBauer,Beruf,11104,Bauer,1\n")
     sources = (lexicon.Source("Berufe", file, lexicon._professions),)
     monkeypatch.setattr(lexicon, "SOURCES", sources)
-    with Vocabulary(tmp_path / "p.sqlite") as v:
+    with IdentifierTable(tmp_path / "p.sqlite") as v:
         v.connection.execute("INSERT INTO lexikon VALUES ('Eigene Klinik', 'Klinik', 'merkmal',"
                              " 'Nutzer', '', '')")
         v.connection.commit()
@@ -59,14 +59,14 @@ def test_reloaded_only_when_data_changed(tmp_path: Path, lexicon_on: None,
     with gzip.open(file, "wt", encoding="utf-8") as f:
         f.write("# Quelle: synthetisch\nbegriff,klasse,kennung,grundform,nachname\n"
                 "Rentnerin,Erwerbsstatus,,Rentner,\n")
-    with Vocabulary(tmp_path / "p.sqlite") as v:
+    with IdentifierTable(tmp_path / "p.sqlite") as v:
         assert lexicon.categories_of(v.connection, "Bäckerin") == []
         assert lexicon.categories_of(v.connection, "Rentnerin") == [("Erwerbsstatus", "merkmal")]
         assert lexicon.categories_of(v.connection, "Eigene Klinik") == [("Klinik", "merkmal")]
 
 
 def test_disabled_without_table(tmp_path: Path) -> None:
-    with Vocabulary(tmp_path / "p.sqlite") as v:
+    with IdentifierTable(tmp_path / "p.sqlite") as v:
         assert lexicon.per_class(v.connection) == []
 
 
@@ -77,7 +77,7 @@ def test_does_not_change_the_protection(tmp_path: Path, lexicon_on: None,
 
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path))
     medical_terms.standard.cache_clear()
-    with Vocabulary() as v:
+    with IdentifierTable() as v:
         v.connection.execute("INSERT INTO lexikon VALUES ('Bauer', 'Beruf', 'merkmal', 'Nutzer',"
                              " '', '')")
         v.connection.commit()
@@ -94,7 +94,7 @@ def test_statistics_show_lexicon(tmp_path: Path, lexicon_on: None) -> None:
     from pseudonymed.pseudonyms.statistics import statistics
 
     path = tmp_path / "p.sqlite"
-    Vocabulary(path).close()
+    IdentifierTable(path).close()
     lines = dict(statistics(path).lines())
     assert int(lines["Lexikon (Einträge)"]) > 30000
     assert "    Anatomie (Fachklasse)" in lines and "    Klinik (Identifikator)" in lines

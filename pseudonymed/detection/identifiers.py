@@ -574,16 +574,21 @@ class IdentifierTable:
     the bundled data does not bring it back; a changed bundled row becomes the user's."""
 
     def __init__(self, path: str | Path | None = None) -> None:
-        from pseudonymed.detection.vocabulary import Vocabulary
+        """Open the pseudonym database (the configured one by default), create the tables
+        it lacks and load the bundled lexicon where its data changed."""
+        from pseudonymed.pseudonyms import store
 
-        self._vocabulary = Vocabulary(path)
-        self.path = self._vocabulary.path
-        self.connection = self._vocabulary.connection
+        self.path = Path(path) if path else store.default_path()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.connection.executescript(store._SCHEMA)  # the whole store, not only the lexicon
+        store._protect(self.path, 0o600)
+        lexicon.ensure(self.connection)
         self.connection.executescript(lexicon.SCHEMA)
 
     def close(self) -> None:
         """Close the database connection."""
-        self._vocabulary.close()
+        self.connection.close()
 
     def __enter__(self) -> IdentifierTable:
         return self

@@ -46,7 +46,6 @@ NOT_MESSAGES = {
                                  "Universitätsklinikum", "und", "der", "die", "das", "des",
                                  "dem", "den", "im", "in"},
     "detection/lexicon.py": {"Körperteile", "ja", "Beruf"},
-    "detection/medical_terms.py": {"manöver", "phänomen", "Körperteile"},
     "detection/ner.py": {"sjögren"},
     "detection/number_words.py": {"ein", "eine", "einer", "und"},
     "detection/rules.py": {"[geschwärzt]"},

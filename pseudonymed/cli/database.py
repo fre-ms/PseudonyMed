@@ -50,48 +50,47 @@ def database_status(store: StoreOption = None) -> None:
 
 
 @command(database_app, "auslagern", "hand-over", help=w(
-    "Fachvokabular und Identifikatoren als Pakete in die Ablagen von lexterm und lexident"
-    " schreiben\n(eine Kopie: PseudonyMeds Tabellen bleiben, wie sie sind).",
-    "Write the vocabulary and the identifiers as packages into the stores of lexterm and"
-    " lexident (a copy: PseudonyMed's tables stay as they are)."))
+    "Die Identifikatoren als Pakete in die Ablage von lexident schreiben\n(eine Kopie:"
+    " PseudonyMeds Tabelle bleibt, wie sie ist).",
+    "Write the identifiers as packages into the store of lexident (a copy: PseudonyMed's"
+    " table stays as it is)."))
 def hand_over(
     target: Annotated[Path | None, typer.Option(
-        *flags("--ziel"), help=w("Ordner der beiden Ablagen (Standard: Datenordner von lexterm"
-                                 " und lexident).",
-                                 "Folder of the two stores (default: the data folder of"
-                                 " lexterm and lexident)."))] = None,
+        *flags("--ziel"), help=w("Ordner der Ablage (Standard: der Ordner, in dem auch die"
+                                 " Ablage des Fachvokabulars liegt).",
+                                 "Folder of the store (default: the folder that holds the"
+                                 " store of the vocabulary as well)."))] = None,
     store: StoreOption = None,
     yes: Annotated[bool, typer.Option(*flags("--ja"), help=w("Ohne Rückfrage.",
                                                              "Without asking for confirmation."))]
     = False,
 ) -> None:
-    """Copy the vocabulary and the identifier rows into lexterm's and lexident's stores,
-    check what was written and list the packages."""
+    """Copy the identifier rows into lexident's store, check what was written and list
+    the packages."""
     import lexcor
 
     from pseudonymed.detection import handover
 
-    folder = target if target is not None else lexcor.store.data_folder()
+    folder = target if target is not None else environment.lex_folder()
     if not yes and not typer.confirm(
-            w(f"Fachvokabular und Identifikatoren nach {folder} schreiben?",
-              f"Write the vocabulary and the identifiers to {folder}?")):
+            w(f"Die Identifikatoren nach {folder} schreiben?",
+              f"Write the identifiers to {folder}?")):
         raise typer.Exit(code=1)
     try:
-        report = handover.hand_over(folder, store)
+        written = handover.hand_over(folder, store)
     except (handover.HandoverError, lexcor.StoreError, OSError) as e:
         abort(error_message(e), cause=e)
-    for written in (report.vocabulary, report.identifiers):
-        typer.echo(str(written.store))
-        if written.kept is not None:
-            typer.echo(w(f"  vorher gesichert als {written.kept.name}",
-                         f"  kept as it was in {written.kept.name}"))
-        for title, concepts, terms in written.packages:
-            typer.echo(f"  {terms:>7}  {title}" + ("" if terms == concepts else w(
-                f"  ({concepts} Einträge)", f"  ({concepts} entries)")))
-    typer.echo(w("Geprüft: Die Ablagen enthalten, was PseudonyMed hält. PseudonyMed liest"
-                 " weiter seine eigenen Tabellen.",
-                 "Checked: the stores hold what PseudonyMed holds. PseudonyMed goes on"
-                 " reading its own tables."))
+    typer.echo(str(written.store))
+    if written.kept is not None:
+        typer.echo(w(f"  vorher gesichert als {written.kept.name}",
+                     f"  kept as it was in {written.kept.name}"))
+    for title, concepts, terms in written.packages:
+        typer.echo(f"  {terms:>7}  {title}" + ("" if terms == concepts else w(
+            f"  ({concepts} Einträge)", f"  ({concepts} entries)")))
+    typer.echo(w("Geprüft: Die Ablage enthält die Identifikatoren, die PseudonyMed hält."
+                 " PseudonyMed liest sie weiter aus seiner eigenen Tabelle.",
+                 "Checked: the store holds the identifiers that PseudonyMed holds."
+                 " PseudonyMed goes on reading them from its own table."))
 
 
 @command(database_app, "zusatzdaten", "extra-data",
@@ -110,7 +109,7 @@ def load_extra_data(
 ) -> None:
     """Load a supplementary data set (so far only the Austrian hospitals) into the lexicon."""
     from pseudonymed.detection import extra_data as extra_data_mod
-    from pseudonymed.detection.vocabulary import Vocabulary
+    from pseudonymed.detection.identifiers import IdentifierTable
 
     if german(name, ("kliniken-at",)) != "kliniken-at":
         raise typer.BadParameter(w("bekannt ist nur: kliniken-at",
@@ -121,8 +120,8 @@ def load_extra_data(
                  " reprinting with attribution except for commercial purposes. PseudonyMed loads"
                  " the list into your local database only and does not pass it on."))
     try:
-        with Vocabulary(store) as v:
-            report = extra_data_mod.load_clinics_at(v.connection, file=file)
+        with IdentifierTable(store) as table:
+            report = extra_data_mod.load_clinics_at(table.connection, file=file)
     except (extra_data_mod.ExtraDataError, OSError, ValueError) as e:
         reason = error_message(e)
         abort(w(f"Laden fehlgeschlagen: {reason}", f"Loading failed: {reason}"), cause=e)
@@ -163,7 +162,7 @@ def database_location(
 
 
 @command(database_app, "exportieren", "export",
-    help=w("Datenbank, Schlüssel und wahlweise Konfiguration und Vokabular sichern.",
+    help=w("Datenbank, Schlüssel und wahlweise Konfiguration und Fachvokabular sichern.",
            "Back up the database, the key and optionally the configuration and the"
            " vocabulary."))
 def export_database(
@@ -175,8 +174,8 @@ def export_database(
                                          help=w("konfig.toml einschließen.",
                                                 "Include konfig.toml."))] = True,
     vocabulary: Annotated[bool, typer.Option(*flags("--vokabular/--ohne-vokabular"),
-                                             help=w("Nutzervokabular einschließen.",
-                                                    "Include the user vocabulary."))] = True,
+                                             help=w("Fachvokabular einschließen.",
+                                                    "Include the vocabulary."))] = True,
     passphrase: Annotated[str | None, typer.Option(
         "--passphrase", envvar=environment.names("SICHERUNG_PASSPHRASE"),
         help=w("Passphrase für das Archiv (sonst Abfrage).",
@@ -232,8 +231,8 @@ def import_database(
                                          help=w("Konfiguration übernehmen.",
                                                 "Take over the configuration."))] = True,
     vocabulary: Annotated[bool, typer.Option(*flags("--vokabular/--ohne-vokabular"),
-                                             help=w("Nutzervokabular übernehmen.",
-                                                    "Take over the user vocabulary."))] = True,
+                                             help=w("Fachvokabular übernehmen.",
+                                                    "Take over the vocabulary."))] = True,
     yes: Annotated[bool, typer.Option(*flags("--ja"), help=w("Ohne Rückfrage.",
                                                              "Without asking for confirmation."))]
     = False,

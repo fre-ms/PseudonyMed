@@ -16,6 +16,7 @@ from pseudonymed.core.model import Kind, Patient
 from pseudonymed.detection import lexicon
 from pseudonymed.detection import medical_content as medical_module
 from pseudonymed.detection import medical_terms as terms_module
+from pseudonymed.detection.identifiers import IdentifierTable
 from pseudonymed.detection.medical_content import Selection
 from pseudonymed.detection.vocabulary import Vocabulary
 from pseudonymed.pipeline import PipelineOptions, finalise, prepare, pseudonymise
@@ -49,13 +50,13 @@ def _clear_caches() -> None:
 def small_lexicon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
     _clear_caches()
-    with Vocabulary() as v:
-        v.connection.executescript(lexicon.SCHEMA)
-        v.connection.executemany(
+    with IdentifierTable() as table:
+        table.connection.executemany(
             "INSERT INTO lexikon (begriff, klasse, rolle, quelle) VALUES (?, ?, 'fach', ?)",
             LINES)
-        lexicon.increment_version(v.connection)
-        v.connection.commit()
+        lexicon.increment_version(table.connection)
+        table.connection.commit()
+    with Vocabulary() as v:
         v.add(["Marcumar"], "Medikament")  # a trade name of the user's own
         v.add(["Levetiracetam"], "Nutzervokabular")
     yield tmp_path / "daten"

@@ -66,6 +66,7 @@ def _show_tools(settings: Settings) -> None:
 
     from pseudonymed.detection import medical_terms as terms_module
     from pseudonymed.detection import ner as ner_module
+    from pseudonymed.detection import vocabulary as vocab_mod
 
     backends = available_backends()
     typer.echo(w("OCR-Backends:        ", "OCR engines:         ")
@@ -95,9 +96,9 @@ def _show_tools(settings: Settings) -> None:
     fb = terms_module.standard()
     sources = ", ".join(f"{name} {n}" for name, n in fb.sources)
     typer.echo(w(f"Fachbegriffe:        {fb.count} geschützte Begriffe ({sources});"
-                 f" eigene Listen in {terms_module.data_folder()}",
+                 f" Ablage {vocab_mod.default_path()}",
                  f"Medical terms:       {fb.count} protected terms ({sources});"
-                 f" own lists in {terms_module.data_folder()}"))
+                 f" store {vocab_mod.default_path()}"))
 
 
 def _show_keys(store: Path | None, settings: Settings) -> None:

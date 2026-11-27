@@ -85,16 +85,6 @@ CREATE TABLE IF NOT EXISTS restrisiko_dokumente (
     geaendert  TEXT NOT NULL,
     PRIMARY KEY (schluessel, quelle)
 );
-CREATE TABLE IF NOT EXISTS vokabular (
-    begriff   TEXT PRIMARY KEY COLLATE NOCASE,
-    kategorie TEXT NOT NULL DEFAULT '',
-    angelegt  TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS vokabular_kategorie ON vokabular(kategorie);
-CREATE TABLE IF NOT EXISTS vokabular_meta (
-    schluessel TEXT PRIMARY KEY,
-    wert       TEXT NOT NULL
-);
 """
 
 

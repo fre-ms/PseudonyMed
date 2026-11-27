@@ -56,6 +56,19 @@ def data_folder() -> Path:
     return Path(folder) if folder else _migrated(user_data_path)
 
 
+def lex_folder() -> Path:
+    """Folder of the stores of lexterm and lexident (``lexterm.sqlite``, ``lexident.sqlite``):
+    ``LEXCOR_DATA`` when it is set; else PseudonyMed's own data folder when
+    ``PSEUDONYMED_DATENORDNER`` names one, so that a portable installation keeps everything
+    together; else the folder of the two libraries, where their other users find the stores."""
+    import lexcor.store
+
+    own = variable("DATENORDNER")
+    if own and not os.environ.get("LEXCOR_DATA"):
+        return Path(own)
+    return lexcor.store.data_folder()
+
+
 def config_folder() -> Path:
     """Folder of ``konfig.toml``: ``PSEUDONYMED_DATENORDNER`` or the platform's
     configuration folder (taken over from the former name)."""

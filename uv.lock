@@ -839,8 +839,16 @@ wheels = [
 
 [[package]]
 name = "lexcor"
-version = "0.1.0"
-source = { git = "https://github.com/fre-ms/lexcor?tag=v0.1.0#42ea512d260985b440fedecbc0ca5f96be237e4e" }
+version = "0.2.1"
+source = { git = "https://github.com/fre-ms/lexcor?tag=v0.2.1#28fa1c2534e0f08223a7202080462b52fefd7ea7" }
+
+[[package]]
+name = "lexterm"
+version = "0.2.1"
+source = { git = "https://github.com/fre-ms/lexterm?tag=v0.2.1#05d30cdb3f77ae0dc593348634e1c3be64b6af77" }
+dependencies = [
+    { name = "lexcor" },
+]
 
 [[package]]
 name = "librt"
@@ -1651,6 +1659,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "lexcor" },
+    { name = "lexterm" },
     { name = "optdoc" },
     { name = "platformdirs" },
     { name = "pymupdf" },
@@ -1703,7 +1712,8 @@ quality = [
 requires-dist = [
     { name = "de-core-news-md", marker = "extra == 'ner'", url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_md-3.8.0/de_core_news_md-3.8.0-py3-none-any.whl" },
     { name = "keyring", marker = "extra == 'carddav'", specifier = ">=25" },
-    { name = "lexcor", git = "https://github.com/fre-ms/lexcor?tag=v0.1.0" },
+    { name = "lexcor", git = "https://github.com/fre-ms/lexcor?tag=v0.2.1" },
+    { name = "lexterm", git = "https://github.com/fre-ms/lexterm?tag=v0.2.1" },
     { name = "optdoc", git = "https://github.com/fre-ms/optdoc?tag=v0.1.0" },
     { name = "optdoc", extras = ["ocr"], marker = "extra == 'ocr'", git = "https://github.com/fre-ms/optdoc?tag=v0.1.0" },
     { name = "pillow", marker = "extra == 'codes'", specifier = ">=10" },

@@ -116,7 +116,7 @@ def test_import_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     from pseudonymed.cli import app
 
     r = CliRunner().invoke(app, ["fachbegriffe", "status"])
-    assert r.exit_code == 0 and "eigene" in r.output and "vokabular" in r.output
+    assert r.exit_code == 0 and "eigene" in r.output and "lexterm.sqlite" in r.output
     r = CliRunner().invoke(app, ["fachbegriffe", "pruefen", "Flantzitis", "Flantz",
                                  "Morbus Parkinson"])
     assert "Flantzitis: geschützt" in r.output and "Flantz: frei" in r.output

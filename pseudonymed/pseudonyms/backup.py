@@ -6,13 +6,17 @@ of every pseudonym back to its clear text; the key file (``pseudonymschluessel.t
 is the secret the codes are derived from.  Without both, a pseudonymised text cannot
 be read in clear again, and with both anyone can.  A backup is therefore a ZIP of the
 two (a consistent copy of the database through SQLite's backup API, never a raw copy
-of an open file), optionally the configuration and the user's vocabulary lists, plus
-a manifest with checksums, and it is protected by a passphrase (OpenPGP symmetric
+of an open file), optionally the configuration and the protected vocabulary (one CSV,
+``begriff,kategorie``: the vocabulary lives in lexterm's store, not in the database),
+plus a manifest with checksums, and it is protected by a passphrase (OpenPGP symmetric
 encryption, readable by ``gpg --decrypt`` as well) unless the user insists on plain.
 
 Restore replaces the database and the key after setting aside the current ones, or
 merges an archive made with the *same* key into the local database (same key, same
-codes for the same people); merging two different pseudonym spaces is refused.
+codes for the same people); merging two different pseudonym spaces is refused.  The
+vocabulary follows the mode: restoring makes it exactly what the archive holds, merging
+adds what is new.  An archive made before the vocabulary left the database carries it as
+a table of that database, which is taken over in the same way.
 """
 
 from __future__ import annotations
@@ -30,26 +34,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
+from lexcor import StoreError
+
 from pseudonymed import TOOL
 from pseudonymed.config import config_path
 from pseudonymed.core.stored import as_stored, field_values
 from pseudonymed.core.text import english, say
-from pseudonymed.detection.medical_terms import data_folder as vocabulary_folder
+from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
-from pseudonymed.pseudonyms.statistics import key_id, statistics, store_paths, vocabulary_files
+from pseudonymed.pseudonyms.statistics import key_id, statistics, store_paths
 
-VERSION = 1
+VERSION = 2  # 2: the vocabulary travels as a CSV beside the database, no longer inside it
 NAME_DB = "pseudonyme.sqlite"
 NAME_KEY = "pseudonymschluessel.txt"
 NAME_CONFIG = "konfig.toml"
-VOCABULARY_FOLDER = "fachbegriffe"
+NAME_VOCABULARY = "vokabular.csv"
 NAME_MANIFEST = "manifest.json"
 _MARK = "pseudonymed_sicherung"
 _FORMER_MARK = "anonymed_sicherung"  # backups written before the project was renamed
 MODES = ("ersetzen", "zusammenfuehren")
 
-_TABLES = ("patienten", "aliasse", "zuordnungen", "verworfen", "vokabular",  # merged in
-           "restrisiko", "restrisiko_dokumente")  # this order; older archives may lack some
+_TABLES = ("patienten", "aliasse", "zuordnungen", "verworfen",  # merged in this order;
+           "restrisiko", "restrisiko_dokumente")  # older archives may lack some
 
 
 class BackupError(Exception):
@@ -210,9 +216,9 @@ class Manifest:
         return NAME_CONFIG in self.files
 
     @property
-    def vocabulary(self) -> int:
-        """Number of vocabulary list files in the archive."""
-        return sum(1 for n in self.files if n.startswith(VOCABULARY_FOLDER + "/"))
+    def vocabulary(self) -> bool:
+        """Whether the vocabulary travels in the archive."""
+        return NAME_VOCABULARY in self.files
 
     def description(self, language: str = "de") -> str:
         """One line for the user: date, tool, counts, key handle and the optional parts."""
@@ -221,12 +227,12 @@ class Manifest:
             return (f"{when} · {self.tool} · {self.patients} patients, {self.mappings} mappings,"
                     f" {self.discarded} discards · key {self.key_id}"
                     + (" · configuration" if self.config else "")
-                    + (f" · {self.vocabulary} vocabulary file(s)" if self.vocabulary else ""))
+                    + (" · vocabulary" if self.vocabulary else ""))
         return (f"{when} · {self.tool} · {self.patients}"
                 f" Patienten, {self.mappings} Zuordnungen, {self.discarded} Verwerfungen"
                 f" · Schlüssel {self.key_id}"
                 + (" · Konfiguration" if self.config else "")
-                + (f" · {self.vocabulary} Vokabulardatei(en)" if self.vocabulary else ""))
+                + (" · Vokabular" if self.vocabulary else ""))
 
 
 def _sha(data: bytes) -> str:
@@ -235,11 +241,31 @@ def _sha(data: bytes) -> str:
 
 
 def _db_copy(db: Path) -> bytes:
-    """A consistent snapshot of the database through SQLite's backup API."""
+    """A consistent snapshot of the database through SQLite's backup API, without the table
+    a database may still have from the time it kept the vocabulary."""
     with tempfile.TemporaryDirectory() as folder:
         target = Path(folder) / NAME_DB
         _copy_database(db, target)
+        vocab_mod.drop_table(target)
         return target.read_bytes()
+
+
+def _vocabulary_csv() -> bytes:
+    """The protected vocabulary as the CSV its own export writes."""
+    try:
+        with tempfile.TemporaryDirectory() as folder, vocab_mod.Vocabulary() as vocabulary:
+            vocabulary.export_csv(Path(folder) / NAME_VOCABULARY)
+            return (Path(folder) / NAME_VOCABULARY).read_bytes()
+    except (vocab_mod.VocabularyError, StoreError) as error:
+        raise _vocabulary_error(error) from error
+
+
+def _vocabulary_error(error: ValueError) -> BackupError:
+    """An error of the vocabulary or of its store as an error of the backup, with both of
+    its languages."""
+    if isinstance(error, StoreError):
+        return BackupError(say(error.message("de"), error.message("en")))
+    return BackupError(*error.args)
 
 
 def export(target: Path, store_path: Path | None = None, config: bool = True,
@@ -273,13 +299,14 @@ def export(target: Path, store_path: Path | None = None, config: bool = True,
 
 def _collect_contents(db: Path, key: Path, config: bool, vocabulary: bool) -> dict[str, bytes]:
     """The archive's files by name: a database snapshot, the key, and on request the
-    configuration and the vocabulary lists."""
+    configuration and the vocabulary.  The vocabulary is read first: opening it takes a
+    vocabulary over that the database still holds, and the snapshot is to follow that."""
+    words = _vocabulary_csv() if vocabulary else None
     contents: dict[str, bytes] = {NAME_DB: _db_copy(db), NAME_KEY: key.read_bytes()}
     if config and config_path().exists():
         contents[NAME_CONFIG] = config_path().read_bytes()
-    if vocabulary:
-        for p in vocabulary_files(vocabulary_folder()):
-            contents[f"{VOCABULARY_FOLDER}/{p.name}"] = p.read_bytes()
+    if words is not None:
+        contents[NAME_VOCABULARY] = words
     return contents
 
 
@@ -390,9 +417,8 @@ class ImportReport:
     new_discarded: int = 0
     key_replaced: bool = False
     config_replaced: bool = False
-    vocabulary_files: int = 0
-
-    new_vocabulary: int = 0
+    vocabulary_terms: int = 0  # restoring: the terms of the vocabulary the archive brought
+    new_vocabulary: int = 0  # merging: the terms that were new
 
     def description(self, language: str = "de") -> str:
         """One sentence per mode: what was restored, or how many entries were new."""
@@ -403,33 +429,30 @@ class ImportReport:
                     f" Zuordnungen, {self.new_discarded} Verwerfungen; Schlüssel"
                     f" {'ersetzt' if self.key_replaced else 'unverändert'}"
                     + (", Konfiguration ersetzt" if self.config_replaced else "")
-                    + (f", {self.vocabulary_files} Vokabulardatei(en)" if self.vocabulary_files
-                       else "")
+                    + (f", Vokabular mit {self.vocabulary_terms} Begriffen"
+                       if self.vocabulary_terms else "")
                     + (". Vorherige Fassung gesichert: "
                        + ", ".join(p.name for p in self.prior_backups)
                        if self.prior_backups else "."))
         return (f"Zusammengeführt: {self.new_patients} neue Patienten, {self.new_aliases} neue"
                 f" Schreibweisen, {self.new_mappings} neue Zuordnungen, {self.new_discarded}"
-                f" neue Verwerfungen, {self.new_vocabulary} neue Vokabeln"
-                + (f", {self.vocabulary_files} neue Vokabulardatei(en)" if self.vocabulary_files
-                   else "") + ".")
+                f" neue Verwerfungen, {self.new_vocabulary} neue Vokabeln.")
 
     def _description_en(self) -> str:
         """The English sentence of :meth:`description`."""
-        files = f", {self.vocabulary_files} vocabulary file(s)" if self.vocabulary_files else ""
+        words = (f", vocabulary of {self.vocabulary_terms} terms" if self.vocabulary_terms
+                 else "")
         if self.mode == "ersetzen":
             return (f"Restored: {self.new_patients} patients, {self.new_mappings} mappings,"
                     f" {self.new_discarded} discards; key"
                     f" {'replaced' if self.key_replaced else 'unchanged'}"
-                    + (", configuration replaced" if self.config_replaced else "") + files
+                    + (", configuration replaced" if self.config_replaced else "") + words
                     + (". Previous version kept: "
                        + ", ".join(p.name for p in self.prior_backups)
                        if self.prior_backups else "."))
         return (f"Merged: {self.new_patients} new patients, {self.new_aliases} new spellings,"
                 f" {self.new_mappings} new mappings, {self.new_discarded} new discards,"
-                f" {self.new_vocabulary} new vocabulary terms"
-                + (f", {self.vocabulary_files} new vocabulary file(s)" if self.vocabulary_files
-                   else "") + ".")
+                f" {self.new_vocabulary} new vocabulary terms.")
 
 
 def _safety_copy(path: Path, stamp: str) -> Path | None:
@@ -482,8 +505,7 @@ def import_file(archive: Path, store_path: Path | None = None, passphrase: str |
         else:
             _merge(e, report)
         _protect(key, db)
-        if vocabulary:
-            _adoptvocabulary_files(contents, mode, report)
+        _take_vocabulary(e, contents.get(NAME_VOCABULARY), vocabulary, report)
     return report
 
 
@@ -527,9 +549,6 @@ def _merge(e: _ImportContext, report: ImportReport) -> None:
     counter = _adopt_entries(e.db, e.archive_db)
     report.new_patients, report.new_aliases = counter["patienten"], counter["aliasse"]
     report.new_mappings, report.new_discarded = (counter["zuordnungen"], counter["verworfen"])
-    report.new_vocabulary = counter.get("vokabular", 0)
-    if report.new_vocabulary:
-        _forget_vocabulary()
 
 
 def _require_same_key(e: _ImportContext, local_empty: bool) -> None:
@@ -550,7 +569,7 @@ def _require_same_key(e: _ImportContext, local_empty: bool) -> None:
 
 def _adopt_entries(db: Path, archive_db: Path) -> dict[str, int]:
     """Copy the archive's rows into the local database table by table (INSERT OR IGNORE) and
-    count the newcomers; new words bump the vocabulary version so cached matchers notice."""
+    count the newcomers."""
     target = sqlite3.connect(db)
     try:
         from pseudonymed.pseudonyms.store import _SCHEMA
@@ -558,10 +577,6 @@ def _adopt_entries(db: Path, archive_db: Path) -> dict[str, int]:
         target.executescript(_SCHEMA)
         target.execute("ATTACH DATABASE ? AS archiv", (str(archive_db),))
         counter = {table: _adopt_table(target, table) for table in _TABLES}
-        if counter.get("vokabular"):
-            target.execute("INSERT INTO vokabular_meta (schluessel, wert) VALUES"
-                           " ('version', '1') ON CONFLICT(schluessel) DO UPDATE SET"
-                           " wert = CAST(CAST(wert AS INTEGER) + 1 AS TEXT)")
         target.commit()
         target.execute("DETACH DATABASE archiv")
     finally:
@@ -581,21 +596,51 @@ def _adopt_table(target: sqlite3.Connection, table: str) -> int:
     return after - before
 
 
-def _adoptvocabulary_files(contents: dict[str, bytes], mode: str,
-                            report: ImportReport) -> None:
-    """Write the archive's vocabulary list files into the data folder: all of them when
-    restoring, only the missing ones when merging."""
-    folder_v = vocabulary_folder()
-    for name, data in contents.items():
-        if not name.startswith(VOCABULARY_FOLDER + "/"):
-            continue
-        target_v = folder_v / Path(name).name
-        if mode == "ersetzen" or not target_v.exists():
-            folder_v.mkdir(parents=True, exist_ok=True)
-            target_v.write_bytes(data)
-            report.vocabulary_files += 1
-    if report.vocabulary_files:
-        _forget_vocabulary()
+def _take_vocabulary(e: _ImportContext, words: bytes | None, take: bool,
+                     report: ImportReport) -> None:
+    """The archive's vocabulary: its CSV, or for an archive made before the vocabulary left
+    the database the table in its database.  Restoring makes the vocabulary exactly that,
+    merging adds what is new; without ``take`` the vocabulary stays as it is.  A restored
+    database never keeps the table."""
+    file = e.archive_db.with_name(NAME_VOCABULARY)
+    if words is not None:
+        file.write_bytes(words)
+    try:
+        if report.mode == "ersetzen":
+            _restore_vocabulary(e, file, take, report)
+        elif take:
+            _merge_vocabulary(e, file, report)
+    except (vocab_mod.VocabularyError, StoreError) as error:
+        raise _vocabulary_error(error) from error
+    _forget_vocabulary()
+
+
+def _restore_vocabulary(e: _ImportContext, file: Path, take: bool,
+                        report: ImportReport) -> None:
+    """Make the vocabulary exactly what the archive holds (when it is to be taken), then
+    drop the table an archive of the former kind restored with the database.  Opening the
+    vocabulary takes over what the default database still holds: the restored database is
+    that one, or is taken over after it."""
+    if take and file.exists():
+        with vocab_mod.Vocabulary() as vocabulary:
+            report.vocabulary_terms = vocabulary.replace_from_csv(file)
+    elif take:
+        held = vocab_mod.table_terms(e.db) or {}
+        with vocab_mod.Vocabulary() as vocabulary:
+            vocabulary.adopt(e.db)
+        report.vocabulary_terms = sum(len(terms) for terms in held.values())
+    vocab_mod.drop_table(e.db)
+
+
+def _merge_vocabulary(e: _ImportContext, file: Path, report: ImportReport) -> None:
+    """Add the terms of the archive that the vocabulary lacks."""
+    with vocab_mod.Vocabulary() as vocabulary:
+        if file.exists():
+            report.new_vocabulary = vocabulary.import_csv(file)[0]
+            return
+        groups = vocab_mod.table_terms(e.archive_db) or {}
+        report.new_vocabulary = sum(vocabulary.add(terms, category)
+                                    for category, terms in groups.items())
 
 
 def _forget_vocabulary() -> None:

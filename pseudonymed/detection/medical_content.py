@@ -34,11 +34,12 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from lexcor import StoreError
 from optdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind
 from pseudonymed.detection import lexicon
-from pseudonymed.detection.identifiers import Candidate, Recogniser
+from pseudonymed.detection.identifiers import Candidate, IdentifierTable, Recogniser
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
 CATEGORY_DRUG = "Medikament"
@@ -208,8 +209,10 @@ def dose_before(text: str, start: int) -> tuple[int, int] | None:
 
 
 # -- the lists ------------------------------------------------------------------------------------
-def _rows(connection: sqlite3.Connection) -> list[tuple[str, str]]:
-    """Drug names and lab names, both always (a term on both lists needs both)."""
+def _rows(connection: sqlite3.Connection,
+          vocabulary: dict[str, list[str]]) -> list[tuple[str, str]]:
+    """Drug names and lab names, both always (a term on both lists needs both): those of
+    the lexicon, then the terms of the vocabulary's categories of these names."""
     connection.executescript(lexicon.SCHEMA)
     other = ",".join("?" * len(_OTHER_CATEGORIES))
     lines = [(b, CATEGORY_DRUG) for (b,) in connection.execute(
@@ -221,12 +224,8 @@ def _rows(connection: sqlite3.Connection) -> list[tuple[str, str]]:
         "SELECT DISTINCT begriff FROM lexikon WHERE klasse = ? AND quelle = ?",
         (CATEGORY_LAB_TEST, SOURCE_LAB_TESTS))]
     for category, names in VOCABULARY_CATEGORIES.items():
-        try:
-            lines += [(b, category) for (b,) in connection.execute(
-                f"SELECT begriff FROM vokabular WHERE lower(kategorie) IN"
-                f" ({','.join('?' * len(names))})", names)]
-        except sqlite3.OperationalError:
-            pass
+        lines += [(b, category) for k, terms in vocabulary.items() if k.lower() in names
+                  for b in terms]
     return lines
 
 
@@ -331,7 +330,7 @@ class _DefaultSearch:
 
     def __init__(self) -> None:
         """Starts without cached lists."""
-        self._cache: tuple[Path, int, int, MedicalSearch] | None = None
+        self._cache: tuple[tuple[Path, Path, int, int], MedicalSearch] | None = None
 
     def __call__(self, selection: Selection) -> MedicalSearch | None:
         """The matcher for the chosen levels (None when none is chosen), its lists rebuilt
@@ -341,16 +340,14 @@ class _DefaultSearch:
         from pseudonymed.detection.vocabulary import Vocabulary
 
         try:
-            with Vocabulary() as v:
-                versions = (lexicon.version(v.connection), v.version())
-                if self._cache is not None and self._cache[0] == v.path \
-                        and self._cache[1:3] == versions:
-                    return self._cache[3].using(selection)
-                search = MedicalSearch(_rows(v.connection), selection)
-                path = v.path
-        except (sqlite3.Error, OSError):
+            with IdentifierTable() as table, Vocabulary() as v:
+                key = (table.path, v.path, lexicon.version(table.connection), v.version())
+                if self._cache is not None and self._cache[0] == key:
+                    return self._cache[1].using(selection)
+                search = MedicalSearch(_rows(table.connection, v.per_category()), selection)
+        except (sqlite3.Error, OSError, StoreError):
             return MedicalSearch([], selection)
-        self._cache = (path, *versions, search)
+        self._cache = (key, search)
         return search
 
     def cache_clear(self) -> None:

@@ -43,16 +43,15 @@ def test_common_buttons_translated(qapp: QApplication) -> None:  # noqa: F811
 def test_selection_follows_the_sorting(qapp: QApplication) -> None:  # noqa: F811
     """Selected view rows come back as model rows in model order, whatever the sort."""
     page = VocabularyPage(Session(store_path=None))
-    page.model.load([("Wade", "Anatomie", "2026-01-02T10:00:00"),
-                     ("Arm", "Anatomie", "2026-01-02T10:00:00"),
-                     ("Knie", "Anatomie", "2026-01-02T10:00:00")])
+    page.model.load([("Wade", "Anatomie", ""), ("Arm", "Anatomie", ""),
+                     ("Knie", "Anatomie", "")])
     page.view.sortByColumn(0, Qt.SortOrder.DescendingOrder)  # Wade, Knie, Arm
     selection = page.view.selectionModel()
     for line in (0, 2):
         selection.select(page.proxy.index(line, 0), QItemSelectionModel.SelectionFlag.Select
                          | QItemSelectionModel.SelectionFlag.Rows)
     assert page.selected_entries() == ["Wade", "Arm"]
-    assert page.model.data(page.model.index(0, 2)) == "2026-01-02 10:00"
+    assert page.model.columnCount() == 2 and page.model.data(page.model.index(0, 1)) == "Anatomie"
 
 
 def test_model_answers_qt(qapp: QApplication) -> None:  # noqa: F811

@@ -6,12 +6,14 @@ a span is wholly covered) are tested in lexcor, where the matcher lives.
 
 from __future__ import annotations
 
-import gzip
 from pathlib import Path
 
+import lexterm
 import pytest
+from lexcor import StoreError
 
 from pseudonymed.detection import medical_terms as terms_module
+from pseudonymed.detection import vocabulary as vocab_mod
 
 
 def test_terms_are_taken_counted_and_traced_to_their_list() -> None:
@@ -26,8 +28,9 @@ def test_terms_are_taken_counted_and_traced_to_their_list() -> None:
     assert fb.add(["Herz", "# Kopf"], "Liste") == 1 and fb.sources == [("Liste", 1)]
 
 
-def test_the_eponym_heads_are_pseudonymeds() -> None:
+def test_the_eponym_heads_are_lexterms() -> None:
     fb = terms_module.MedicalTerms()
+    assert fb.cover.heads >= {"zeichen", "manöver"} and "gang" not in lexterm.EPONYM_HEADS
     fb.add(["Babinski-Zeichen", "Lasègue-Manöver", "Berlin-Blau", "Müller-Gang"])
     assert fb.is_medical_term("Babinski") and fb.is_medical_term("Lasègue")
     # anatomy and chemistry heads protect neither the town nor the surname
@@ -45,20 +48,25 @@ def test_protection_asks_the_matcher() -> None:
     assert not fb.is_protected(text, 20, 26)
 
 
-def test_user_lists_and_loading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_without_a_store_the_bundled_lists_protect(tmp_path: Path,
+                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fallback reads the bundled lists directly, each under its category; a store
+    that cannot be opened is the case for it."""
+    fb = terms_module.load()
+    assert fb.sources == [(k, len(terms)) for k, terms in vocab_mod.bundled().items()]
+    assert fb.is_medical_term("Nierenlager") and not fb.is_medical_term("Flantzitis")
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path))
-    assert terms_module._user_lists() == []
-    folder = tmp_path / "fachbegriffe"
-    folder.mkdir()
-    (folder / "b.txt").write_text("Zweitkrankheit\n", encoding="utf-8")
-    with gzip.open(folder / "a.txt.gz", "wt", encoding="utf-8") as f:
-        f.write("# Kopf\nErstkrankheit\n")
-    (folder / "c.csv").write_text("x\n", encoding="utf-8")
-    (folder / "d.txt").mkdir()
-    assert [p.name for p in terms_module._user_lists()] == ["a.txt.gz", "b.txt"]
-    fb = terms_module.load(with_base=False)
-    assert [q for q, _n in fb.sources] == ["Eponyme", "a.txt.gz", "b.txt"]
-    assert fb.is_medical_term("Erstkrankheit") and fb.is_medical_term("Zweitkrankheit")
-    eponyms_only = terms_module.load(with_base=False, with_user_data=False)
-    assert [q for q, _n in eponyms_only.sources] == ["Eponyme"]
-    assert not eponyms_only.is_medical_term("Erstkrankheit")
+    terms_module.standard.cache_clear()
+    with vocab_mod.Vocabulary() as v:
+        v.add(["Flantzitis"])
+    assert terms_module.standard().is_medical_term("Flantzitis")
+
+    def refuse(self: vocab_mod.Vocabulary, *arguments: object, **options: object) -> None:
+        raise StoreError("no-store", "Die Ablage lässt sich nicht öffnen.",
+                         "The store cannot be opened.")
+
+    monkeypatch.setattr(vocab_mod.Vocabulary, "__init__", refuse)
+    terms_module.standard.cache_clear()
+    without = terms_module.standard()
+    assert without.cover.single == fb.cover.single and without.cover.phrases == fb.cover.phrases
+    terms_module.standard.cache_clear()

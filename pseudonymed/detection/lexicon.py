@@ -8,7 +8,8 @@ not be redacted by the guesswork.  The lexicon adds the class of a term and its 
 * role ``feature`` - quasi-identifying attributes (Beruf, Erwerbsstatus, Titel, Klinik,
   Studie) that a residual-risk estimate should weigh and that must never be protected.
 
-The table ``lexicon`` lives in the pseudonym database next to ``vocabulary``.  Bundled sources
+The table ``lexicon`` lives in the pseudonym database (the vocabulary does not: it is in
+lexterm's store).  Bundled sources
 are (re)loaded whenever their file changes (a hash per source in ``lexikon_meta``); rows of
 the source ``Nutzer`` are left alone, and bundled rows the user deleted stay deleted
 (``lexikon_geloescht``).  The ``feature`` rows are the identifiers of the identifiers step

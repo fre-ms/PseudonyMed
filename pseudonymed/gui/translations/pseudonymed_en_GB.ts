@@ -784,8 +784,8 @@
     </message>
     <message>
         <location filename="../database_page.py" line="135"/>
-        <source>Nutzervokabular einschließen</source>
-        <translation>Include your vocabulary</translation>
+        <source>Fachvokabular einschließen</source>
+        <translation>Include the vocabulary</translation>
     </message>
     <message>
         <location filename="../database_page.py" line="144"/>
@@ -852,7 +852,7 @@
     </message>
     <message>
         <location filename="../database_page.py" line="199"/>
-        <source>Nutzervokabular aus dem Archiv übernehmen</source>
+        <source>Fachvokabular aus dem Archiv übernehmen</source>
         <translation>Take the vocabulary from the archive</translation>
     </message>
     <message>
@@ -2452,11 +2452,6 @@
         <location filename="../vocabulary_page.py" line="36"/>
         <source>Kategorie</source>
         <translation>Category</translation>
-    </message>
-    <message>
-        <location filename="../vocabulary_page.py" line="36"/>
-        <source>Angelegt</source>
-        <translation>Added</translation>
     </message>
 </context>
 <context>

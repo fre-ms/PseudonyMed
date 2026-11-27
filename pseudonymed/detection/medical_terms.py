@@ -6,64 +6,46 @@ scores, eponyms.  Spans covered by such a term are protected from those two
 heuristics (the deterministic rules for the patient's own identifiers are
 not affected, a patient really called "Herz" is still redacted).
 
-The terms live in the ``vocabulary`` table of the pseudonym database
-(:mod:`pseudonymed.detection.vocabulary`): the bundled lists (German labels and aliases
-from Wikidata for items with MeSH, ICD-10, ATC or INN identifiers, CC0; body parts;
-findings terms; the eponyms of :mod:`pseudonymed.detection.ner`) are loaded into it on
-first use, and the user adds, deletes and imports terms there (vocabulary step,
-``pseudonymed fachbegriffe``).  :func:`load` still reads the bundled files directly, as
-the fallback when the database cannot be opened.
+The terms live in lexterm's store (:mod:`pseudonymed.detection.vocabulary`): the bundled
+lists (German labels and aliases from Wikidata for items with MeSH, ICD-10, ATC or INN
+identifiers, CC0; body parts; findings terms; the eponyms of
+:mod:`pseudonymed.detection.ner`) are installed there on first use, and the user adds,
+deletes and imports terms there (vocabulary step, ``pseudonymed fachbegriffe``).
+:func:`load` reads the bundled lists directly, as the fallback when the store cannot be
+opened.
 
 Matching is case-insensitive, tolerates German inflection (-s, -n, -en, -e,
 -es, -er, -em, -ern), hyphenated compounds ("Parkinson-Syndrom") and umlaut
-transliteration; multi-word terms are matched as a whole.  The matcher itself was written
-here and lives in lexcor now (:class:`lexcor.cover.Cover`), which other programs share;
-this module keeps what is PseudonyMed's: the lists, where they are stored, and the head
-nouns after which a name is an eponym.
+transliteration; multi-word terms are matched as a whole.  The matcher was written here and
+lives in lexcor now (:class:`lexcor.cover.Cover`), and the head nouns after which a name is
+an eponym are lexterm's (``lexterm.EPONYM_HEADS``); this module keeps what is PseudonyMed's:
+which store is read, the record of the lists, and the import of term files.
 """
 
 from __future__ import annotations
 
 import csv
 import gzip
+import sqlite3
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from lexcor.cover import Cover
+import lexterm
+from lexcor import Cover, StoreError
 
-from pseudonymed import environment
 from pseudonymed.core.text import say
-
-BASE = Path(__file__).resolve().parent.parent / "data" / "fachbegriffe_de.txt.gz"
-BODY_PARTS = Path(__file__).resolve().parent.parent / "data" / "koerperteile_de.txt"
-FINDINGS_TERMS = Path(__file__).resolve().parent.parent / "data" / "befundbegriffe_de.txt"
-# Head nouns after which the first part of a hyphenated term is an eponym that appears on
-# its own in reports ("Babinski-Zeichen" -> "Babinski positiv").  Anatomy and chemistry heads
-# are deliberately absent: "Müller-Gang" or "Berlin-Blau" must not protect the surname Müller
-# or the town Berlin from the name recognition.
-_EPONYM_HEADS = {
-    "zeichen", "syndrom", "test", "probe", "manöver", "manoever", "reflex", "phänomen",
-    "phaenomen", "skala", "score", "index", "trias", "kriterien", "klassifikation", "lagerung",
-    "griff", "punkt", "position", "stadium", "formel", "gleichung", "koeffizient", "regel",
-    "gesetz", "effekt", "reaktion", "methode", "verfahren", "technik", "operation", "naht",
-    "schnitt", "zugang",
-}
-
-
-def data_folder() -> Path:
-    """The folder of the user's own list files (``medical_terms`` in the data folder)."""
-    return environment.data_folder() / "fachbegriffe"
 
 
 class MedicalTerms:
-    """The merged vocabulary with its matcher: lexcor's cover with PseudonyMed's eponym heads,
+    """The merged vocabulary with its matcher: lexcor's cover with lexterm's eponym heads,
     and the record of which list brought how many terms."""
 
-    def __init__(self) -> None:
-        """Starts empty."""
-        self.cover = Cover(heads=_EPONYM_HEADS)
-        self.sources: list[tuple[str, int]] = []
+    def __init__(self, cover: Cover | None = None,
+                 sources: Iterable[tuple[str, int]] = ()) -> None:
+        """Starts empty, or over a cover built elsewhere with the record of its lists."""
+        self.cover = cover if cover is not None else Cover(heads=lexterm.EPONYM_HEADS)
+        self.sources: list[tuple[str, int]] = list(sources)
 
     @property
     def count(self) -> int:
@@ -104,44 +86,20 @@ def _read_list(path: Path) -> Iterator[str]:
                 yield line
 
 
-def _load_bundled(fb: MedicalTerms) -> None:
-    """Adds the bundled lists that exist on disk, each under its source name, in the order
-    base vocabulary, body parts, findings terms."""
-    for path, source in ((BASE, f"Basis ({BASE.name})"), (BODY_PARTS, "Körperteile"),
-                         (FINDINGS_TERMS, "Befundbegriffe")):
-        if path.exists():
-            fb.add(_read_list(path), source)
-
-
-def _user_lists() -> list[Path]:
-    """The user's own list files (``.txt``, ``.gz``) in the data folder, sorted by name;
-    empty when the folder does not exist."""
-    folder = data_folder()
-    if not folder.is_dir():
-        return []
-    return sorted(p for p in folder.iterdir() if p.suffix in (".txt", ".gz") and p.is_file())
-
-
-def load(extra: Iterable[Path] = (), with_base: bool = True,
-         with_user_data: bool = True) -> MedicalTerms:
-    """Builds the vocabulary from the files: the bundled lists (``with_base``), the eponyms of
-    the NER step, the files in ``extra`` and the user's own lists (``with_user_data``), in
-    that order.  The fallback of :func:`standard` when the database is unusable."""
-    from pseudonymed.detection.ner import EPONYMS
+def load() -> MedicalTerms:
+    """The vocabulary straight from the bundled lists, each under the name of its category:
+    the fallback of :func:`standard` when the store is unusable."""
+    from pseudonymed.detection import vocabulary as vocab_mod
 
     fb = MedicalTerms()
-    if with_base:
-        _load_bundled(fb)
-    fb.add((e for e in EPONYMS if len(e) >= 4), "Eponyme")
-    paths = list(extra) + (_user_lists() if with_user_data else [])
-    for p in paths:
-        fb.add(_read_list(p), p.name)
+    for category, terms in vocab_mod.bundled().items():
+        fb.add(terms, category)
     return fb
 
 
 class _DefaultVocabulary:
-    """The vocabulary used by the pipeline, built from the database table and kept until the
-    table's version changes; ``cache_clear`` makes the next call rebuild it.  A callable
+    """The vocabulary used by the pipeline: lexterm's cover over the store, kept until the
+    store's version changes; ``cache_clear`` makes the next call build it again.  A callable
     object rather than a function with a bolted-on attribute, so that ``cache_clear`` is
     typed."""
 
@@ -150,29 +108,26 @@ class _DefaultVocabulary:
         self._cache: tuple[Path, int, MedicalTerms] | None = None
 
     def __call__(self) -> MedicalTerms:
-        """The vocabulary used by the pipeline: built from the database table, rebuilt only
-        when the table's version changed; the bundled files when the database is unusable."""
-        import sqlite3
-
+        """The vocabulary used by the pipeline: every package of the store, built again
+        only when the store's version changed; the bundled lists when the store is
+        unusable.  A vocabulary that could not be taken over from the pseudonym database
+        is no such case: that error is passed on."""
         from pseudonymed.detection import vocabulary as vocab_mod
 
         try:
-            path = vocab_mod.default_path()
-            with vocab_mod.Vocabulary(path) as v:
-                version = v.version()
-                if self._cache is not None and self._cache[0] == path \
-                        and self._cache[1] == version:
+            with vocab_mod.Vocabulary() as v:
+                path, version = v.path, v.version()
+                if self._cache is not None and self._cache[:2] == (path, version):
                     return self._cache[2]
-                fb = MedicalTerms()
-                for category, terms in v.per_category().items():
-                    fb.add(terms, category)
-        except (sqlite3.Error, OSError):
+                fb = MedicalTerms(lexterm.cover(v.store),
+                                  [(k, len(terms)) for k, terms in v.per_category().items()])
+        except (sqlite3.Error, OSError, StoreError):
             return load()
         self._cache = (path, version, fb)
         return fb
 
     def cache_clear(self) -> None:
-        """Forgets the cached vocabulary; the next call rebuilds it from the table."""
+        """Forgets the cached vocabulary; the next call builds it again from the store."""
         self._cache = None
 
 
@@ -202,10 +157,10 @@ USER_LIST = "nutzervokabular"
 
 
 def merge_terms(path: Path, name: str = USER_LIST) -> tuple[Path, int]:
-    """Merge the terms of ``path`` (one per line or CSV) into the vocabulary table under
-    the category ``name`` ("nutzervokabular" = Nutzervokabular); returns the database
-    and how many were new.  This is what the exported ``.vokabular.txt`` files are for:
-    the vocabulary grows with every review."""
+    """Merge the terms of ``path`` (one per line or CSV) into the vocabulary under the
+    category ``name`` ("nutzervokabular" = Nutzervokabular); returns the store and how
+    many were new.  This is what the exported ``.vokabular.txt`` files are for: the
+    vocabulary grows with every review."""
     from pseudonymed.detection import vocabulary as vocab_mod
 
     category = vocab_mod.CATEGORY_USER if name == USER_LIST else name
@@ -218,8 +173,8 @@ def merge_terms(path: Path, name: str = USER_LIST) -> tuple[Path, int]:
 
 def import_file(path: Path, name: str, format_: str = "liste", column: int = 0,
                 delimiter: str = ";") -> tuple[Path, int]:
-    """Add the terms of ``path`` to the vocabulary table under the category ``name``;
-    returns the database and how many were new."""
+    """Add the terms of ``path`` to the vocabulary under the category ``name``; returns
+    the store and how many were new."""
     if format_ == "mesh-xml":
         terms = terms_from_mesh_xml(path)
     elif format_ == "csv":

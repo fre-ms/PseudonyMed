@@ -174,11 +174,11 @@ def test_adopt_entries_tolerates_missing_tables(tmp_path: Path) -> None:
     archive = tmp_path / "archiv.sqlite"
     _database_with_patient(archive)
     v = sqlite3.connect(archive)
-    v.executescript("DROP TABLE vokabular; DROP TABLE restrisiko_dokumente;")
+    v.executescript("DROP TABLE restrisiko; DROP TABLE restrisiko_dokumente;")
     v.close()
     local = tmp_path / "lokal.sqlite"
     counter = backup_mod._adopt_entries(local, archive)
-    assert counter["patienten"] == 1 and counter["vokabular"] == 0
+    assert counter["patienten"] == 1 and counter["restrisiko"] == 0
     assert counter["restrisiko_dokumente"] == 0 and _count(local, "patienten") == 1
+    assert "vokabular" not in counter  # the vocabulary is no table of the database
     assert backup_mod._adopt_entries(local, archive)["patienten"] == 0  # idempotent
-    assert _count(local, "vokabular_meta") == 0  # no words, no version bump

@@ -3,7 +3,7 @@
 Everything re-identification depends on is here: the database with identities and
 mappings and the key file the codes are derived from.  The step shows what is stored
 (counts per category, size, integrity, dates) and writes or reads a backup archive
-with both, optionally with the configuration and the user's vocabulary, protected by a
+with both, optionally with the configuration and the vocabulary, protected by a
 passphrase unless the user insists on plain."""
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ class DatabasePage(QWidget):
         ef.addRow(self.tr("Ziel"), line)
         self.with_config = QCheckBox(self.tr("Konfiguration (konfig.toml) einschließen"))
         self.with_config.setChecked(True)
-        self.with_vocabulary = QCheckBox(self.tr("Nutzervokabular einschließen"))
+        self.with_vocabulary = QCheckBox(self.tr("Fachvokabular einschließen"))
         self.with_vocabulary.setChecked(True)
         ef.addRow(self.with_config)
         ef.addRow(self.with_vocabulary)
@@ -197,7 +197,7 @@ class DatabasePage(QWidget):
         jf.addRow(self.mode_merge)
         self.import_config = QCheckBox(self.tr("Konfiguration aus dem Archiv übernehmen"))
         self.import_config.setChecked(True)
-        self.import_vocabulary = QCheckBox(self.tr("Nutzervokabular aus dem Archiv übernehmen"))
+        self.import_vocabulary = QCheckBox(self.tr("Fachvokabular aus dem Archiv übernehmen"))
         self.import_vocabulary.setChecked(True)
         jf.addRow(self.import_config)
         jf.addRow(self.import_vocabulary)
@@ -250,15 +250,15 @@ class DatabasePage(QWidget):
                         ) -> extra_data_mod.LoadReport | None:
         """Load the Austrian hospital list into the local database, from the ministry's
         site or from ``file``; None when the user declined or the load failed."""
-        from pseudonymed.detection.vocabulary import Vocabulary
+        from pseudonymed.detection.identifiers import IdentifierTable
 
         if not self.synchronous:
             if not self._extra_data_confirmed(file):
                 return None
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            with Vocabulary(self.session.store_path) as v:
-                report = extra_data_mod.load_clinics_at(v.connection, file=file,
+            with IdentifierTable(self.session.store_path) as table:
+                report = extra_data_mod.load_clinics_at(table.connection, file=file,
                                                         fetcher=self.fetcher)
         except (extra_data_mod.ExtraDataError, OSError, ValueError, KeyError, zipfile.BadZipFile,
                 ET.ParseError) as e:

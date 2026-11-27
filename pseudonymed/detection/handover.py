@@ -1,14 +1,14 @@
-"""Hand the vocabulary and the identifiers over to the stores of lexterm and lexident.
+"""Hand the identifiers over to the store of lexident.
 
-lexterm (medical terms) and lexident (identifying information) keep their terms as packages
-in stores of their own, which are lexcor's.  This module writes what PseudonyMed holds in its
-pseudonym database into those stores: every category of the vocabulary as a package of
-lexterm's store, the identifier rows of every source as packages of lexident's.
+lexident (identifying information) keeps its terms as packages in a store of its own, which
+is lexcor's.  This module writes the identifier rows that PseudonyMed holds in its pseudonym
+database into that store, the rows of every source as packages.  (The protected vocabulary
+needs no hand-over any more: it lives in lexterm's store, see
+:mod:`pseudonymed.detection.vocabulary`.)
 
-It is a copy.  PseudonyMed's tables are read and stay as they are, and PseudonyMed goes on
-reading them until it is switched over; a store that is there already is copied aside before
-anything is written into it.  What was written is read back and compared: the vocabulary by
-the index its matcher builds, the identifiers term by term.
+It is a copy.  PseudonyMed's table is read and stays as it is, and PseudonyMed goes on
+reading it until it is switched over; a store that is there already is copied aside before
+anything is written into it.  What was written is read back and compared term by term.
 """
 
 from __future__ import annotations
@@ -21,20 +21,13 @@ from pathlib import Path
 import lexcor
 from lexcor import Concept, Package, Term
 
+from pseudonymed import environment
 from pseudonymed.core.text import say
-from pseudonymed.detection import identifiers, lexicon, vocabulary
-from pseudonymed.detection import medical_terms as terms_module
+from pseudonymed.detection import identifiers, lexicon
 
 HOSPITAL_TOWN = "hospital-town"  # lexident's class for a town that has a hospital
 TYPES = {category: gemtex for category, gemtex in lexicon.GEMTEX.items() if gemtex} | {
     identifiers.CATEGORY_OTHER: "OTHER"}
-# whose a bundled category of the vocabulary is, and whether it may be passed on
-_ORIGIN = {
-    vocabulary.CATEGORY_MEDICINE: ("Wikidata", "CC0 1.0", True),
-    vocabulary.CATEGORY_BODY_PARTS: ("PseudonyMed", "AGPL-3.0-or-later", False),
-    vocabulary.CATEGORY_FINDINGS: ("PseudonyMed", "AGPL-3.0-or-later", False),
-    vocabulary.CATEGORY_EPONYMS: ("PseudonyMed", "AGPL-3.0-or-later", False),
-}
 
 
 class HandoverError(ValueError):
@@ -43,33 +36,12 @@ class HandoverError(ValueError):
 
 @dataclass(frozen=True)
 class Written:
-    """One store after the hand-over: its file, the copy of the file as it was before (when
+    """The store after the hand-over: its file, the copy of the file as it was before (when
     there was one) and for every package its title, its concepts and its terms."""
 
     store: Path
     kept: Path | None
     packages: list[tuple[str, int, int]]
-
-
-@dataclass(frozen=True)
-class Report:
-    """Both stores after the hand-over."""
-
-    vocabulary: Written
-    identifiers: Written
-
-
-def vocabulary_packages(database: Path | None = None) -> list[Package]:
-    """Every category of the vocabulary as a package: a plain list, the term its own code."""
-    packages = []
-    with vocabulary.Vocabulary(database) as table:
-        for category, terms in table.per_category().items():
-            publisher, licence, free = _ORIGIN.get(category, ("", "", False))
-            packages.append(Package(
-                url="", name=category, title=category, publisher=publisher, copyright=licence,
-                language="de", redistributable=free,
-                concepts=[Concept(term, term, "", "", [Term(term, "de")]) for term in terms]))
-    return packages
 
 
 def _identifier_rows(database: Path | None) -> list[tuple[str, str, str, str, str]]:
@@ -126,33 +98,18 @@ def identifier_packages(database: Path | None = None) -> list[Package]:
     return packages
 
 
-def _write(file: Path, library: str, packages: list[Package],
-           stamp: str) -> tuple[Written, list[str]]:
-    """Put packages into a store (copied aside first when it exists); the URLs they got."""
+def _write(file: Path, packages: list[Package]) -> tuple[Written, list[str]]:
+    """Put packages into lexident's store (copied aside first when it exists); the URLs
+    they got."""
     kept = None
     if file.exists():
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         kept = file.with_name(f"{file.name}.before-{stamp}")
         shutil.copy2(file, kept)
-    with lexcor.open_store(file, library) as store:
+    with lexcor.open_store(file, "lexident") as store:
         infos = [store.add_package(package) for package in packages]
     return (Written(file, kept, [(i.title, i.concepts, i.terms) for i in infos]),
             [i.url for i in infos])
-
-
-def _check_vocabulary(file: Path, urls: list[str], database: Path | None) -> None:
-    """The matcher over the packages written must be the matcher over the table."""
-    expected = terms_module.MedicalTerms()
-    with vocabulary.Vocabulary(database) as table:
-        for terms in table.per_category().values():
-            expected.add(terms)
-    with lexcor.open_store(file, "lexterm") as store:
-        found = lexcor.cover(store, urls, heads=terms_module._EPONYM_HEADS)
-        same = (found.single == expected.cover.single
-                and found.phrases == expected.cover.phrases)
-    if not same:
-        raise HandoverError(say(
-            "Das Fachvokabular in der Ablage von lexterm stimmt nicht mit der Tabelle überein.",
-            "The vocabulary in lexterm's store does not agree with the table."))
 
 
 def _check_identifiers(file: Path, urls: list[str], packages: list[Package]) -> None:
@@ -169,16 +126,12 @@ def _check_identifiers(file: Path, urls: list[str], packages: list[Package]) -> 
             "The identifiers in lexident's store do not agree with the table."))
 
 
-def hand_over(target: Path | None = None, database: Path | None = None) -> Report:
-    """Write the vocabulary into ``lexterm.sqlite`` and the identifiers into
-    ``lexident.sqlite`` in ``target`` (default: the data folder of the two libraries), check
-    both against PseudonyMed's tables and say what was written."""
-    folder = target if target is not None else lexcor.store.data_folder()
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    words = vocabulary_packages(database)
-    written_words, urls = _write(folder / "lexterm.sqlite", "lexterm", words, stamp)
-    _check_vocabulary(written_words.store, urls, database)
+def hand_over(target: Path | None = None, database: Path | None = None) -> Written:
+    """Write the identifiers into ``lexident.sqlite`` in ``target`` (default: the folder of
+    the lex stores, :func:`pseudonymed.environment.lex_folder`), check them against
+    PseudonyMed's table and say what was written."""
+    folder = target if target is not None else environment.lex_folder()
     rows = identifier_packages(database)
-    written_rows, urls = _write(folder / "lexident.sqlite", "lexident", rows, stamp)
-    _check_identifiers(written_rows.store, urls, rows)
-    return Report(written_words, written_rows)
+    written, urls = _write(folder / "lexident.sqlite", rows)
+    _check_identifiers(written.store, urls, rows)
+    return written

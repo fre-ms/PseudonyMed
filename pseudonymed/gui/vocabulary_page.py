@@ -1,8 +1,8 @@
-"""Step 2: the protected vocabulary as a sortable, editable table.
+"""Step 3: the protected vocabulary as a sortable, editable table.
 
-Everything NER and the fuzzy search must leave alone, in one table of the pseudonym
-database: term and category.  Search, sort by any column, edit a cell, add and delete
-terms, exchange CSV; the bundled lists can be loaded again."""
+Everything NER and the fuzzy search must leave alone, as lexterm's store holds it: term
+and category.  Search, sort by any column, edit a cell, add and delete terms, exchange
+CSV; what was deleted from the bundled lists can be brought back."""
 
 from __future__ import annotations
 
@@ -26,32 +26,31 @@ from pseudonymed.gui.translation import shown_error
 
 
 class VocabularyModel(ListModel):
-    """Rows of the vocabulary table: term, category and creation time, the first two
-    editable; an edit goes through the page to the database."""
+    """Rows of the vocabulary: term and category, both editable; an edit goes through the
+    page to the store."""
 
     def __init__(self, page: VocabularyPage) -> None:
         super().__init__(page)
         self.page = page
         self.lines: list[list[str]] = []
-        self.title = [self.tr("Begriff"), self.tr("Kategorie"), self.tr("Angelegt")]
+        self.title = [self.tr("Begriff"), self.tr("Kategorie")]
 
     def load(self, lines: list[tuple[str, str, str]]) -> None:
-        """Replace all rows."""
+        """Replace all rows with the term and the category of each."""
         self.beginResetModel()
-        self.lines = [list(z) for z in lines]
+        self.lines = [[term, category] for term, category, _added in lines]
         self.endResetModel()
 
     def rowCount(self, parent: CellIndex | None = None) -> int:  # noqa: N802
         return 0 if parent is not None and parent.isValid() else len(self.lines)
 
     def _cell(self, line: int, column: int) -> str:
-        """The cell text; the creation time cut to the minute, without the "T"."""
-        value = self.lines[line][column]
-        return value[:16].replace("T", " ") if column == 2 else value
+        """The cell text."""
+        return self.lines[line][column]
 
     def _apply_edit(self, line: int, column: int, value: str) -> bool:
         """Hand the edit to the page and, when it took, keep the text with its whitespace
-        collapsed, as the table stores it."""
+        collapsed, as the store keeps it."""
         if not self.page.change(self.lines[line][0], column, value):
             return False
         self.lines[line][column] = " ".join(value.split())
@@ -62,7 +61,7 @@ class VocabularyModel(ListModel):
 
 class VocabularyPage(ListPage):
     """Step "3 Fachvokabular": the protected terms with category filter, cell editing,
-    add, delete, CSV exchange and the reload of the bundled lists."""
+    add, delete, CSV exchange and the return of what was deleted from the bundled lists."""
 
     FILTER_COLUMN = 0
     NARROW_COLUMNS = (1,)
@@ -118,7 +117,7 @@ class VocabularyPage(ListPage):
             " .vokabular.txt")
 
     def _build_own_button(self) -> QPushButton:
-        """The button that loads the bundled lists again."""
+        """The button that brings back what was deleted from the bundled lists."""
         base = QPushButton(self.tr("Mitgelieferte Listen erneut einspielen"))
         base.setToolTip(self.tr("Fehlende Begriffe der mitgelieferten Listen wieder aufnehmen"))
         base.clicked.connect(self.restore_base_set)
@@ -126,7 +125,7 @@ class VocabularyPage(ListPage):
 
     # -- data ----------------------------------------------------------------------------------
     def _vocabulary(self) -> vocab_mod.Vocabulary:
-        """A fresh handle on the vocabulary table, opened per operation."""
+        """A fresh handle on the vocabulary, opened per operation."""
         return vocab_mod.Vocabulary()
 
     def _clear_cache(self) -> None:
@@ -135,7 +134,7 @@ class VocabularyPage(ListPage):
         terms_module.standard.cache_clear()
 
     def refresh(self, force: bool = False) -> int:
-        """Reload rows when the table changed (or when asked); returns the row count."""
+        """Reload rows when the vocabulary changed (or when asked); returns the row count."""
         with self._vocabulary() as v:
             version = v.version()
             if not force and version == self._version:
@@ -247,7 +246,7 @@ class VocabularyPage(ListPage):
         return n
 
     def choose_and_import(self) -> None:
-        """Ask for a CSV or list file and take its terms into the table."""
+        """Ask for a CSV or list file and take its terms into the vocabulary."""
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("Vokabular importieren"), "",
             self.tr("CSV und Listen (*.csv *.txt);;Alle Dateien (*)"))
@@ -255,7 +254,7 @@ class VocabularyPage(ListPage):
             self.import_file(Path(path))
 
     def import_file(self, path: Path, category: str | None = None) -> int:
-        """Take the terms of a CSV or list file into the table, rows without a category
+        """Take the terms of a CSV or list file into the vocabulary, rows without a category
         into ``category`` (default: the category box); returns how many were new."""
         category = (category if category is not None
                     else self.new_category.currentText()).strip() or vocab_mod.CATEGORY_USER
@@ -272,10 +271,10 @@ class VocabularyPage(ListPage):
         return new
 
     def restore_base_set(self) -> int:
-        """Load the bundled lists again, adding only what is missing; returns how many
-        terms came back."""
+        """Bring back what is missing of the bundled lists; returns how many terms came
+        back."""
         with self._vocabulary() as v:
-            counts = v.seed()
+            counts = v.restore()
         self._clear_cache()
         n = sum(counts.values())
         self.status.setText(self.tr(
