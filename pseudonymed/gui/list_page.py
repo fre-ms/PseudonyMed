@@ -1,8 +1,9 @@
 """Shared base of the list steps "2 Identifikatoren" and "3 Fachvokabular".
 
 Both steps show one database table as a sortable, filterable, editable grid: a header
-text, search field and filter box, the table, a row for a new entry, and a button row
-(delete, CSV out, CSV in, one button of the page's own, refresh) beside a status line.
+text, the lists of the store with their ticks (:mod:`pseudonymed.gui.lists_panel`), search
+field and filter box, the table, a row for a new entry, and a button row (delete, CSV out,
+CSV in, one button of the page's own, refresh) beside a status line.
 The base builds the regions that are the same and asks the page for everything that
 names its things: the texts, the filter row, the row for new entries and the model."""
 
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.gui.lists_panel import Lists, ListsPanel
 from pseudonymed.gui.session import Session
 
 CellIndex = QModelIndex | QPersistentModelIndex
@@ -94,16 +96,46 @@ class ListPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.session = session
+        self.lists_panel: ListsPanel | None = None
         self.synchronous = False
         self._version = -1
         outer = QVBoxLayout(self)
         self._build_header(outer)
+        self._build_lists(outer)
         self._build_filter(outer)
         self._build_table(outer)
         self._build_new(outer)
         self._build_buttons(outer)
 
+    @property
+    def synchronous(self) -> bool:
+        """Whether the page works without dialogs and threads (tests); its list of lists
+        follows."""
+        return self._synchronous
+
+    @synchronous.setter
+    def synchronous(self, value: bool) -> None:
+        """Set the mode for the page and its list of lists alike."""
+        self._synchronous = value
+        if self.lists_panel is not None:
+            self.lists_panel.synchronous = value
+
     # -- regions shared by the pages ---------------------------------------------------------------
+    def _build_lists(self, outer: QVBoxLayout) -> None:
+        """The lists of the store with their ticks, where the page has a store."""
+        lists = self._lists()
+        if lists is not None:
+            self.lists_panel = ListsPanel(lists, self._lists_changed, self)
+            outer.addWidget(self.lists_panel)
+
+    def _lists_changed(self) -> None:
+        """What protects or is searched for has changed; the page forgets what it built
+        from it."""
+
+    def _lists(self) -> Lists | None:
+        """The lists the page shows above its table, if any."""
+        return None
+
     def _build_header(self, outer: QVBoxLayout) -> None:
         """The explanatory text above the table, wrapped."""
         header = QLabel(self._header_text())

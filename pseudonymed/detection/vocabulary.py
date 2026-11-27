@@ -37,6 +37,7 @@ from lexcor import Change, Concept, Cover, Entry, Package, Store, StoreError, Te
 from pseudonymed import environment
 from pseudonymed.core.text import say
 from pseudonymed.detection import list_import, overlay
+from pseudonymed.detection.choice import applied
 from pseudonymed.detection.store_table import StoreTable, own_lists
 
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -240,9 +241,24 @@ class Vocabulary(StoreTable):
         """The terms in force."""
         return _view(self.store)
 
+    def applied(self) -> list[str]:
+        """The URLs of the lists that protect: those the store has ticked
+        (:mod:`pseudonymed.detection.choice`)."""
+        return applied(self.store)
+
     def cover(self) -> Cover:
-        """The matcher over the vocabulary: lexterm's cover over the store's own lists."""
-        return lexterm.cover(self.store, [info.url for info in own_lists(self.store)])
+        """The matcher over the vocabulary: lexterm's cover over the lists that protect."""
+        return lexterm.cover(self.store, self.applied())
+
+    def applied_sources(self) -> list[tuple[str, int]]:
+        """The lists that protect, each with its number of terms: the own ones by
+        category, then those of other programs that are ticked."""
+        urls = set(self.applied())
+        own = {info.url: info.title for info in own_lists(self.store)}
+        titles = {own[url] for url in urls if url in own}
+        return [(k, len(terms)) for k, terms in self.per_category().items() if k in titles] + [
+            (info.title or info.url, info.terms) for info in self.store.packages()
+            if info.url in urls and info.url not in own]
 
     def count(self) -> int:
         """How many terms the vocabulary holds."""
@@ -432,10 +448,11 @@ class Vocabulary(StoreTable):
         return wanted
 
     def _check(self, wanted: set[Item]) -> None:
-        """The matcher over the store's own lists must be the matcher over the terms
-        wanted."""
+        """The matcher over the store's own lists, ticked or not, must be the matcher over
+        the terms wanted: a move or a restore concerns PseudonyMed's lists, not what the
+        store has ticked."""
         expected = Cover((term for _category, term in wanted), lexterm.EPONYM_HEADS)
-        found = self.cover()
+        found = lexterm.cover(self.store, [info.url for info in own_lists(self.store)])
         if found.single != expected.single or found.phrases != expected.phrases:
             raise VocabularyError(say(
                 "Das Fachvokabular in der Ablage von lexterm stimmt nicht mit dem überein, was"

@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import lexterm
+from lexterm import sources
+from lexterm.window import readers
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -19,9 +22,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pseudonymed.detection import choice
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
+from pseudonymed.gui.lists_panel import FHIR, Lists
 from pseudonymed.gui.translation import shown_error
 
 
@@ -94,6 +99,17 @@ class VocabularyPage(ListPage):
         """The model over the vocabulary rows."""
         return VocabularyModel(self)
 
+    def _lists(self) -> Lists:
+        """The lists of lexterm's store, ticked to protect; terminologies of the BfArM and
+        SNOMED CT can be taken in, and where they come from is a button away."""
+        return Lists(choice.VOCABULARY, lambda path: lexterm.open_store(path),
+                     vocab_mod.default_path(), (FHIR, *readers()), sources.html)
+
+    def _lists_changed(self) -> None:
+        """The ticks changed: the next analysis builds its matcher from the lists now
+        ticked."""
+        self._clear_cache()
+
     def _build_new(self, outer: QVBoxLayout) -> None:
         """Field for a new term, its category and the add button."""
         new = QHBoxLayout()
@@ -145,6 +161,8 @@ class VocabularyPage(ListPage):
             total = v.count()
         self._version = version
         self.model.load(lines)
+        if self.lists_panel is not None:
+            self.lists_panel.refresh()
         self._fill_categories(categories)
         self.count.setText(self.tr("{n} von {gesamt} Begriffen").format(
             n=len(lines), gesamt=total))

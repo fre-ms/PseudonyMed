@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import lexident
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -21,8 +22,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pseudonymed.detection import choice
 from pseudonymed.detection import identifiers as ident_module
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
+from pseudonymed.gui.lists_panel import Lists
 from pseudonymed.gui.translation import shown_error
 
 
@@ -102,6 +105,11 @@ class IdentifiersPage(ListPage):
         """The model over the identifier rows."""
         return IdentifiersModel(self)
 
+    def _lists(self) -> Lists:
+        """The lists of lexident's store, ticked to be searched for."""
+        return Lists(choice.IDENTIFIERS, lambda path: lexident.open_store(path),
+                     ident_module.default_path())
+
     def _build_new(self, outer: QVBoxLayout) -> None:
         """Field for a new identifier, its class (the user's own by default) and the add
         button."""
@@ -153,6 +161,8 @@ class IdentifiersPage(ListPage):
             deleted = ident.deleted()
         self._version = version
         self.model.load(entries)
+        if self.lists_panel is not None:
+            self.lists_panel.refresh()
         self._fill_categories(categories)
         self.restore_button.setEnabled(deleted > 0)
         self._apply_filter()

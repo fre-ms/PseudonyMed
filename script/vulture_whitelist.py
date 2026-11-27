@@ -14,6 +14,9 @@ import_database
 show_key
 create_key
 medical_terms_status
+medical_terms_lists
+tick_medical_terms
+untick_medical_terms
 add_medical_terms
 remove_medical_terms
 export_medical_terms
@@ -21,6 +24,9 @@ check_medical_terms
 merge_medical_terms
 import_medical_terms
 identifiers_status
+identifiers_lists
+tick_identifiers
+untick_identifiers
 add_identifiers
 remove_identifiers
 export_identifiers

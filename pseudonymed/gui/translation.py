@@ -45,7 +45,11 @@ def shown_error(error: BaseException) -> str:
 
 
 def install(app: QCoreApplication, language: str) -> QTranslator | None:
-    """Install the en-GB translation when the language asks for English."""
+    """Install the en-GB translation when the language asks for English.  The lex
+    libraries, whose list of packages the steps show, speak the same language."""
+    import lexcor
+
+    lexcor.set_language("en" if language.startswith("en") else "de")
     if not language.startswith("en"):
         return None
     translator = QTranslator(app)

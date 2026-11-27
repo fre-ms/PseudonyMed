@@ -63,6 +63,7 @@ from pseudonymed.core.model import Hit, Kind
 from pseudonymed.core.text import say
 from pseudonymed.detection import identifier_lists as lists
 from pseudonymed.detection import lexicon, list_import, overlay
+from pseudonymed.detection.choice import applied
 from pseudonymed.detection.identifier_lists import CATEGORY_HOSPITAL, CATEGORY_OTHER, Row
 from pseudonymed.detection.store_table import StoreTable, own_lists
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
@@ -706,25 +707,25 @@ def _lists_of(source: str, rows: list[Row]) -> dict[str, list[Row]]:
     return {f"{source}: {category}": part for category, part in by_class.items()}
 
 
-_recognisers: dict[str, tuple[tuple[int, int], Recogniser]] = {}  # of the store read last
+# of the store read last: its state with the lists searched, and the recogniser
+_recognisers: dict[str, tuple[tuple[int, int, tuple[str, ...]], Recogniser]] = {}
 
 
 def _recogniser(store: Store) -> Recogniser:
-    """lexident's recogniser over what is in force in the store's own lists (a package of
-    another program in the same store is not looked for), built again only when the store
-    has changed."""
-    state = _state(store)
+    """lexident's recogniser over what is in force in the lists the store has ticked, built
+    again only when the store or the ticks have changed."""
+    urls = applied(store)
+    state = (*_state(store), tuple(urls))
     built = _recognisers.get(store.key)
     if built is None or built[0] != state:
         _recognisers.clear()
-        built = _recognisers[store.key] = (
-            state, lexident.recogniser_of(store.entries(_urls(store))))
+        built = _recognisers[store.key] = (state, lexident.recogniser_of(store.entries(urls)))
     return built[1]
 
 
 def standard() -> Recogniser:
-    """lexident's recogniser over the store's own lists, built again only when the store
-    has changed; without a usable store it knows the registry numbers only.
+    """lexident's recogniser over the lists the store has ticked, built again only when
+    the store or the ticks have changed; without a usable store it knows the registry numbers only.
     Identifiers that could not be taken over from the pseudonym database are no such case:
     that error is passed on."""
     try:

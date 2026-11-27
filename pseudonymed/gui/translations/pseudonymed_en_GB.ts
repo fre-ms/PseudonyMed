@@ -710,153 +710,153 @@
 <context>
     <name>DatabasePage</name>
     <message>
-        <location filename="../database_page.py" line="66"/>
+        <location filename="../database_page.py" line="67"/>
         <source>Datenbank und Schlüssel: alles, was zur Rückersetzung nötig ist. Sichern Sie beides regelmäßig; ohne den Schlüssel sind die Pseudonyme nicht mehr auflösbar.</source>
         <translation>Database and key: everything re-identification needs. Back both up regularly; without the key the pseudonyms can no longer be resolved.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="68"/>
+        <location filename="../database_page.py" line="69"/>
         <source>Aktualisieren</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="76"/>
+        <location filename="../database_page.py" line="77"/>
         <source>Merkmal</source>
         <translation>Item</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="76"/>
+        <location filename="../database_page.py" line="77"/>
         <source>Wert</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="87"/>
+        <location filename="../database_page.py" line="88"/>
         <location filename="../database_page.py" line="341"/>
         <source>Speicherort</source>
         <translation>Storage location</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="95"/>
+        <location filename="../database_page.py" line="96"/>
         <location filename="../database_page.py" line="324"/>
         <source>Datenbank</source>
         <translation>Database</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="102"/>
+        <location filename="../database_page.py" line="103"/>
         <location filename="../database_page.py" line="332"/>
         <source>Schlüsseldatei</source>
         <translation>Key file</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="104"/>
+        <location filename="../database_page.py" line="105"/>
         <source>Vorhandene Dateien an den neuen Ort kopieren (die alten werden umbenannt)</source>
         <translation>Copy the existing files to the new place (the old ones are renamed)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="109"/>
+        <location filename="../database_page.py" line="110"/>
         <source>Beide Dateien dürfen in beliebigen Ordnern liegen, auch getrennt; wer die Datenbank ohne den Schlüssel hat, kann nichts auflösen.</source>
         <translation>Both files may sit in any folders, even apart; whoever has the database without the key can resolve nothing.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="112"/>
+        <location filename="../database_page.py" line="113"/>
         <source>Speicherort übernehmen</source>
         <translation>Apply storage location</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="123"/>
+        <location filename="../database_page.py" line="124"/>
         <source>Sichern (Export)</source>
         <translation>Back up (export)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="127"/>
+        <location filename="../database_page.py" line="128"/>
         <source>Zielordner (Dateiname wird vergeben)</source>
         <translation>Target folder (the file name is chosen for you)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="132"/>
+        <location filename="../database_page.py" line="133"/>
         <source>Ziel</source>
         <translation>Target</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="133"/>
+        <location filename="../database_page.py" line="134"/>
         <source>Konfiguration (konfig.toml) einschließen</source>
         <translation>Include the configuration (konfig.toml)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="135"/>
+        <location filename="../database_page.py" line="136"/>
         <source>Fachvokabular einschließen</source>
         <translation>Include the vocabulary</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="144"/>
+        <location filename="../database_page.py" line="145"/>
         <source>Wiederholung</source>
         <translation>Repeat</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="147"/>
-        <location filename="../database_page.py" line="185"/>
+        <location filename="../database_page.py" line="148"/>
+        <location filename="../database_page.py" line="186"/>
         <source>Passphrase</source>
         <translation>Passphrase</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="149"/>
+        <location filename="../database_page.py" line="150"/>
         <source>Unverschlüsselt sichern (nicht empfohlen: Archiv enthält Schlüssel und Klardaten)</source>
         <translation>Back up unencrypted (not recommended: the archive holds the key and clear data)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="157"/>
+        <location filename="../database_page.py" line="158"/>
         <source>Verschlüsselung braucht das Extra &apos;pgp&apos; (pysequoia) oder GnuPG.</source>
         <translation>Encryption needs the extra &apos;pgp&apos; (pysequoia) or GnuPG.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="161"/>
+        <location filename="../database_page.py" line="162"/>
         <location filename="../database_page.py" line="369"/>
         <location filename="../database_page.py" line="375"/>
         <source>Sichern</source>
         <translation>Back up</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="170"/>
+        <location filename="../database_page.py" line="171"/>
         <source>Wiederherstellen (Import)</source>
         <translation>Restore (import)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="174"/>
+        <location filename="../database_page.py" line="175"/>
         <source>Sicherungsarchiv (.zip oder .zip.gpg)</source>
         <translation>Backup archive (.zip or .zip.gpg)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="177"/>
+        <location filename="../database_page.py" line="178"/>
         <source>Prüfen</source>
         <translation>Check</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="182"/>
+        <location filename="../database_page.py" line="183"/>
         <source>Archiv</source>
         <translation>Archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="190"/>
+        <location filename="../database_page.py" line="191"/>
         <source>Ersetzen: Datenbank und Schlüssel aus dem Archiv übernehmen (die jetzigen werden vorher daneben gesichert)</source>
         <translation>Replace: take database and key from the archive (the current ones are set aside first)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="194"/>
+        <location filename="../database_page.py" line="195"/>
         <source>Zusammenführen: Einträge des Archivs ergänzen (nur bei gleichem Schlüssel)</source>
         <translation>Merge: add the entries of the archive (same key only)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="197"/>
+        <location filename="../database_page.py" line="198"/>
         <source>Konfiguration aus dem Archiv übernehmen</source>
         <translation>Take the configuration from the archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="199"/>
+        <location filename="../database_page.py" line="200"/>
         <source>Fachvokabular aus dem Archiv übernehmen</source>
         <translation>Take the vocabulary from the archive</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="206"/>
+        <location filename="../database_page.py" line="207"/>
         <location filename="../database_page.py" line="452"/>
         <location filename="../database_page.py" line="455"/>
         <location filename="../database_page.py" line="484"/>
@@ -864,32 +864,32 @@
         <translation>Import</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="216"/>
+        <location filename="../database_page.py" line="217"/>
         <source>Zusatzdaten (nicht mitgeliefert)</source>
         <translation>Additional data (not bundled)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="219"/>
+        <location filename="../database_page.py" line="220"/>
         <source>Krankenanstalten in Österreich: Das Sozialministerium gestattet den Nachdruck seiner Liste nur außer zu kommerziellen Zwecken, deshalb liefert PseudonyMed sie nicht mit. Auf Wunsch lädt PseudonyMed die aktuelle Liste direkt beim Ministerium in Ihre lokale Datenbank und gibt sie nicht weiter. Sie dient später der Einschätzung, welchen Ort ein stehen gelassener Klinikname verrät.</source>
         <translation>Hospitals in Austria: the ministry of health permits reprinting its list only for non-commercial purposes, so PseudonyMed does not bundle it. On request PseudonyMed fetches the current list straight from the ministry into your local database and passes it on to no one. It will later help to judge which place a hospital name left in the text gives away.</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="229"/>
+        <location filename="../database_page.py" line="230"/>
         <source>Beim Ministerium laden</source>
         <translation>Fetch from the ministry</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="231"/>
+        <location filename="../database_page.py" line="232"/>
         <source>Aus Datei …</source>
         <translation>From file …</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="243"/>
+        <location filename="../database_page.py" line="244"/>
         <source>Liste der Krankenanstalten (Excel-Mappe des Ministeriums)</source>
         <translation>List of hospitals (the ministry&apos;s Excel workbook)</translation>
     </message>
     <message>
-        <location filename="../database_page.py" line="244"/>
+        <location filename="../database_page.py" line="245"/>
         <source>Excel-Mappe (*.xlsx)</source>
         <translation>Excel workbook (*.xlsx)</translation>
     </message>
@@ -1394,27 +1394,27 @@
 <context>
     <name>IdentifiersModel</name>
     <message>
-        <location filename="../identifiers_page.py" line="37"/>
+        <location filename="../identifiers_page.py" line="40"/>
         <source>Begriff</source>
         <translation>Term</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="37"/>
+        <location filename="../identifiers_page.py" line="40"/>
         <source>Klasse</source>
         <translation>Class</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="37"/>
+        <location filename="../identifiers_page.py" line="40"/>
         <source>Angaben</source>
         <translation>Details</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="38"/>
+        <location filename="../identifiers_page.py" line="41"/>
         <source>Quelle</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="53"/>
+        <location filename="../identifiers_page.py" line="56"/>
         <source>eigene</source>
         <translation>own</translation>
     </message>
@@ -1422,127 +1422,127 @@
 <context>
     <name>IdentifiersPage</name>
     <message>
-        <location filename="../identifiers_page.py" line="78"/>
+        <location filename="../identifiers_page.py" line="81"/>
         <source>Identifikatoren außerhalb der Patientendaten: Kliniken, Berufe, Studien, Titel und Ihre eigenen (Arbeitgeber, Vereine, Einrichtungen). Wie die Patientendaten werden sie standardmäßig geschwärzt; in der Sichtprüfung lässt sich jeder Treffer verwerfen. Kliniken und eigene Einträge zählen überall, Berufe nur mit Hinweis wie „arbeitet als“ oder „von Beruf“, Studienkürzel nur neben „Studie“ (Registernummern wie NCT immer), Titel nur vor oder nach einem erkannten Namen. Der Erwerbsstatus (berentet, arbeitslos) bleibt nach der GeMTeX-Leitlinie stehen.</source>
         <translation>Identifiers beyond the patient data: hospitals, professions, studies, titles and your own (employers, clubs, institutions). Like the patient data they are redacted by default; the visual review can discard any hit. Hospitals and your own entries count wherever they stand, professions only with a cue such as ‘arbeitet als’ or ‘von Beruf’, study acronyms only next to ‘Studie’ (registry numbers such as NCT always), titles only before or after a name that was found. Employment status (retired, unemployed) stays, following the GeMTeX guideline.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="90"/>
+        <location filename="../identifiers_page.py" line="93"/>
         <source>Suchen …</source>
         <translation>Search …</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="96"/>
+        <location filename="../identifiers_page.py" line="99"/>
         <source>Klasse</source>
         <translation>Class</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="110"/>
+        <location filename="../identifiers_page.py" line="118"/>
         <source>Neuer Identifikator (auch mehrere Wörter)</source>
         <translation>New identifier (several words allowed)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="116"/>
+        <location filename="../identifiers_page.py" line="124"/>
         <source>Hinzufügen</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="126"/>
+        <location filename="../identifiers_page.py" line="134"/>
         <source>CSV (begriff,klasse; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder eine Liste mit einem Identifikator je Zeile</source>
         <translation>CSV (begriff,klasse; header line optional; comma, semicolon or tab) or a list with one identifier per line</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="131"/>
+        <location filename="../identifiers_page.py" line="139"/>
         <source>Gelöschte wiederherstellen</source>
         <translation>Restore deleted</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="133"/>
+        <location filename="../identifiers_page.py" line="141"/>
         <source>Gelöschte mitgelieferte Einträge zurückholen; selbst geladene Zusatzdaten (Kliniken Österreich) bitte in „11 Datenbank“ neu laden</source>
         <translation>Bring back deleted bundled entries; please load additional data you fetched yourself (Austrian hospitals) again in ‘11 Database’</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="179"/>
+        <location filename="../identifiers_page.py" line="184"/>
         <source>{n} von {gesamt} Einträgen</source>
         <translation>{n} of {gesamt} entries</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="203"/>
+        <location filename="../identifiers_page.py" line="207"/>
         <source>Geändert: {begriff}</source>
         <translation>Changed: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="206"/>
+        <location filename="../identifiers_page.py" line="210"/>
         <source>Nicht geändert: {begriff} (zu kurz oder schon vorhanden)</source>
         <translation>Not changed: {begriff} (too short or already present)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="215"/>
+        <location filename="../identifiers_page.py" line="219"/>
         <source>Identifikatoren haben mindestens drei Zeichen.</source>
         <translation>Identifiers have at least three characters.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="220"/>
+        <location filename="../identifiers_page.py" line="223"/>
         <source>Hinzugefügt: {begriff}</source>
         <translation>Added: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="221"/>
+        <location filename="../identifiers_page.py" line="224"/>
         <source>Schon vorhanden: {begriff}</source>
         <translation>Already present: {begriff}</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="231"/>
+        <location filename="../identifiers_page.py" line="234"/>
         <source>Nichts ausgewählt.</source>
         <translation>Nothing selected.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="234"/>
+        <location filename="../identifiers_page.py" line="237"/>
         <source>Löschen</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="235"/>
+        <location filename="../identifiers_page.py" line="238"/>
         <source>{n} Identifikator(en) löschen? Mitgelieferte Einträge bleiben auch nach Updates gelöscht, bis Sie sie wiederherstellen.</source>
         <translation>Delete {n} identifier(s)? Bundled entries stay deleted across updates until you restore them.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="242"/>
+        <location filename="../identifiers_page.py" line="244"/>
         <source>{n} Identifikator(en) gelöscht.</source>
         <translation>{n} identifier(s) deleted.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="251"/>
+        <location filename="../identifiers_page.py" line="252"/>
         <source>{n} gelöschte Einträge wiederhergestellt.</source>
         <translation>{n} deleted entries restored.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="258"/>
+        <location filename="../identifiers_page.py" line="259"/>
         <source>Identifikatoren als CSV</source>
         <translation>Identifiers as CSV</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="259"/>
+        <location filename="../identifiers_page.py" line="260"/>
         <source>CSV (*.csv)</source>
         <translation>CSV (*.csv)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="268"/>
+        <location filename="../identifiers_page.py" line="269"/>
         <source>{n} Einträge nach {pfad} geschrieben.</source>
         <translation>{n} entries written to {pfad}.</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="275"/>
+        <location filename="../identifiers_page.py" line="276"/>
         <source>Identifikatoren importieren</source>
         <translation>Import identifiers</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="276"/>
+        <location filename="../identifiers_page.py" line="277"/>
         <source>CSV und Listen (*.csv *.txt);;Alle Dateien (*)</source>
         <translation>CSV and lists (*.csv *.txt);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../identifiers_page.py" line="289"/>
+        <location filename="../identifiers_page.py" line="290"/>
         <source>Identifikatoren</source>
         <translation>Identifiers</translation>
     </message>
@@ -1555,7 +1555,7 @@
 <context>
     <name>Language</name>
     <message>
-        <location filename="../translation.py" line="56"/>
+        <location filename="../translation.py" line="34"/>
         <source>de</source>
         <comment>language code of the interface</comment>
         <translation>en</translation>
@@ -1564,29 +1564,114 @@
 <context>
     <name>ListPage</name>
     <message>
-        <location filename="../list_page.py" line="139"/>
+        <location filename="../list_page.py" line="171"/>
         <source>Ausgewählte löschen</source>
         <translation>Delete selected</translation>
     </message>
     <message>
-        <location filename="../list_page.py" line="141"/>
+        <location filename="../list_page.py" line="173"/>
         <source>CSV exportieren …</source>
         <translation>Export CSV …</translation>
     </message>
     <message>
-        <location filename="../list_page.py" line="143"/>
+        <location filename="../list_page.py" line="175"/>
         <source>CSV oder Liste importieren …</source>
         <translation>Import CSV or list …</translation>
     </message>
     <message>
-        <location filename="../list_page.py" line="147"/>
+        <location filename="../list_page.py" line="179"/>
         <source>Aktualisieren</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../list_page.py" line="177"/>
+        <location filename="../list_page.py" line="209"/>
         <source>alle</source>
         <translation>all</translation>
+    </message>
+</context>
+<context>
+    <name>ListsPanel</name>
+    <message>
+        <location filename="../lists_panel.py" line="75"/>
+        <source>Listen und Terminologien</source>
+        <translation>Lists and terminologies</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="95"/>
+        <source>Angekreuzte Listen schützen ihre Begriffe vor NER und unscharfer Suche. Die Häkchen gehören zur Ablage: lexterm wendet dieselben an, und auf der Kommandozeile setzt sie „pseudonymed fachbegriffe ankreuzen|abwaehlen“.</source>
+        <translation>Ticked lists protect their terms from NER and the fuzzy search. The ticks belong to the store: lexterm applies the same, and on the command line “pseudonymed medical-terms tick|untick” sets them.</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="99"/>
+        <source>Angekreuzte Listen werden in der Analyse gesucht. Die Häkchen gehören zur Ablage: lexident wendet dieselben an, und auf der Kommandozeile setzt sie „pseudonymed identifikatoren ankreuzen|abwaehlen“.</source>
+        <translation>Ticked lists are searched for in the analysis. The ticks belong to the store: lexident applies the same, and on the command line “pseudonymed identifiers tick|untick” sets them.</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="105"/>
+        <source>Terminologie aufnehmen …</source>
+        <translation>Take in a terminology …</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="111"/>
+        <location filename="../lists_panel.py" line="232"/>
+        <source>Terminologie entfernen</source>
+        <translation>Take out a terminology</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="113"/>
+        <source>Entfernt eine aufgenommene Terminologie aus der Ablage; Ihre eigenen Listen bearbeiten Sie in der Tabelle unten</source>
+        <translation>Takes a terminology that was taken in out of the store; you edit your own lists in the table below</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="116"/>
+        <source>gleich anwenden</source>
+        <translation>apply at once</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="119"/>
+        <source>Eine aufgenommene Terminologie ist angekreuzt; ohne dieses Häkchen wird sie erst angewandt, wenn Sie sie ankreuzen</source>
+        <translation>A terminology taken in is ticked; without this tick it is applied only once you tick it</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="125"/>
+        <location filename="../lists_panel.py" line="259"/>
+        <source>Woher kommen Terminologien?</source>
+        <translation>Where do terminologies come from?</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="161"/>
+        <source>aus einem anderen Programm</source>
+        <translation>from another program</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="200"/>
+        <source>Wird aufgenommen: {name} …</source>
+        <translation>Taking in: {name} …</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="217"/>
+        <source>Aufgenommen und angewandt: {namen}</source>
+        <translation>Taken in and applied: {namen}</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="219"/>
+        <source>Aufgenommen, noch nicht angewandt: {namen}</source>
+        <translation>Taken in, not applied yet: {namen}</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="225"/>
+        <source>Nicht aufgenommen: {fehler}</source>
+        <translation>Not taken in: {fehler}</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="233"/>
+        <source>„{name}“ aus der Ablage entfernen?</source>
+        <translation>Take &quot;{name}&quot; out of the store?</translation>
+    </message>
+    <message>
+        <location filename="../lists_panel.py" line="251"/>
+        <source>Entfernt: {name}</source>
+        <translation>Taken out: {name}</translation>
     </message>
 </context>
 <context>
@@ -2444,12 +2529,12 @@
 <context>
     <name>VocabularyModel</name>
     <message>
-        <location filename="../vocabulary_page.py" line="36"/>
+        <location filename="../vocabulary_page.py" line="41"/>
         <source>Begriff</source>
         <translation>Term</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="36"/>
+        <location filename="../vocabulary_page.py" line="41"/>
         <source>Kategorie</source>
         <translation>Category</translation>
     </message>
@@ -2457,133 +2542,133 @@
 <context>
     <name>VocabularyPage</name>
     <message>
-        <location filename="../vocabulary_page.py" line="75"/>
+        <location filename="../vocabulary_page.py" line="79"/>
         <source>Begriffe, die NER und die unscharfe Suche nie schwärzen dürfen: Fachbegriffe, Körperteile, Befundwörter, Eponyme und Ihre eigenen. Spaltenkopf anklicken sortiert; Doppelklick ändert Begriff oder Kategorie.</source>
         <translation>Terms NER and the fuzzy search must never redact: medical terms, body parts, findings words, eponyms and your own. Click a column header to sort; double-click changes a term or category.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="83"/>
+        <location filename="../vocabulary_page.py" line="87"/>
         <source>Suchen …</source>
         <translation>Search …</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="89"/>
+        <location filename="../vocabulary_page.py" line="93"/>
         <source>Kategorie</source>
         <translation>Category</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="102"/>
+        <location filename="../vocabulary_page.py" line="117"/>
         <source>Neuer Begriff (auch mehrere Wörter)</source>
         <translation>New term (several words allowed)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="106"/>
+        <location filename="../vocabulary_page.py" line="121"/>
         <source>Hinzufügen</source>
         <translation>Add</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="116"/>
+        <location filename="../vocabulary_page.py" line="131"/>
         <source>CSV (begriff,kategorie; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder eine Liste mit einem Begriff je Zeile, etwa die beim Export geschriebene .vokabular.txt</source>
         <translation>CSV (begriff,kategorie; header optional; comma, semicolon or tab) or a list with one term per line, such as the .vokabular.txt written on export</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="122"/>
+        <location filename="../vocabulary_page.py" line="137"/>
         <source>Mitgelieferte Listen erneut einspielen</source>
         <translation>Load the bundled lists again</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="123"/>
+        <location filename="../vocabulary_page.py" line="138"/>
         <source>Fehlende Begriffe der mitgelieferten Listen wieder aufnehmen</source>
         <translation>Take missing terms of the bundled lists back in</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="150"/>
-        <location filename="../vocabulary_page.py" line="171"/>
+        <location filename="../vocabulary_page.py" line="167"/>
+        <location filename="../vocabulary_page.py" line="188"/>
         <source>{n} von {gesamt} Begriffen</source>
         <translation>{n} of {gesamt} terms</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="189"/>
+        <location filename="../vocabulary_page.py" line="206"/>
         <source>Geändert: {begriff}</source>
         <translation>Changed: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="192"/>
+        <location filename="../vocabulary_page.py" line="209"/>
         <source>Nicht geändert: {begriff} (zu kurz oder schon vorhanden)</source>
         <translation>Not changed: {begriff} (too short or already there)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="202"/>
+        <location filename="../vocabulary_page.py" line="219"/>
         <source>Begriffe haben mindestens drei Zeichen.</source>
         <translation>Terms have at least three characters.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="207"/>
+        <location filename="../vocabulary_page.py" line="224"/>
         <source>Hinzugefügt: {begriff}</source>
         <translation>Added: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="208"/>
+        <location filename="../vocabulary_page.py" line="225"/>
         <source>Schon vorhanden: {begriff}</source>
         <translation>Already there: {begriff}</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="218"/>
+        <location filename="../vocabulary_page.py" line="235"/>
         <source>Nichts ausgewählt.</source>
         <translation>Nothing selected.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="221"/>
+        <location filename="../vocabulary_page.py" line="238"/>
         <source>Löschen</source>
         <translation>Delete</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="222"/>
+        <location filename="../vocabulary_page.py" line="239"/>
         <source>{n} Begriff(e) aus dem Vokabular löschen?</source>
         <translation>Delete {n} term(s) from the vocabulary?</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="228"/>
+        <location filename="../vocabulary_page.py" line="245"/>
         <source>{n} Begriff(e) gelöscht.</source>
         <translation>{n} term(s) deleted.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="235"/>
+        <location filename="../vocabulary_page.py" line="252"/>
         <source>Vokabular als CSV</source>
         <translation>Vocabulary as CSV</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="236"/>
+        <location filename="../vocabulary_page.py" line="253"/>
         <source>CSV (*.csv)</source>
         <translation>CSV (*.csv)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="245"/>
+        <location filename="../vocabulary_page.py" line="262"/>
         <source>{n} Begriffe nach {pfad} geschrieben.</source>
         <translation>{n} terms written to {pfad}.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="252"/>
+        <location filename="../vocabulary_page.py" line="269"/>
         <source>Vokabular importieren</source>
         <translation>Import vocabulary</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="253"/>
+        <location filename="../vocabulary_page.py" line="270"/>
         <source>CSV und Listen (*.csv *.txt);;Alle Dateien (*)</source>
         <translation>CSV and lists (*.csv *.txt);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="266"/>
+        <location filename="../vocabulary_page.py" line="283"/>
         <source>Vokabular</source>
         <translation>Vocabulary</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="269"/>
+        <location filename="../vocabulary_page.py" line="286"/>
         <source>{neu} neue von {gelesen} Begriffen aus {name} übernommen.</source>
         <translation>{neu} new of {gelesen} terms taken over from {name}.</translation>
     </message>
     <message>
-        <location filename="../vocabulary_page.py" line="282"/>
+        <location filename="../vocabulary_page.py" line="299"/>
         <source>{n} fehlende Begriffe der mitgelieferten Listen aufgenommen.</source>
         <translation>{n} missing terms of the bundled lists taken in.</translation>
     </message>

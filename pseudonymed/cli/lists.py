@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from lexcor import Store
 
 from pseudonymed.cli.base import (
     abort,
@@ -44,6 +45,71 @@ def medical_terms_status() -> None:
                  " 'fachbegriffe hinzufuegen|entfernen|exportieren|importieren')",
                  f"Store {path} (step ‘3 Medical vocabulary’,"
                  " 'medical-terms add|remove|export|import')"))
+
+
+# -- the ticks of the lists, which the store keeps --------------------------------------------
+LISTS = Annotated[list[str], typer.Argument(
+    metavar=list_metavar("lists"),
+    help=w("Titel oder URL der Listen (wie „listen“ sie zeigt).",
+           "Titles or URLs of the lists (as \"lists\" shows them)."))]
+
+
+def _show_lists(store: Store) -> None:
+    """Every list of a store with its tick, its size, whose it is and its URL."""
+    from pseudonymed.detection import choice
+
+    for item in choice.listing(store):
+        whose = "" if item.own else w("  (aus einem anderen Programm)", "  (from another program)")
+        typer.echo(f"{'✓' if item.ticked else ' '} {item.info.title or item.info.url}"
+                   f"  {item.info.terms}{whose}  {item.info.url}")
+
+
+def _switch(store: Store, names: list[str], on: bool) -> None:
+    """Tick or untick lists of a store and say which; an unknown name changes nothing."""
+    from lexcor import StoreError
+
+    from pseudonymed.detection import choice
+
+    try:
+        urls = choice.switch(store, names, on)
+    except StoreError as e:
+        abort(w(e.message("de"), e.message("en")), cause=e)
+    for url in urls:
+        typer.echo(w(f"Angekreuzt: {url}", f"Ticked: {url}") if on
+                   else w(f"Abgewählt: {url}", f"Unticked: {url}"))
+
+
+@command(medical_terms_app, "listen", "lists", help=w(
+    "Die Listen der Ablage mit ihren Häkchen zeigen: angekreuzte schützen.",
+    "Show the lists of the store with their ticks: ticked ones protect."))
+def medical_terms_lists() -> None:
+    """Print the lists of lexterm's store with their ticks."""
+    from pseudonymed.detection import vocabulary as vocab_mod
+
+    with vocab_mod.Vocabulary() as v:
+        _show_lists(v.store)
+
+
+@command(medical_terms_app, "ankreuzen", "tick", help=w(
+    "Listen ankreuzen: Sie schützen ab dem nächsten Lauf (lexterm wendet sie ebenso an).",
+    "Tick lists: they protect from the next run on (and lexterm applies them as well)."))
+def tick_medical_terms(listen: LISTS) -> None:
+    """Tick lists of lexterm's store."""
+    from pseudonymed.detection import vocabulary as vocab_mod
+
+    with vocab_mod.Vocabulary() as v:
+        _switch(v.store, listen, True)
+
+
+@command(medical_terms_app, "abwaehlen", "untick", help=w(
+    "Listen abwählen: Sie schützen ab dem nächsten Lauf nicht mehr.",
+    "Untick lists: they no longer protect from the next run on."))
+def untick_medical_terms(listen: LISTS) -> None:
+    """Untick lists of lexterm's store."""
+    from pseudonymed.detection import vocabulary as vocab_mod
+
+    with vocab_mod.Vocabulary() as v:
+        _switch(v.store, listen, False)
 
 
 @command(medical_terms_app, "hinzufuegen", "add", help=w("Begriffe ins Vokabular aufnehmen.",
@@ -212,6 +278,39 @@ def identifiers_status() -> None:
                  " Schritt „2 Identifikatoren“.",
                  "Registry numbers (NCT, DRKS, ISRCTN, EU CT, EudraCT) are always recognised;"
                  " step ‘2 Identifiers’."))
+
+
+@command(identifiers_app, "listen", "lists", help=w(
+    "Die Listen der Ablage mit ihren Häkchen zeigen: angekreuzte werden gesucht.",
+    "Show the lists of the store with their ticks: ticked ones are searched for."))
+def identifiers_lists() -> None:
+    """Print the lists of lexident's store with their ticks."""
+    from pseudonymed.detection import identifiers as ident_module
+
+    with ident_module.IdentifierTable() as table:
+        _show_lists(table.store)
+
+
+@command(identifiers_app, "ankreuzen", "tick", help=w(
+    "Listen ankreuzen: Sie werden ab dem nächsten Lauf gesucht (von lexident ebenso).",
+    "Tick lists: they are searched for from the next run on (by lexident as well)."))
+def tick_identifiers(listen: LISTS) -> None:
+    """Tick lists of lexident's store."""
+    from pseudonymed.detection import identifiers as ident_module
+
+    with ident_module.IdentifierTable() as table:
+        _switch(table.store, listen, True)
+
+
+@command(identifiers_app, "abwaehlen", "untick", help=w(
+    "Listen abwählen: Sie werden ab dem nächsten Lauf nicht mehr gesucht.",
+    "Untick lists: they are no longer searched for from the next run on."))
+def untick_identifiers(listen: LISTS) -> None:
+    """Untick lists of lexident's store."""
+    from pseudonymed.detection import identifiers as ident_module
+
+    with ident_module.IdentifierTable() as table:
+        _switch(table.store, listen, False)
 
 
 @command(identifiers_app, "hinzufuegen", "add", help=w(

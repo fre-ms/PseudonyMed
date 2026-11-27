@@ -105,26 +105,25 @@ class _DefaultVocabulary:
 
     def __init__(self) -> None:
         """Starts without a cached vocabulary."""
-        self._cache: tuple[Path, int, MedicalTerms] | None = None
+        self._cache: tuple[tuple[Path, int, tuple[str, ...]], MedicalTerms] | None = None
 
     def __call__(self) -> MedicalTerms:
-        """The vocabulary used by the pipeline: the store's own lists (a terminology of
-        another program in the same store protects nothing), built again only when the
-        store's version changed; the bundled lists when the store is unusable.  A
+        """The vocabulary used by the pipeline: the lists the store has ticked, built again
+        only when the store or the ticks changed; the bundled lists when the store is
+        unusable.  A
         vocabulary that could not be taken over from the pseudonym database is no such
         case: that error is passed on."""
         from pseudonymed.detection import vocabulary as vocab_mod
 
         try:
             with vocab_mod.Vocabulary() as v:
-                path, version = v.path, v.version()
-                if self._cache is not None and self._cache[:2] == (path, version):
-                    return self._cache[2]
-                fb = MedicalTerms(v.cover(),
-                                  [(k, len(terms)) for k, terms in v.per_category().items()])
+                state = (v.path, v.version(), tuple(v.applied()))
+                if self._cache is not None and self._cache[0] == state:
+                    return self._cache[1]
+                fb = MedicalTerms(v.cover(), v.applied_sources())
         except (sqlite3.Error, OSError, StoreError):
             return load()
-        self._cache = (path, version, fb)
+        self._cache = (state, fb)
         return fb
 
     def cache_clear(self) -> None:

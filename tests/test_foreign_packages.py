@@ -1,7 +1,8 @@
 """The stores of the lex libraries are shared: another program may keep a whole terminology
 in them.  PseudonyMed's are only the lists a store gave a URL itself; a package that brought
-a URL of its own is no category and no list of identifiers, protects nothing, is not looked
-for, and is neither hidden, rewritten nor removed, whatever PseudonyMed does."""
+a URL of its own is no category and no list of identifiers, and is neither hidden, rewritten
+nor removed, whatever PseudonyMed does.  It protects, or is looked for, while the store has
+it ticked, as every list does."""
 
 from __future__ import annotations
 
@@ -116,7 +117,12 @@ def test_a_terminology_is_no_vocabulary(folder: Path) -> None:
     cover = _cover()
     with vocab_mod.Vocabulary() as v:
         held = _install(v.store, terminology(), "F00", "Morbus Flantz")
-    assert _vocabulary() == before and _cover() == cover
+    assert _vocabulary() == before
+    # ticked as it came into the store, it protects; unticked, the vocabulary is as before
+    assert terms_module.standard().is_medical_term("Flantzfieber")
+    with vocab_mod.Vocabulary() as v:
+        v.store.switch(TERMINOLOGY, False)
+    assert _cover() == cover
     fb = terms_module.standard()
     assert not fb.is_medical_term("Flantzfieber") and not fb.is_medical_term("Mustermann")
     assert dict(stats_mod.statistics().vocabulary_categories) == dict(before[1])
@@ -158,6 +164,9 @@ def test_the_move_of_the_vocabulary_leaves_a_terminology_alone(folder: Path) -> 
         assert all(change.url != TERMINOLOGY or change in held[1]
                    for change in v.store.overlay())
     assert vocab_mod.table_terms(default_path()) is None
+    assert terms_module.standard().is_medical_term("Flantzfieber")  # ticked: it protects
+    with vocab_mod.Vocabulary() as v:
+        v.store.switch(TERMINOLOGY, False)
     expected = terms_module.MedicalTerms()
     expected.add(term for term, _category in rows)
     assert _cover() == (frozenset(expected.cover.single), frozenset(expected.cover.phrases))
@@ -208,7 +217,10 @@ def test_a_directory_of_another_program_holds_no_identifiers(folder: Path) -> No
     assert _found(TEXT) == ["Flantzwerke GmbH"]
     with ident_module.IdentifierTable() as table:
         held = _install(table.store, directory(), "H1", "Fremdklinik Flantz")
-    assert _identifiers() == before and _found(TEXT) == ["Flantzwerke GmbH"]
+    assert _identifiers() == before and "Flantzklinikum Fremdstadt" in _found(TEXT)
+    with ident_module.IdentifierTable() as table:
+        table.store.switch(DIRECTORY, False)  # unticked, it is no longer looked for
+    assert _found(TEXT) == ["Flantzwerke GmbH"]
     assert stats_mod.statistics().identifier_lists == []
     with ident_module.IdentifierTable() as table:
         assert table.keys_for("Flantzklinikum Fremdstadt") == []
@@ -232,6 +244,9 @@ def test_the_move_of_the_identifiers_leaves_a_directory_alone(folder: Path) -> N
         assert all(change.url != DIRECTORY or change in held[1]
                    for change in table.store.overlay())
     assert not {t for t in tables_of(default_path()) if t.startswith("lexikon")}
+    assert "Flantzklinikum Fremdstadt" in _found(TEXT)  # still ticked, so looked for
+    with ident_module.IdentifierTable() as table:
+        table.store.switch(DIRECTORY, False)
     assert _found(TEXT) == ["Flantzwerke GmbH"]
 
 
