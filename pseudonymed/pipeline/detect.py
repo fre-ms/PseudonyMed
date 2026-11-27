@@ -6,7 +6,7 @@ user's corrected text as text-only hits."""
 from __future__ import annotations
 
 import pymupdf
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.checks.recheck import tolerance_key
 from pseudonymed.core.model import Hit
@@ -17,7 +17,7 @@ from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import ner as ner_module
 from pseudonymed.detection.fuzzy import find_fuzzy
 from pseudonymed.detection.rules import find
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.document import text_file as text_module
 from pseudonymed.pipeline.options import PipelineOptions
 from pseudonymed.pipeline.pages import PageEntry
@@ -66,7 +66,7 @@ def _recognise_text_layer(entry: PageEntry, r: Toolkit, spared: list[str]) -> No
 def _unreadable_lines(ocr: PageText, hits: list[Hit]) -> list[Hit]:
     """Lines the OCR could not read, as hits, where no OCR hit covers them already."""
     occupied = [(f.start, f.end) for f in hits if f.source == "ocr"]
-    return [u for u in optdoc_adapter.unreadable_matches(ocr)
+    return [u for u in docrepro_adapter.unreadable_matches(ocr)
             if not any(u.start < y and u.end > x for x, y in occupied)]
 
 

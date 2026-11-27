@@ -460,7 +460,7 @@ def test_window_database(qapp: QApplication, tmp_path: Path, report_pdf: Path,  
     page.synchronous = True
     window.show_page(page)
     qapp.processEvents()
-    assert window.tabs.tabText(window.tabs.currentIndex()) == "11 Datenbank"
+    assert window.tabs.tabText(window.tabs.currentIndex()) == "14 Datenbank"
     st = page.refresh()
     assert st.patients == 1 and page.table.rowCount() == len(st.lines())
     with pytest.raises(RuntimeError):

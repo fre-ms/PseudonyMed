@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-from optdoc.ocr import available_backends
+from ocrdoc.ocr import available_backends
 
 from pseudonymed import __version__
 from pseudonymed.cli.base import (
@@ -55,14 +55,27 @@ def config(store: StoreOption = None) -> None:
     settings = load_settings()
     typer.echo(f"PseudonyMed {__version__}")
     typer.echo(f"PyMuPDF {pymupdf.version[0]} (MuPDF {pymupdf.version[1]})")
+    typer.echo(_document_layer())
     _show_tools(settings)
     _show_keys(store, settings)
     _show_accounts()
 
 
+def _document_layer() -> str:
+    """docrepro and the versions of the steps PseudonyMed takes its documents from."""
+    import docrepro
+    from docrepro.steps import installed
+
+    from pseudonymed.document.chain import STEPS
+
+    steps = ", ".join(f"{step.name} {adapter.version}" for step, adapter in installed()
+                      if step.name in STEPS)
+    return f"docrepro {docrepro.__version__} ({steps})"
+
+
 def _show_tools(settings: Settings) -> None:
     """OCR engines, Tesseract and its languages, barcodes, NER and the vocabulary."""
-    from optdoc.ocr import tesseract_languages, tesseract_program
+    from ocrdoc.ocr import tesseract_languages, tesseract_program
 
     from pseudonymed.detection import medical_terms as terms_module
     from pseudonymed.detection import ner as ner_module
@@ -71,8 +84,8 @@ def _show_tools(settings: Settings) -> None:
     backends = available_backends()
     typer.echo(w("OCR-Backends:        ", "OCR engines:         ")
                + (", ".join(backends) if backends else
-                  w("keine (Extra 'ocr' installieren oder Tesseract)",
-                    "none (install the extra 'ocr' or Tesseract)"))
+                  w("keine (RapidOCR fehlt; Tesseract installieren)",
+                    "none (RapidOCR is missing; install Tesseract)"))
                + w(f"  (bevorzugt: {settings.ocr_backend})",
                    f"  (preferred: {settings.ocr_backend})"))
     tess = tesseract_program(settings.tesseract_path or None)
@@ -85,8 +98,8 @@ def _show_tools(settings: Settings) -> None:
                      f"Tesseract:           {tess}  (languages: {language_text},"
                      f" {len(languages)} in total)"))
     typer.echo("Barcodes/QR:         " + ("zxing-cpp" if codes_available() else
-                                          w("nicht verfügbar (Extra 'codes')",
-                                            "not available (extra 'codes')")))
+                                          w("nicht verfügbar (zxing-cpp fehlt)",
+                                            "not available (zxing-cpp is missing)")))
     typer.echo("NER:                 "
                + (w(f"spaCy mit {ner_module.available_model()}",
                     f"spaCy with {ner_module.available_model()}")

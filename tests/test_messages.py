@@ -82,7 +82,7 @@ def _core_modules() -> list[Path]:
             continue
         if rel.parts[0] == "gui" and p.name != "session.py":
             continue
-        if rel.as_posix() in ("core/text.py", "document/optdoc_adapter.py"):
+        if rel.as_posix() == "core/text.py":
             continue  # the translation tables themselves
         files.append(p)
     return files

@@ -128,8 +128,8 @@ def test_window_control(qapp: QApplication, tmp_path: Path, report_pdf: Path,  #
     window = MainWindow(session)
     for page in (window.documents, window.analyse, window.export, window.control):
         page.synchronous = True
-    assert [window.tabs.tabText(i) for i in range(7, 11)] == [
-        "8 Kontrolle", "9 Export", "10 Reidentifikation", "11 Datenbank"]
+    assert [window.tabs.tabText(i) for i in range(10, 14)] == [
+        "11 Kontrolle", "12 Export", "13 Reidentifikation", "14 Datenbank"]
     window.patient.fill_in(patient)
     window.patient.adopt()
     window.documents.add([report_pdf])

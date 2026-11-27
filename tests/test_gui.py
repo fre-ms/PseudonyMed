@@ -1,4 +1,5 @@
-"""The desktop interface, driven offscreen: session model and the five pages in sequence."""
+"""The desktop interface, driven offscreen: session model and the steps in sequence, docrepro's
+panels among them."""
 
 from __future__ import annotations
 
@@ -10,8 +11,8 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from optdoc import cleanup as cleanup_module
-from optdoc import ocr as ocr_module
+from ocrdoc import ocr as ocr_module  # noqa: E402
+from optdoc import cleanup as cleanup_module  # noqa: E402
 from PySide6.QtWidgets import QApplication, QGraphicsView  # noqa: E402
 
 from pseudonymed.core.model import Patient  # noqa: E402
@@ -111,28 +112,37 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     assert window.current_page() is window.documents
 
     # 2 documents: opened at once; a text-layer PDF has nothing to clean up
+    for step in window.chain_steps:
+        step.synchronous = True
     window.documents.add([report_pdf])
     assert window.documents.listing.count() == 1
     d = session.documents[0]
-    assert d.opened is not None and d.opened.candidates == [] and not window.documents.is_loading
-    assert "nichts aufzubereiten" in window.documents.clean_up.note.text()
+    assert d.chain is not None and d.image_pages == [] and not window.documents.is_loading
     window.documents.proceed_button.click()
-    assert window.current_page() is window.ocr
+    assert window.current_page() is window.prepare
+    assert window.prepare.panel is not None  # optdoc's panel, on the first page
+    assert window.prepare.panel.note.text().startswith("Diese Seite hat eine eigene Textebene")
 
     # 3 text recognition: a text-layer PDF is read without OCR, its text is shown read-only
-    te = window.ocr
-    te.synchronous = True
+    window.prepare.proceed_button.click()
+    te = window.filters
+    assert window.current_page() is te
     te.start_reading()
     qapp.processEvents()
-    assert d.reading is not None and d.reading.ocr_pages == [] and te.text.isReadOnly()
-    assert "Diagnosen" in te.text.toPlainText()
+    assert "Gelesen: 1 Dokument(e)." in te.status.text()
+    assert d.chain.project("ocrdoc").pages[0].ocr is False  # the text layer, no OCR
     te.proceed_button.click()
+    window.regions.proceed_button.click()
+    assert window.current_page() is window.text
+    assert window.text.panel.text.isReadOnly()
+    assert "Diagnosen" in window.text.panel.text.toPlainText()
+    window.text.proceed_button.click()
     assert window.current_page() is window.analyse
 
     # 4 analyse with the settings of that step
     window.analyse.analyse()
     qapp.processEvents()
-    assert d.preparation is not None and d.preparation.hits and d.reading is None
+    assert d.preparation is not None and d.preparation.hits and d.chain is not None
     assert window.current_page() is window.check
     assert "Fertig" in window.analyse.status.text()
 
@@ -259,11 +269,10 @@ def test_window_text_file(qapp: QApplication, tmp_path: Path, patient: Patient,
     window.patient.adopt()
     window.documents.add([source, tmp_path / "egal.xyz"])
     assert window.documents.listing.count() == 1
-    assert session.documents[0].opened is None  # text files are not opened as documents
-    window.ocr.synchronous = True
-    window.ocr.start_reading()
-    assert session.documents[0].reading is None
-    assert "Textdatei" in window.ocr.note.text()
+    assert session.documents[0].chain is None  # text files have no chain of docrepro
+    window.filters.synchronous = True
+    window.filters.start_reading()
+    assert "Textdatei" in window.filters.placeholder.text()
     assert window.analyse.fuzzy.isChecked()
     window.analyse.analyse()
     qapp.processEvents()
@@ -366,13 +375,14 @@ def test_english_interface(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) 
         window = MainWindow(Session(store_path=None))
         tabs = [window.tabs.tabText(i) for i in range(window.tabs.count())]
         assert tabs == ["1 Patient data", "2 Identifiers", "3 Medical vocabulary", "4 Documents",
-                    "5 Text recognition", "6 Analysis", "7 Visual review", "8 Control", "9 Export",
-                    "10 Re-identification",
-                    "11 Database"]
+                        "5 Prepare", "6 Filters for OCR", "7 Areas", "8 Check the text",
+                        "9 Analysis", "10 Visual review", "11 Control", "12 Export",
+                        "13 Re-identification", "14 Database"]
         assert window.patient.f["nachname"].placeholderText() == ""
         assert window.export.button.text() == "Export"
-        # the clean-up wording comes from optdoc and follows the installed translation
+        # docrepro's panels and wording follow the installed translation
         assert translation.interface_language() == "en"
+        assert window.prepare.words.language == "en"
         window.close()
     finally:
         qapp.removeTranslator(translator)
@@ -386,87 +396,91 @@ def test_english_interface(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) 
                     reason="OCR-Backend oder OpenCV fehlt")
 def test_window_clean_up(qapp: QApplication, tmp_path: Path, report_pdf: Path,
                          patient: Patient) -> None:
-    """A tilted scan goes through the clean-up step: suggestion shown, user adjusts,
-    analysis runs on the corrected page, the review follows."""
+    """A tilted scan goes through docrepro's steps in the window: optdoc's suggestion shown
+    and adjusted, ocrdoc's filters chosen, every page read, the text corrected; the analysis
+    runs on the prepared pages and the corrected text, the review follows."""
+    from pseudonymed.gui.chain_pages import ChainStepPage
     from tests.test_ocr import _scan
 
     scan = _scan(report_pdf, tmp_path / "scan.pdf", rotation=2.0)
     session = Session(store_path=tmp_path / "s.sqlite")
     window = MainWindow(session)
-    window.documents.synchronous = True
-    window.analyse.synchronous = True
-    window.export.synchronous = True
+    for page in (window.documents, window.analyse, window.export, *window.chain_steps):
+        page.synchronous = True
     window.patient.fill_in(patient)
     window.patient.adopt()
     window.documents.add([scan])
     qapp.processEvents()
     d = session.documents[0]
-    assert d.opened is not None and d.opened.candidates == [0, 1]
+    assert d.chain is not None and d.image_pages == [0, 1]
     assert "aufbereiten" in window.documents.listing.item(0).text()
-    cu = window.documents.clean_up
+    # 5 prepare: optdoc's panel on the first page with its suggestion
+    window.show_page(window.prepare)
+    cu = window.prepare
     assert cu.tree.topLevelItemCount() == 1 and cu.document is d and cu.page == 0
-    a = cu.current_plan()
+    panel = cu.panel
+    project = d.chain.project("optdoc")
+    a = project.plan(0)
     assert a is not None and a.straighten and abs(abs(a.angle) - 2.0) < 0.5, a
-    assert "begradigt" in cu.note.text()
-    cu.background_smoothing.setChecked(True)
-    cu.add_mask((56, 60, 300, 90))
-    assert d.cleanup[0].background and len(d.cleanup[0].masks) == 1
-    cu.apply_to_all()
-    assert d.cleanup[1].background
-    cu.upscaling.setCurrentIndex(2)  # 3×
-    cu.text_mode.setChecked(True)
-    cu.colour_removal.setChecked(True)
-    assert d.cleanup[0].upscale == 3 and d.cleanup[0].letter_mode
-    assert d.cleanup[0].remove_colour and "Buchstabenmodus" in cu.note.text()
-    # optdoc's part of the hint follows the interface language like the rest of the page
+    assert "begradigt" in panel.note.text()
+    panel.boxes["background"].setChecked(True)
+    panel.add_mask((56, 60, 300, 90))
+    assert project.plan(0).background and len(project.plan(0).masks) == 1
+    assert "geändert" in window.documents.listing.item(0).text() or d.preparation is None
+    panel.copy_to_all()
+    assert project.plan(1).background
+    panel.detect_orientation()
+    assert project.plan(0).rotation == 0
+    panel.rotate(90)
+    assert project.plan(0).rotation == 90 and not project.plan(0).masks
+    panel.rotate(270)
+    panel.skip()
+    assert not project.plan(0).active
+    panel.restore()
+    assert project.plan(0).straighten
+    panel.undo()  # nothing to undo any more: no error
+    # the panel speaks the interface language
     from pseudonymed.gui import translation
 
     translator = translation.install(qapp, "en_gb")
     assert translator is not None
     try:
-        cu.draw()
-        assert "letter mode" in cu.note.text() and "Buchstabenmodus" not in cu.note.text()
+        english = ChainStepPage(session, "cleanup")
+        english.synchronous = True
+        english.refresh()
+        assert "straightened" in english.panel.note.text()
+        english.close()
     finally:
         qapp.removeTranslator(translator)
-    cu.draw()
-    assert "Buchstabenmodus" in cu.note.text()
-    cu.upscaling.setCurrentIndex(0)
-    cu.text_mode.setChecked(False)
-    # the two views are linked: pan one, the other follows; zoom likewise
-    cu.after.zoom(2.0)
-    assert abs(cu.before.zoom_factor - cu.after.zoom_factor) < 1e-6  # relative to each base
-    cu.before.verticalScrollBar().setValue(cu.before.verticalScrollBar().maximum() // 2)
-    v1 = cu.before.verticalScrollBar().value() / max(1, cu.before.verticalScrollBar().maximum())
-    v2 = cu.after.verticalScrollBar().value() / max(1, cu.after.verticalScrollBar().maximum())
-    assert abs(v1 - v2) < 0.02, (v1, v2)
-    cu.before.reset_zoom()
-    assert abs(cu.after.zoom_factor - 1.0) < 1e-6
-    cu.detect_orientation()
-    assert d.cleanup[0].rotation == 0
-    cu.rotate(90)
-    assert d.cleanup[0].rotation == 90 and not d.cleanup[0].masks
-    cu.rotate(270)
-    cu.skip_cleanup()
-    assert not d.cleanup[0].active
-    cu.restore_suggestion()
-    assert d.cleanup[0].straighten
-    cu.undo()  # nothing to undo any more: no error
-    # 3 text recognition on the cleaned-up pages, with a correction
-    te = window.ocr
-    te.synchronous = True
-    assert te.engine.currentData() == "auto" and te.proceed_button.isEnabled()
-    te.start_reading()
+    # 6 filters for the OCR, then every page read
+    window.show_page(window.filters)
+    fi = window.filters
+    assert fi.settings is not None and fi.settings.engine.currentData() == "auto"
+    ocr_project = d.chain.project("ocrdoc")
+    fi.panel.upscaling.setCurrentIndex(2)  # 3×
+    fi.panel.boxes["letter_mode"].setChecked(True)
+    assert ocr_project.filters(0).upscale == 3 and ocr_project.filters(0).letter_mode
+    fi.panel.upscaling.setCurrentIndex(0)
+    fi.panel.boxes["letter_mode"].setChecked(False)
+    fi.start_reading()
     qapp.processEvents()
-    assert d.reading is not None and d.reading.ocr_pages == [1, 2]
-    assert te.tree.topLevelItemCount() == 1 and not te.text.isReadOnly()
-    ocr = te.text.toPlainText()
+    assert all(p.ocr for p in d.chain.project("ocrdoc").pages)
+    assert "Gelesen: 1 Dokument(e)." in fi.status.text()
+    # 7 areas: found on the page shown
+    window.show_page(window.regions)
+    assert d.chain.project("ocrdoc").has_regions(0)
+    # 8 the text, corrected by hand; leaving the step takes the correction in
+    window.show_page(window.text)
+    tp = window.text.panel
+    assert not tp.text.isReadOnly()
+    ocr = tp.text.toPlainText()
     assert "Diagnosen" in ocr
-    te.text.setPlainText(ocr.rstrip("\n") + "\nZusatz: Testzeile aus der Korrektur.\n")
-    te.adopt_text()
-    assert d.reading.pages[0].correction is not None and "korrigiert" in te.text_note.text()
+    tp.text.setPlainText(ocr.rstrip("\n") + "\nZusatz: Testzeile aus der Korrektur.\n")
+    window.show_page(window.analyse)
+    assert d.chain.project("ocrdoc").pages[0].correction is not None
     window.analyse.analyse()
     qapp.processEvents()
-    assert d.preparation is not None and d.opened is None and d.reading is None
+    assert d.preparation is not None and not d.changed
     assert window.current_page() is window.check
     assert d.preparation.pages[0].correction is not None
     assert d.preparation.cleaned_up and 0 in d.preparation.cleaned_up

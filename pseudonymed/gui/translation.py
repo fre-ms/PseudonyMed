@@ -11,7 +11,7 @@ from PySide6.QtCore import QCoreApplication, QLocale, QTranslator
 
 from pseudonymed import language
 from pseudonymed.core.text import in_language
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 
 FOLDER = Path(__file__).parent / "translations"
 
@@ -30,7 +30,7 @@ def without_language_arguments(arguments: list[str]) -> list[str]:
 
 def interface_language() -> str:
     """"en" while the English translation is installed, else "de": the language for texts
-    that are not built with tr(), such as optdoc's wording and messages."""
+    that are not built with tr(), such as docrepro's wording and messages."""
     return QCoreApplication.translate("Language", "de", "language code of the interface")
 
 
@@ -40,8 +40,8 @@ def shown(text: object) -> str:
 
 
 def shown_error(error: BaseException) -> str:
-    """The message of an error in the interface language, optdoc's and the core's alike."""
-    return optdoc_adapter.message(error, interface_language())
+    """The message of an error in the interface language, docrepro's and the core's alike."""
+    return docrepro_adapter.message(error, interface_language())
 
 
 def install(app: QCoreApplication, language: str) -> QTranslator | None:

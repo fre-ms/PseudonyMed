@@ -1,15 +1,14 @@
-"""Step 2: drop the documents.  They are opened at once; scans and photos appear
-below for the clean-up before OCR."""
+"""Step 4: drop the documents.  They are opened at once: docrepro's chain on every PDF
+and image (typdoc binds a photo into a PDF, optdoc suggests how to prepare its pages), so
+that the steps after it (preparing, the filters, the areas, the text) can show them."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from optdoc.loading import HEIC_SUFFIXES, IMAGE_SUFFIXES
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -21,8 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.document import optdoc_adapter
-from pseudonymed.gui.cleanup_page import CleanupPage
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.session import Document, Session
 from pseudonymed.gui.translation import interface_language
 from pseudonymed.gui.worker import Worker
@@ -55,9 +53,8 @@ class DropZone(QListWidget):
 
 
 class DocumentsPage(QWidget):
-    """The documents step: the list of inputs with their working state, the paper
-    format for images, and the embedded clean-up panel for pages without a text layer.
-    Files are opened in the background as soon as they arrive."""
+    """The documents step: the list of inputs with their working state.  Files are opened
+    in the background as soon as they arrive."""
 
     loaded = Signal()  # every pending document is open and, where needed, has a suggestion
     proceed = Signal()  # the user wants to go on to the analysis
@@ -70,14 +67,16 @@ class DocumentsPage(QWidget):
         self._queue: list[Document] = []
         outer = QVBoxLayout(self)
 
-        outer.addWidget(QLabel(self.tr(
+        intro = QLabel(self.tr(
             "Dateien hierher ziehen oder hinzufügen (PDF, Fotos, Texte, Whisper-JSON, E-Mails)."
-            " Scans und Fotos erscheinen darunter zum Aufbereiten vor der Texterkennung."
-            " Ein gespeicherter Arbeitsstand (…arbeitsstand.json oder das Dokument daneben)"
-            " füllt alles bis zur Sichtprüfung wieder aus.")))
+            " Scans und Fotos werden in den nächsten Schritten mit docrepro aufbereitet und"
+            " gelesen; ein Foto wird dafür zu einem PDF gebunden. Ein gespeicherter"
+            " Arbeitsstand (…arbeitsstand.json oder das Original daneben) füllt alles bis zur"
+            " Sichtprüfung wieder aus."))
+        intro.setWordWrap(True)
+        outer.addWidget(intro)
         top = QHBoxLayout()
         self.listing = DropZone()
-        self.listing.setMaximumHeight(150)
         self.listing.dropped.connect(self.add)
         top.addWidget(self.listing, 1)
         buttons = QVBoxLayout()
@@ -87,27 +86,13 @@ class DocumentsPage(QWidget):
         remove.clicked.connect(self.remove)
         buttons.addWidget(add_button)
         buttons.addWidget(remove)
-        buttons.addWidget(QLabel(self.tr("Papierformat für Fotos und Bilder")))
-        self.paper = QComboBox()
-        for name, value in ((self.tr("A4"), "a4"), (self.tr("A5"), "a5"), (self.tr("A3"), "a3"),
-                            (self.tr("US Letter"), "letter"), (self.tr("US Legal"), "legal"),
-                            (self.tr("wie das Bild"), "bild")):
-            self.paper.addItem(name, value)
-        self.paper.setToolTip(self.tr(
-            "Seitengröße der PDF-Ausgabe für Fotos und Bilder; Hoch- oder Querformat folgt"
-            " dem Bild, das Bild wird eingepasst. Gilt für alle Bilder dieser Sitzung."))
-        self.paper.currentIndexChanged.connect(self._paper_changed)
-        buttons.addWidget(self.paper)
         buttons.addStretch(1)
         top.addLayout(buttons)
-        outer.addLayout(top)
-
-        self.clean_up = CleanupPage(session)
-        outer.addWidget(self.clean_up, 1)
+        outer.addLayout(top, 1)
 
         bottom = QHBoxLayout()
         self.status = QLabel("")
-        self.proceed_button = QPushButton(self.tr("Weiter: Texterkennung"))
+        self.proceed_button = QPushButton(self.tr("Weiter: Aufbereiten"))
         self.proceed_button.setDefault(True)
         self.proceed_button.clicked.connect(self.proceed.emit)
         bottom.addWidget(self.status, 1)
@@ -146,19 +131,6 @@ class DocumentsPage(QWidget):
             if not running:
                 self._run_next()
 
-    def _paper_changed(self, _i: int = 0) -> None:
-        """Images are opened on the new paper: reload those that are already in."""
-        self.session.options.paper_size = self.paper.currentData()
-        images = [d for d in self.session.documents
-                  if d.path.suffix.lower() in IMAGE_SUFFIXES | HEIC_SUFFIXES
-                  and d not in self._queue]
-        if images:
-            running = self.is_loading
-            self._queue += images
-            self.refresh()
-            if not running:
-                self._run_next()
-
     def remove(self) -> None:
         """Take the selected entries out of the list, the queue and the session."""
         for entry in self.listing.selectedItems():
@@ -169,7 +141,6 @@ class DocumentsPage(QWidget):
                 self.session.remove(d)
             self.listing.takeItem(self.listing.row(entry))
         self.refresh()
-        self.clean_up.refresh()
 
     def _document_of(self, entry: QListWidgetItem) -> Document | None:
         """The session document behind a list entry; None once it has been removed."""
@@ -190,23 +161,29 @@ class DocumentsPage(QWidget):
                 return self.tr("freigegeben")
             return self.tr("nicht freigegeben")
         if d.preparation is not None:
-            if d.working_state is not None:
-                return self.tr("Arbeitsstand, {treffer} Treffer").format(
-                    treffer=len(d.preparation.hits))
-            if d.preparation.is_text:
-                return self.tr("Text, {treffer} Treffer").format(
-                    treffer=len(d.preparation.hits))
-            return self.tr("analysiert, {treffer} Treffer").format(
-                treffer=len(d.preparation.hits))
-        if d.opened is not None:
-            n = len(d.opened.candidates)
+            return self._analysed_line(d)
+        if d.page_count:
+            n = len(d.image_pages)
             if n:
-                return self.tr("{seiten} Seite(n), {n} ohne Textebene: unten aufbereiten").format(
-                    seiten=d.opened.page_count, n=n)
-            return self.tr("{seiten} Seite(n) mit Textebene").format(seiten=d.opened.page_count)
+                return self.tr("{seiten} Seite(n), {n} ohne Textebene: aufbereiten").format(
+                    seiten=d.page_count, n=n)
+            return self.tr("{seiten} Seite(n) mit Textebene").format(seiten=d.page_count)
         if d in self._queue:
             return self.tr("wird geladen …")
         return self.tr("Textdatei")
+
+    def _analysed_line(self, d: Document) -> str:
+        """The state of an analysed document: its hits, where they come from (a working
+        state, a text), or that a person changed its chain since."""
+        assert d.preparation is not None
+        hits = len(d.preparation.hits)
+        if d.changed:
+            return self.tr("geändert: bitte erneut analysieren")
+        if d.working_state is not None:
+            return self.tr("Arbeitsstand, {treffer} Treffer").format(treffer=hits)
+        if d.preparation.is_text:
+            return self.tr("Text, {treffer} Treffer").format(treffer=hits)
+        return self.tr("analysiert, {treffer} Treffer").format(treffer=hits)
 
     def refresh(self) -> None:
         """Refresh every list entry and the status line (count, pages to clean up,
@@ -237,7 +214,6 @@ class DocumentsPage(QWidget):
         worker thread); with the queue empty, refresh both panels and announce it."""
         if not self._queue:
             self.refresh()
-            self.clean_up.refresh()
             self.loaded.emit()
             return
         d = self._queue[0]
@@ -263,7 +239,7 @@ class DocumentsPage(QWidget):
 
     def _error(self, e: Exception, d: Document) -> None:
         """Opening ``d`` failed: remember the error, show it, go on with the queue."""
-        d.error = optdoc_adapter.message(e, interface_language())
+        d.error = docrepro_adapter.message(e, interface_language())
         if d in self._queue:
             self._queue.remove(d)
         if self.synchronous:

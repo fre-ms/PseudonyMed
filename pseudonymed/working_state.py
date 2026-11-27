@@ -1,37 +1,39 @@
 """The working state of a document: everything up to the visual review, saved and reloaded.
 
-Cleaning up a scan, reading it (OCR, corrections) and going through the review take time
+Preparing a scan, reading it (OCR, corrections) and going through the review take time
 and judgement.  The working state keeps all of it, so that another pseudonymisation
 variant of the same document (other options, other hits kept or discarded) does not start
 from scratch.  It is two files next to each other:
 
-* ``<name>.arbeitsstand.pdf`` (or ``.txt``, ``.srt`` … for text files): the document as
-  prepared, that is after the clean-up and in clear text, **not** redacted;
-* ``<name>.arbeitsstand.json``: the patient, the options, the clean-up plan, every page
-  (text layer, OCR words with their boxes, the corrected OCR text), the hits with their
+* ``<name>.arbeitsstand.<ending>``: the original as it came (``.pdf``, ``.jpg``, ``.heic``
+  …), byte for byte; for a text file the text (``.txt``, ``.srt`` …);
+* ``<name>.arbeitsstand.json``: the patient, the options, docrepro's chain document (the
+  configuration documents of typdoc, optdoc and ocrdoc: how the pages were bound and
+  prepared, the words OCR read, the person's corrections and areas), the hits with their
   pseudonyms, the discarded hits, the manual boxes and marks.
 
-Both files hold clear data and are to be kept like the original.  Dropping either of them
-on the documents step restores the review: patient, reading and hits are filled in, the
-review can change the selection, and a new analysis keeps the reading and the decisions
-(:func:`adopt_decisions`).  A state saved in recipient mode (one-time key) cannot
-be restored, so it is refused.
+The original and the chain document give the prepared document and its reading again,
+byte for byte, without running OCR again (:mod:`pseudonymed.document.chain`); the hits
+refer to that reading.  Both files hold clear data and are to be kept like the original.
+Dropping either of them on the documents step restores the review: patient, reading and
+hits are filled in, the review can change the selection, and a new analysis keeps the
+reading and the decisions (:func:`adopt_decisions`).  A state saved in recipient mode
+(one-time key) cannot be restored, so it is refused, and so is a state of a format that
+was superseded (version 1, which kept PseudonyMed's own clean-up plans and OCR words).
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import functools
 import hashlib
 import json
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pymupdf
-from optdoc import cleanup as cleanup_module
-from optdoc import structure as structure_module
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed import TOOL
 from pseudonymed.checks.recheck import tolerance_key
@@ -39,6 +41,8 @@ from pseudonymed.core.model import Hit, Patient
 from pseudonymed.core.stored import as_stored, field_values
 from pseudonymed.core.text import in_language, say
 from pseudonymed.detection import medical_terms as terms_module
+from pseudonymed.document import chain as chain_module
+from pseudonymed.document.chain import DocumentChain
 from pseudonymed.pipeline import (
     PageEntry,
     PipelineOptions,
@@ -49,14 +53,15 @@ from pseudonymed.pipeline import (
     remember_medical_terms,
     toolkit,
 )
+from pseudonymed.pipeline.reading import read_chain
 from pseudonymed.pseudonyms.store import PseudonymStore
 from pseudonymed.redaction.pdf import RedactionOptions
 
 FORMAT_MARK = "pseudonymed_arbeitsstand"
-VERSION = 1
+VERSION = 2  # 2: docrepro's chain document and the original, in place of plans and OCR words
 INFIX = ".arbeitsstand"
 EXTENSION = INFIX + ".json"
-_OUTER_OPTIONS = ("cleanup", "recipient", "recipient_fingerprint", "matching", "language")
+_OUTER_OPTIONS = ("recipient", "recipient_fingerprint", "matching", "language")
 
 
 class WorkingStateError(Exception):
@@ -101,10 +106,16 @@ class WorkingState:
 
     @property
     def document_path(self) -> Path | None:
-        """The prepared document next to the JSON file; None for an in-memory capture."""
+        """The original (or the text) next to the JSON file; None for an in-memory capture."""
         if self.path is None:
             return None
         return self.path.parent / str(self.data["dokument"]["datei"])
+
+    @property
+    def chain(self) -> dict[str, Any]:
+        """docrepro's chain document of a PDF or image (empty for a text file)."""
+        found = self.data.get("kette")
+        return found if isinstance(found, dict) else {}
 
 
 # -- recognising the files -------------------------------------------------------------------------
@@ -151,15 +162,28 @@ def _options_from(d: dict[str, Any]) -> PipelineOptions:
     return PipelineOptions(**fields)
 
 
-def _page_as_dict(s: PageEntry) -> dict[str, Any]:
-    """A page as JSON data: text layer, OCR reading, correction, resolution and hits."""
-    return {
-        "nummer": s.number, "text": s.text.as_dict(),
-        "ocr": s.ocr.as_dict() if s.ocr is not None else None,
-        "korrektur": s.correction, "ocr_dpi": s.ocr_dpi, "ocr_max_pixel": s.ocr_max_pixels,
-        "fundstellen": [f.as_dict() for f in s.hits],
-        "korrektur_treffer": [f.as_dict() for f in s.correction_matches],
-    }
+def _page_as_dict(s: PageEntry, is_text: bool) -> dict[str, Any]:
+    """A page as JSON data: its hits and the hits over its corrected text, and for a text
+    file the analysis copy of the text (a PDF's pages are read again from the chain)."""
+    page: dict[str, Any] = {"nummer": s.number}
+    if is_text:
+        page["text"] = s.text.as_dict()
+    page["fundstellen"] = [f.as_dict() for f in s.hits]
+    page["korrektur_treffer"] = [f.as_dict() for f in s.correction_matches]
+    return page
+
+
+def _captured_document(v: Preparation | TextPreparation) -> tuple[bytes, str]:
+    """The bytes the state keeps beside its JSON and their ending: the text of a text file;
+    the original of a PDF or image, as the chain document names it."""
+    if isinstance(v, TextPreparation):
+        return v.text.encode("utf-8"), v.output_extension
+    if hashlib.sha256(v.original_data).hexdigest() != chain_module.originals_digest(v.chain):
+        raise WorkingStateError(say(
+            "Das Original passt nicht zur Kette von docrepro; der Arbeitsstand lässt sich"
+            " nicht speichern.",
+            "The original does not fit docrepro's chain; the working state cannot be saved."))
+    return v.original_data, v.original_suffix
 
 
 def capture(v: Preparation | TextPreparation) -> WorkingState:
@@ -173,12 +197,7 @@ def capture(v: Preparation | TextPreparation) -> WorkingState:
     if v.finalised:
         raise WorkingStateError(say("Diese Vorbereitung ist schon abgeschlossen.",
                                     "This preparation has been finished already."))
-    if isinstance(v, TextPreparation):
-        document = v.text.encode("utf-8")
-        extension = v.output_extension
-    else:
-        document = v.doc.tobytes()
-        extension = ".pdf"
+    document, extension = _captured_document(v)
     data: dict[str, Any] = {
         FORMAT_MARK: VERSION,
         "erstellt": dt.datetime.now().isoformat(timespec="seconds"),
@@ -190,8 +209,8 @@ def capture(v: Preparation | TextPreparation) -> WorkingState:
         "patient": v.patient.as_dict(),
         "kennung": v.code,
         "optionen": _options_as_dict(v.opt),
-        "aufbereitung": {str(n): a.full_dict() for n, a in v.cleaned_up.items()},
-        "seiten": [_page_as_dict(s) for s in v.pages],
+        "kette": None if isinstance(v, TextPreparation) else v.chain,
+        "seiten": [_page_as_dict(s, v.is_text) for s in v.pages],
         "ohne_text": list(v.without_text),
         "verworfen": [f.as_dict() for f in v.discarded],
         "wiederhergestellt": [list(k) for k in sorted(v.restored)],
@@ -235,6 +254,27 @@ def save(v: Preparation | TextPreparation, target: str | Path) -> tuple[Path, Pa
 
 
 # -- reading ---------------------------------------------------------------------------------------
+def _check_version(path: Path, data: dict[str, Any]) -> None:
+    """Refuse a state of another version: a newer PseudonyMed's, or one of a format that was
+    superseded and is no longer read (no backward compatibility)."""
+    try:
+        version = int(data[FORMAT_MARK])
+    except (TypeError, ValueError) as e:
+        raise WorkingStateError(say(f"{path.name}: kein Arbeitsstand von PseudonyMed.",
+                                    f"{path.name}: not a working state of PseudonyMed.")) from e
+    if version > VERSION:
+        raise WorkingStateError(say(f"{path.name}: stammt von einem neueren PseudonyMed.",
+                                    f"{path.name}: comes from a newer PseudonyMed."))
+    if version < VERSION:
+        raise WorkingStateError(say(
+            f"{path.name}: Arbeitsstand im abgelösten Format {version} (eigene Aufbereitungspläne"
+            " und OCR-Wörter, vor docrepro); er wird nicht mehr gelesen. Bitte das Original"
+            " erneut öffnen, aufbereiten und prüfen.",
+            f"{path.name}: working state in the superseded format {version} (PseudonyMed's own"
+            " clean-up plans and OCR words, before docrepro); it is no longer read. Please open"
+            " the original again, prepare and review it."))
+
+
 def read(path: str | Path) -> WorkingState:
     """Read a state from its JSON file and the document next to it; the document's
     checksum has to match."""
@@ -247,9 +287,7 @@ def read(path: str | Path) -> WorkingState:
     if not isinstance(data, dict) or FORMAT_MARK not in data:
         raise WorkingStateError(say(f"{path.name}: kein Arbeitsstand von PseudonyMed.",
                                     f"{path.name}: not a working state of PseudonyMed."))
-    if int(data[FORMAT_MARK]) > VERSION:
-        raise WorkingStateError(say(f"{path.name}: stammt von einem neueren PseudonyMed.",
-                                    f"{path.name}: comes from a newer PseudonyMed."))
+    _check_version(path, data)
     document = path.parent / str(data["dokument"]["datei"])
     try:
         content = document.read_bytes()
@@ -266,43 +304,9 @@ def read(path: str | Path) -> WorkingState:
     return WorkingState(data, content, path)
 
 
-def _page_from(d: dict[str, Any], plan: cleanup_module.CleanupPlan | None,
-               page: pymupdf.Page | None) -> PageEntry:
-    """A page as it was read, without its hits: text layer, OCR reading, correction and
-    resolution.  The letter-aware finish follows the clean-up plan; the layout roles are
-    rebuilt from the PDF page when there is an OCR reading to place them on."""
-    s = PageEntry(int(d["nummer"]), PageText.from_dict(d["text"]))
-    s.ocr = PageText.from_dict(d["ocr"]) if d.get("ocr") else None
-    s.correction = d.get("korrektur")
-    s.ocr_dpi = int(d.get("ocr_dpi", s.ocr_dpi))
-    s.ocr_max_pixels = int(d.get("ocr_max_pixel", s.ocr_max_pixels))
-    if plan is not None and plan.letter_mode:
-        s.ocr_filter = functools.partial(cleanup_module.letter_finish,
-                                         factor=max(1, plan.upscale))
-    if s.ocr is not None and page is not None:
-        s.structure = structure_module.analyse_page_structure(page, s.ocr)
-    return s
-
-
-def _plan_from(data: dict[str, Any]) -> dict[int, cleanup_module.CleanupPlan]:
-    """The clean-up plan read back, keyed by page number."""
-    return {int(n): cleanup_module.CleanupPlan.from_dict(a)
-            for n, a in data.get("aufbereitung", {}).items()}
-
-
-def _pdf_pages_from(pages: list[dict[str, Any]], plan: dict[int, cleanup_module.CleanupPlan],
-                    doc: pymupdf.Document) -> list[PageEntry]:
-    """The saved pages of a PDF, each rebuilt against its page in the opened document."""
-    return [_page_from(d, plan.get(int(d["nummer"])), doc[int(d["nummer"])]) for d in pages]
-
-
-def _reading_messages(a: WorkingState) -> tuple[list[str], list[str]]:
-    """The warnings and hints a rebuilt reading keeps: those about the text layer, the OCR
-    and the clean-up, plus where the state came from."""
-    warnings = [w for w in _saved(a, "warnungen") if "Textebene" in w]
-    notes = [h for h in _saved(a, "hinweise") if "OCR" in h or "aufbereitet" in h]
-    notes.append(_load_note(a))
-    return warnings, notes
+def _text_page_from(d: dict[str, Any]) -> PageEntry:
+    """A page of a text file as it was analysed, without its hits."""
+    return PageEntry(int(d["nummer"]), PageText.from_dict(d["text"]))
 
 
 def _saved(a: WorkingState, key: str) -> list[str]:
@@ -314,26 +318,43 @@ def _saved(a: WorkingState, key: str) -> list[str]:
     return [say(d, str(e)) for d, e in zip(de, en, strict=True)]
 
 
-def reading_from(a: WorkingState, opt: PipelineOptions | None = None) -> Reading:
-    """The reading phase rebuilt from a state, nothing searched yet: for a new
-    analysis that keeps the clean-up, the OCR and the corrections."""
+def open_chain(a: WorkingState, parent: Path | None = None) -> DocumentChain:
+    """docrepro's chain on the state's original, as its chain document says: it gives the
+    prepared document and the reading the state was saved with, byte for byte.  A state
+    taken in memory has its original written into the chain's private folder first."""
     if a.is_text:
-        raise WorkingStateError(say("Textdateien haben keine Lesung; prepare() aufrufen.",
-                                    "Text files have no reading; call prepare()."))
-    opt = opt or a.options
-    plan = _plan_from(a.data)
-    doc = pymupdf.open("pdf", a.document)
-    original = pymupdf.open("pdf", a.document)
+        raise WorkingStateError(say("Textdateien haben keine Kette von docrepro.",
+                                    "Text files have no chain of docrepro."))
+    original = a.document_path
+    if original is not None:
+        return DocumentChain.open(original, document=a.chain, parent=parent)
+    folder = Path(tempfile.mkdtemp(prefix="pseudonymed-", dir=parent))
+    original = folder / (a.source.stem + str(a.data["dokument"]["endung"]))
     try:
-        pages = _pdf_pages_from(a.data["seiten"], plan, doc)
+        original.write_bytes(a.document)
+        chain = DocumentChain.open(original, document=a.chain, parent=parent)
     except Exception:
-        doc.close()
-        original.close()
+        shutil.rmtree(folder, ignore_errors=True)
         raise
-    warnings, notes = _reading_messages(a)
-    return Reading(source=a.source, opt=opt, doc=doc, original=original, backend=None,
-                   pages=pages, without_text=[int(n) for n in a.data.get("ohne_text", [])],
-                   plan=plan, warnings=warnings, notes=notes)
+    chain.folders.append(folder)  # removed with the chain's own
+    return chain
+
+
+def reading_from(a: WorkingState, opt: PipelineOptions | None = None,
+                 chain: DocumentChain | None = None) -> Reading:
+    """The reading phase rebuilt from a state, nothing searched yet: for a new analysis that
+    keeps the preparation, the OCR and the corrections.  docrepro's chain makes it again from
+    the original (``chain``, where the caller holds it open, else one opened and closed
+    here); OCR does not run again."""
+    opt = opt or a.options
+    documents = chain or open_chain(a)
+    try:
+        reading = read_chain(documents, opt, a.source)
+    finally:
+        if chain is None:
+            documents.close()
+    reading.notes.append(_load_note(a))
+    return reading
 
 
 def _load_note(a: WorkingState) -> str:
@@ -368,7 +389,7 @@ def _shared_from(a: WorkingState, r: Toolkit, patient: Patient, opt: PipelineOpt
                  store: PseudonymStore, own_store: bool) -> dict[str, Any]:
     """The keyword fields of :class:`PreparationBase` both preparations take from a
     state, all but ``pages``: whose document, with which options, store and gear, the
-    messages, and what the review had decided (discards, restores, version, plan)."""
+    messages, and what the review had decided (discards, restores, version)."""
     warnings, notes = _preparation_messages(a, r)
     return {
         "source": a.source, "patient": patient, "opt": opt, "store": store,
@@ -377,7 +398,6 @@ def _shared_from(a: WorkingState, r: Toolkit, patient: Patient, opt: PipelineOpt
         "discarded": [Hit.from_dict(f) for f in a.data.get("verworfen", [])],
         "version": int(a.data.get("version", 0)),
         "restored": {(str(k[0]), str(k[1])) for k in a.data.get("wiederhergestellt", [])},
-        "cleaned_up": _plan_from(a.data),
     }
 
 
@@ -386,17 +406,21 @@ def _text_preparation_from(a: WorkingState, shared: dict[str, Any]) -> TextPrepa
     PDF page behind them."""
     return TextPreparation(
         **shared, text=a.document.decode("utf-8"),
-        pages=[_page_from(d, None, None) for d in a.data["seiten"]],
+        pages=[_text_page_from(d) for d in a.data["seiten"]],
         output_extension=str(a.data["dokument"].get("ausgabe_endung", ".txt")))
 
 
-def _pdf_preparation_from(a: WorkingState, shared: dict[str, Any]) -> Preparation:
-    """The PDF variant: pages and documents come from a rebuilt reading, which is thereby
-    used up."""
-    reading = reading_from(a, shared["opt"])
+def _pdf_preparation_from(a: WorkingState, shared: dict[str, Any],
+                          chain: DocumentChain | None) -> Preparation:
+    """The PDF variant: pages and documents come from the reading docrepro's chain makes
+    again, which is thereby used up."""
+    reading = reading_from(a, shared["opt"], chain)
     reading.used_up = True
-    return Preparation(**shared, backend=None, doc=reading.doc, original=reading.original,
-                       pages=reading.pages, without_text=reading.without_text)
+    return Preparation(**shared, backend=reading.backend, doc=reading.doc,
+                       original=reading.original, pages=reading.pages,
+                       without_text=reading.without_text, cleaned_up=reading.plan,
+                       chain=reading.chain, original_data=reading.original_data,
+                       original_suffix=reading.original_suffix)
 
 
 def _restore_page(s: PageEntry, d: dict[str, Any], is_text: bool,
@@ -416,10 +440,12 @@ def _restore_page(s: PageEntry, d: dict[str, Any], is_text: bool,
 
 
 def preparation_from(a: WorkingState, store: PseudonymStore | None = None,
-                     opt: PipelineOptions | None = None) -> Preparation | TextPreparation:
+                     opt: PipelineOptions | None = None,
+                     chain: DocumentChain | None = None) -> Preparation | TextPreparation:
     """The preparation as it was saved: pages, hits, discards and marks, ready for the
-    review, without reading or searching anything again.  ``opt`` replaces the saved
-    options (the detection options have no effect here, the output options do)."""
+    review, without searching anything again (the pages are made again by docrepro's chain,
+    ``chain`` where the caller holds it open).  ``opt`` replaces the saved options (the
+    detection options have no effect here, the output options do)."""
     opt = opt or a.options
     patient = a.patient
     own_store = store is None
@@ -429,7 +455,11 @@ def preparation_from(a: WorkingState, store: PseudonymStore | None = None,
         shared = _shared_from(a, r, patient, opt, store, own_store)
         v: Preparation | TextPreparation = (
             _text_preparation_from(a, shared) if a.is_text
-            else _pdf_preparation_from(a, shared))
+            else _pdf_preparation_from(a, shared, chain))
+        if len(v.pages) != len(a.data["seiten"]):
+            v.close()
+            raise WorkingStateError(say("Die Seiten passen nicht mehr zum Arbeitsstand.",
+                                        "The pages no longer fit the working state."))
         for s, d in zip(v.pages, a.data["seiten"], strict=True):
             _restore_page(s, d, v.is_text, r.medical_terms)
     except Exception:
@@ -460,12 +490,38 @@ def _mark_again(page: PageEntry, f: Hit) -> None:
     page.hits.append(f)
 
 
-def _adopt_manual_matches(d: dict[str, Any], new: Preparation | TextPreparation) -> int:
+def _prepared_pages(chain: dict[str, Any]) -> list[Any]:
+    """The prepared pages as ocrdoc's part of a chain document names them: every page's
+    size, frame and origin (where optdoc moved it, and what it shows); none without."""
+    for entry in chain.get("steps", []):
+        config = entry.get("config")
+        if entry.get("tool") == "ocrdoc" and isinstance(config, dict):
+            pages = config.get("input", {}).get("pages")
+            return pages if isinstance(pages, list) else []
+    return []
+
+
+def moved_pages(old: WorkingState, new: Preparation | TextPreparation) -> set[int]:
+    """The pages (from 0) of a new analysis that lie otherwise than when the state was
+    taken: a step before changed their size, their frame (turned, unwarped, straightened
+    anew) or what they show, by docrepro's own rule; a box drawn on them would no longer
+    cover what it covered.  None for a text file, or where the chain is the same."""
+    before = _prepared_pages(old.chain)
+    after = _prepared_pages(getattr(new, "chain", {}) or {})
+    if not before and not after:
+        return set()
+    if len(before) != len(after):
+        return set(range(len(new.pages)))
+    return {n for n, (a, b) in enumerate(zip(before, after, strict=True)) if a != b}
+
+
+def _adopt_manual_matches(d: dict[str, Any], new: Preparation | TextPreparation,
+                          moved: set[int]) -> int:
     """Re-add the manual hits (boxes, masks, take-ups) of one saved page to the same page
     of the new preparation; returns how many were not there yet.  A page the new
-    preparation does not have is skipped."""
+    preparation does not have, or one that lies otherwise now (``moved``), is skipped."""
     number = int(d["nummer"])
-    if number >= len(new.pages):
+    if number >= len(new.pages) or number in moved:
         return 0
     page = new.pages[number]
     n = 0
@@ -492,10 +548,20 @@ def adopt_decisions(old: WorkingState, new: Preparation | TextPreparation) -> in
     """After a new analysis: put the manual boxes, masks and marks of the saved state
     back and discard again what was discarded (same rule and text).  Returns how many
     hits were taken over or discarded."""
-    n = sum(_adopt_manual_matches(d, new) for d in old.data["seiten"])
+    moved = moved_pages(old, new)
+    n = sum(_adopt_manual_matches(d, new, moved) for d in old.data["seiten"])
     n += _discard_again(old, new)
     new.notes.append(say(f"{n} Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
                          " Markierungen, verworfene Treffer).",
                          f"{n} decisions taken over from the working state (boxes, masks,"
                          " marks, discarded hits)."))
+    if moved:
+        pages = ", ".join(str(k + 1) for k in sorted(moved))
+        new.warnings.append(say(
+            f"Seite(n) {pages} liegen nach der Aufbereitung anders als im Arbeitsstand: die"
+            " Kästen, Masken und Aufnahmen dort wurden nicht übernommen; bitte in der"
+            " Sichtprüfung neu setzen.",
+            f"Page(s) {pages} lie otherwise after the preparation than in the working state:"
+            " the boxes, masks and take-ups there were not taken over; please set them again"
+            " in the review."))
     return n

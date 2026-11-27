@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pymupdf
-from optdoc.pagetext import read_text_layer
+from ocrdoc.pagetext import read_text_layer
 
 from pseudonymed.core.model import Hit, Kind
 from pseudonymed.redaction.pdf import (

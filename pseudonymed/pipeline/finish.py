@@ -5,11 +5,11 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import Any
 
 import pymupdf
-from optdoc import cleanup as cleanup_module
-from optdoc.alignment import text_layer_from_correction
-from optdoc.pagetext import PageText
+from ocrdoc.alignment import text_layer_from_correction
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.checks.preview import write_preview
 from pseudonymed.checks.recheck import (
@@ -271,16 +271,17 @@ def prepare(
     patient: Patient,
     opt: PipelineOptions | None = None,
     store: PseudonymStore | None = None,
-    cleanup: dict[int, cleanup_module.CleanupPlan] | None = None,
+    chain: dict[str, Any] | None = None,
 ) -> Preparation | TextPreparation:
     """Phase one of :func:`pseudonymise`: read the file and find the hits.
 
     PDFs and images yield a :class:`Preparation` (reading and detection in one go,
     see :func:`read` and :func:`analyse` for the two halves), text files
     (``.txt``, ``.md``, ``.srt``, ``.vtt``, ``.json``, ``.eml``) a
-    :class:`TextPreparation`.  ``cleanup`` (per page, 0-based) replaces
-    image-only pages by their cleaned-up image before OCR; without it the suggestion
-    is applied when ``opt.clean_up`` is "auto".
+    :class:`TextPreparation`.  ``chain`` (docrepro's chain document, from a working
+    state or docrepro's own window) prepares and reads the pages as it says; without it
+    docrepro's steps start fresh, optdoc's suggestion applied when ``opt.clean_up`` is
+    "auto".
     """
     opt = opt or PipelineOptions()
     source = Path(path)
@@ -294,7 +295,7 @@ def prepare(
             if own_store:
                 store.close()
             raise
-    reading = read(source, opt, cleanup)
+    reading = read(source, opt, chain)
     try:
         return analyse(reading, patient, opt, store)
     except Exception:

@@ -4,7 +4,8 @@ Usage: uv run --group build python packaging/build.py [--ohne-test]
 
 Produces dist/PseudonyMed/ (all platforms) and dist/PseudonyMed.app (macOS).  The
 smoke test runs the packaged command line (konfig, vorlage, pseudonymisieren on a
-synthetic report) and starts the packaged interface with --selbsttest.
+synthetic report, on a photo of it through docrepro's chain with OCR, and on the working
+state it saved) and starts the packaged interface with --selbsttest.
 """
 
 from __future__ import annotations
@@ -97,6 +98,9 @@ def smoke_test() -> None:
         print(out.stdout)
         assert "PseudonyMed" in out.stdout and "OCR-Backends" in out.stdout
         assert "Fachbegriffe:" in out.stdout and "Medizin (Wikidata)" in out.stdout
+        # docrepro's steps, typdoc found through its entry point, and an OCR engine
+        assert "docrepro 0.11.0 (typdoc " in out.stdout and "optdoc " in out.stdout
+        assert "rapidocr" in out.stdout, "RapidOCR not shipped"
         import importlib.util
 
         if importlib.util.find_spec("de_core_news_md") is not None:
@@ -116,6 +120,7 @@ def smoke_test() -> None:
                   capture_output=True, env=environment)
         assert "Gegenprobe: bestanden" in out.stdout, out.stdout + out.stderr
         assert (data / "befund_pseudonym.pdf").exists()
+        photo_through_the_chain(data, environment)
         if importlib.util.find_spec("de_core_news_md") is not None:
             out = run([str(exe("pseudonymed")), "pseudonymisieren", str(report_pdf), "--patient",
                        str(data / "patient.json"), "--speicher", str(data / "s.sqlite"),
@@ -129,6 +134,31 @@ def smoke_test() -> None:
                   env=environment)
         assert "4 Documents" in out.stdout, out.stdout + out.stderr  # translation shipped
     print("Rauchtest bestanden.")
+
+
+def photo_through_the_chain(data: Path, environment: dict[str, str]) -> None:
+    """A photo of the synthetic report through the packaged pipeline: typdoc binds it,
+    optdoc prepares it, ocrdoc reads it by OCR; its working state (the original and
+    docrepro's chain document) is finished again without reading anything again."""
+    import pymupdf
+
+    with pymupdf.open(data / "befund.pdf") as doc:
+        doc[0].get_pixmap(dpi=150).save(data / "foto.png")
+    out = run([str(exe("pseudonymed")), "pseudonymisieren", str(data / "foto.png"), "--patient",
+               str(data / "patient.json"), "--speicher", str(data / "s.sqlite"),
+               "--arbeitsstand", "--ziel", str(data / "foto")],
+              capture_output=True, env=environment)
+    assert "Gegenprobe: bestanden" in out.stdout and "per OCR gelesen" in out.stdout, \
+        out.stdout + out.stderr
+    state = data / "foto" / "foto.arbeitsstand.json"
+    assert state.exists() and (data / "foto" / "foto.arbeitsstand.png").exists()
+    out = run([str(exe("pseudonymed")), "pseudonymisieren", str(state), "--speicher",
+               str(data / "s.sqlite"), "--ziel", str(data / "wieder")],
+              capture_output=True, env=environment)
+    assert "Gegenprobe: bestanden" in out.stdout, out.stdout + out.stderr
+    first = (data / "foto" / "foto_pseudonym.txt").read_text(encoding="utf-8")
+    again = (data / "wieder" / "foto_pseudonym.txt").read_text(encoding="utf-8")
+    assert first == again, "the working state gave another text"
 
 
 if __name__ == "__main__":

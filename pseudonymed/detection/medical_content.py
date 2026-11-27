@@ -35,7 +35,7 @@ from dataclasses import dataclass
 
 from lexcor import StoreError
 from lexident import Candidate, Recogniser
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind
 from pseudonymed.detection import lexicon

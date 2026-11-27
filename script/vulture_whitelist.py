@@ -69,7 +69,7 @@ small_lexicon
 without_variables
 appauthor
 
-# fields of optdoc's page text that PseudonyMed fills for a text file and optdoc reads
+# fields of ocrdoc's page text that PseudonyMed fills for a text file and ocrdoc reads
 _.sizes
 _.baselines
 

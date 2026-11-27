@@ -44,8 +44,7 @@ from pseudonymed.config import (
     load_settings,
 )
 from pseudonymed.core.model import Patient
-from pseudonymed.document import optdoc_adapter
-from pseudonymed.document.optdoc_adapter import OCRError
+from pseudonymed.document.docrepro_adapter import DocError
 from pseudonymed.document.text_file import is_text_file
 from pseudonymed.pipeline import (
     PipelineOptions,
@@ -98,16 +97,11 @@ def _load_recipient(recipient: str | None) -> Certificate | None:
     return certificate
 
 
-def _choices(paper: str, unreadable: str, date: str, preview: str, clean_up: str,
-             ocr: str) -> tuple[str, str, str, str, str, str]:
+def _choices(unreadable: str, date: str, preview: str, clean_up: str,
+             ocr: str) -> tuple[str, str, str, str, str]:
     """The options that take one of a few words, each as the core knows it (the German word,
     whether that or its English one was given); an unknown value ends the command."""
-    paper = german(paper, ("bild",))
-    try:
-        optdoc_adapter.paper_size(paper)
-    except ValueError as e:
-        abort(error_message(e), cause=e)
-    return (paper, choice("--unlesbar", unreadable, ("schwaerzen", "lassen")),
+    return (choice("--unlesbar", unreadable, ("schwaerzen", "lassen")),
             choice("--datum", date, ("jahr", "alter")),
             choice("--vorschau", preview, ("auto", "immer", "nie")),
             choice("--aufbereiten", clean_up, ("auto", "aus")),
@@ -219,7 +213,7 @@ def _process(file: Path, state: Path | None, run: _Run, sp: PseudonymStore) -> b
         assert person is not None
         report_uncertain(person, e)
         raise typer.Exit(code=4) from e
-    except (ValueError, NotImplementedError, OCRError, state_mod.WorkingStateError) as e:
+    except (ValueError, NotImplementedError, DocError, state_mod.WorkingStateError) as e:
         typer.echo(f"{file.name}: {error_message(e)}", err=True)
         return False
     assert person is not None
@@ -329,16 +323,10 @@ def pseudonymise(
                "Text files: fuzzy search for misspelt names (transcripts)."))] = True,
     clean_up: Annotated[str, typer.Option(
         *flags("--aufbereiten"),
-        help=w("Scans und Fotos vor der OCR aufbereiten (begradigen, Hintergrund,"
-               " Hochskalieren): auto oder aus.",
-               "Clean up scans and photos before the OCR (straighten, background, upscale):"
-               " auto or off."))] = "auto",
-    paper: Annotated[str, typer.Option(
-        *flags("--papier"),
-        help=w("Seitengröße für Fotos und Bilder: a4, a5, a3, letter, legal oder bild"
-               " (so groß wie das Bild).",
-               "Paper size for photos and images: a4, a5, a3, letter, legal or image"
-               " (as large as the image)."))] = "a4",
+        help=w("Scans und Fotos vor der OCR nach dem Vorschlag von optdoc aufbereiten"
+               " (aufrichten, entzerren, begradigen, Hintergrund): auto oder aus.",
+               "Prepare scans and photos before the OCR as optdoc suggests (upright, unwarp,"
+               " straighten, background): auto or off."))] = "auto",
     tables: Annotated[bool, typer.Option(
         *flags("--tabellen/--keine-tabellen"),
         help=w("Tesseract: Tabellengitter erkennen und die Zellen ohne Linien erneut lesen.",
@@ -352,11 +340,13 @@ def pseudonymise(
     working_state: Annotated[bool, typer.Option(
         *flags("--arbeitsstand"),
         help=w("Vor dem Abschluss den Arbeitsstand neben die Ausgabe schreiben"
-               " (<name>.arbeitsstand.pdf + .json, mit Klardaten): wieder aufnehmbar in der"
-               " Oberfläche oder als Eingabe dieses Befehls.",
+               " (<name>.arbeitsstand.json mit der Kette von docrepro und das Original"
+               " daneben, mit Klardaten): wieder aufnehmbar in der Oberfläche oder als"
+               " Eingabe dieses Befehls.",
                "Before finishing, write the working state next to the output"
-               " (<name>.arbeitsstand.pdf + .json, with clear data): it can be resumed in the"
-               " desktop app or as input to this command."))] = False,
+               " (<name>.arbeitsstand.json with docrepro's chain, and the original beside it,"
+               " with clear data): it can be resumed in the desktop app or as input to this"
+               " command."))] = False,
     reanalyse: Annotated[bool, typer.Option(
         *flags("--neu-analysieren"),
         help=w("Einen Arbeitsstand als Eingabe mit den jetzigen Erkennungsoptionen erneut"
@@ -398,8 +388,8 @@ def pseudonymise(
     """Pseudonymise every input (document, text or saved working state) for one patient
     and print its report; exit code 2 when an input was not released."""
     certificate = _load_recipient(recipient)
-    paper, unreadable, date, preview, clean_up, ocr = _choices(
-        paper, unreadable, date, preview, clean_up, ocr)
+    unreadable, date, preview, clean_up, ocr = _choices(
+        unreadable, date, preview, clean_up, ocr)
     schema = scheme(schema)
     states = {file: state_mod.is_working_state(file) for file in dateien}
     if certificate and any(states.values()):
@@ -420,7 +410,7 @@ def pseudonymise(
         redact_drugs=drugs, redact_doses=doses,
         redact_lab_tests=lab_tests, redact_measurements=measurements,
         fuzzy_text=fuzzy,
-        clean_up=clean_up, paper_size=paper, ocr_tables=tables,
+        clean_up=clean_up, ocr_tables=tables,
         vocabulary=vocabulary, structured=structured,
         reference_population=reference, own_places=places,
         recipient=recipient_armor, recipient_fingerprint=recipient_fingerprint,

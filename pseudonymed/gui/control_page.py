@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import as_text
 from pseudonymed.config import Settings, load_settings, save_settings
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.export_page import TRAFFIC_LIGHT_COLOURS
 from pseudonymed.gui.session import Document, Session
 from pseudonymed.gui.translation import interface_language, shown
@@ -225,7 +225,7 @@ class ControlPage(QWidget):
             try:
                 self.session.check(d)
             except Exception as e:  # noqa: BLE001
-                d.error = optdoc_adapter.message(e, interface_language())
+                d.error = docrepro_adapter.message(e, interface_language())
             self._run_next()
             return
         self._worker = Worker(partial(self.session.check, d), self)
@@ -235,8 +235,8 @@ class ControlPage(QWidget):
 
     def _check_failed(self, d: Document, e: object) -> None:
         """Record the worker's exception on the document and carry on with the queue."""
-        d.error = optdoc_adapter.message(e, interface_language()) if isinstance(e, BaseException) \
-            else str(e)
+        d.error = (docrepro_adapter.message(e, interface_language())
+                   if isinstance(e, BaseException) else str(e))
         self._run_next()
 
     # -- display -----------------------------------------------------------------------------------

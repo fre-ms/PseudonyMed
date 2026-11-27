@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-from optdoc.pagetext import read_text_layer
+from ocrdoc.pagetext import read_text_layer
 
 from pseudonymed.checks.report import as_text
 from pseudonymed.core.model import Hit, Kind, Patient

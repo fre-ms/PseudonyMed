@@ -10,7 +10,7 @@ CODE_DPI = 200
 
 
 def available() -> bool:
-    """True when zxing-cpp (extra "codes") can be imported."""
+    """True when zxing-cpp (it comes with ocrdoc's barcodes) can be imported."""
     try:
         import zxingcpp  # noqa: F401
     except ImportError:

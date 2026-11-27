@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import ClassVar, NamedTuple
 
 import pymupdf
-from optdoc.pagetext import Box, PageText, read_text_layer
+from ocrdoc.pagetext import Box, PageText, read_text_layer
 
 from pseudonymed import TOOL
 from pseudonymed.core.model import Hit

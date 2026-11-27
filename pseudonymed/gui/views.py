@@ -1,13 +1,13 @@
 """The two views of the review step: the page with its boxes and marks, and the text
-of a text file with its highlighted spans.  Both are reused by the clean-up and the
-text-recognition steps."""
+of a text file with its highlighted spans.  (The steps of preparation and recognition show
+the pages in docrepro's own views, :mod:`doccor.gui.view`.)"""
 
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
-from optdoc.pagetext import Box
+from ocrdoc.pagetext import Box
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
@@ -72,11 +72,9 @@ class PageView(QGraphicsView):
     match_selected = Signal(object)
     box_drawn = Signal(object)  # (x0, y0, x1, y1) in page points
     point_selected = Signal(float, float, bool)  # a click on text: x, y in points, extend?
-    scrolled = Signal(float, float)  # relative scroll position (0..1, 0..1)
-    zoomed = Signal(float)  # absolute scale factor
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """An empty scene at preview scale; the scroll bars report their position."""
+        """An empty scene at preview scale."""
         super().__init__(parent)
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
@@ -87,65 +85,6 @@ class PageView(QGraphicsView):
         self._rubber_band: QGraphicsRectItem | None = None
         self._extend = False  # Ctrl/Cmd was held when the drag (or click) began
         self.mask_mode = False  # drag draws a mask instead of a labelled box
-        self.erase_mode = False  # the mask erases (white) rather than redacts (black)
-        self._follows = False  # while following another view
-        self.base_scale = 1.0  # extra scale so that a larger image shows at the same size
-        self.horizontalScrollBar().valueChanged.connect(self._emit_scroll)
-        self.verticalScrollBar().valueChanged.connect(self._emit_scroll)
-
-    # -- linking two views -------------------------------------------------------------------------
-    def _relative_position(self, bar) -> float:
-        """A scroll bar's position as a fraction of its range (0 when it cannot scroll)."""
-        return bar.value() / bar.maximum() if bar.maximum() > 0 else 0.0
-
-    def _emit_scroll(self, _value: int) -> None:
-        """Tell a linked view where we are, unless we are following it right now."""
-        if not self._follows:
-            self.scrolled.emit(self._relative_position(self.horizontalScrollBar()),
-                               self._relative_position(self.verticalScrollBar()))
-
-    def follow_scroll(self, x: float, y: float) -> None:
-        """Move to the same relative position as another view."""
-        self._follows = True
-        try:
-            h, v = self.horizontalScrollBar(), self.verticalScrollBar()
-            h.setValue(round(x * h.maximum()))
-            v.setValue(round(y * v.maximum()))
-        finally:
-            self._follows = False
-
-    def follow_zoom(self, factor: float) -> None:
-        """Apply a zoom factor relative to this view's base scale."""
-        self._follows = True
-        try:
-            self.resetTransform()
-            self.scale(factor * self.base_scale, factor * self.base_scale)
-        finally:
-            self._follows = False
-
-    @property
-    def zoom_factor(self) -> float:
-        """The zoom the user chose, relative to the base scale."""
-        return self.transform().m11() / self.base_scale
-
-    def set_base(self, base: float) -> None:
-        """Change the base scale, keeping the zoom factor the user chose."""
-        factor = self.zoom_factor
-        self.base_scale = base
-        self.follow_zoom(factor)
-
-    def _emit_zoom(self) -> None:
-        """Tell a linked view the new zoom factor, unless we are following it right now."""
-        if not self._follows:
-            self.zoomed.emit(self.zoom_factor)
-
-    @staticmethod
-    def link(a: PageView, b: PageView) -> None:
-        """Keep two views congruent: pan one, the other follows; zoom too."""
-        a.scrolled.connect(b.follow_scroll)
-        b.scrolled.connect(a.follow_scroll)
-        a.zoomed.connect(b.follow_zoom)
-        b.zoomed.connect(a.follow_zoom)
 
     # -- painting ----------------------------------------------------------------------------------
     def _box(self, rect: Box, colour_: QColor, width: float,
@@ -232,20 +171,16 @@ class PageView(QGraphicsView):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
-            self._emit_zoom()
             return
         super().wheelEvent(event)
 
     def zoom(self, factor: float) -> None:
-        """Zoom by the factor (the zoom buttons) and tell a linked view."""
+        """Zoom by the factor (the zoom buttons)."""
         self.scale(factor, factor)
-        self._emit_zoom()
 
     def reset_zoom(self) -> None:
-        """Back to the base scale and tell a linked view."""
+        """Back to the scale the page was shown at."""
         self.resetTransform()
-        self.scale(self.base_scale, self.base_scale)
-        self._emit_zoom()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.modifiers() & (Qt.KeyboardModifier.ShiftModifier
@@ -266,8 +201,7 @@ class PageView(QGraphicsView):
         self._extend = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
         self._start = pos
         self._rubber_band = QGraphicsRectItem(QRectF(pos, pos))
-        colour_ = QColor(120, 120, 120) if self.erase_mode else (
-            BLACK if self.mask_mode else RED)
+        colour_ = BLACK if self.mask_mode else RED
         self._rubber_band.setPen(QPen(colour_, 1.5, Qt.PenStyle.SolidLine if self.mask_mode
                                       else Qt.PenStyle.DashLine))
         self._scene.addItem(self._rubber_band)

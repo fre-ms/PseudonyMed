@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from optdoc import ocr as ocr_module
-from optdoc import structure as structure_module
-from optdoc.pagetext import Box, PageText
+from ocrdoc import filters as filters_module
+from ocrdoc import ocr as ocr_module
+from ocrdoc import structure as structure_module
+from ocrdoc.filters import Filters
+from ocrdoc.pagetext import Box, PageText
+from ocrdoc.reading import MAX_PIXELS_UPSCALED
 
 from pseudonymed.core.model import Hit
 from pseudonymed.core.text import say
@@ -19,7 +22,10 @@ _LEADING_BRACKETS = "([{„\"'"
 
 @dataclass
 class PageEntry:
-    """A page of the document: its text layer, its OCR reading and what was found."""
+    """A page of the document: its text layer, its OCR reading and what was found.  The
+    reading is ocrdoc's: every word OCR read on the page (whatever area it lies in, since
+    whatever is printed there is to be searched), the filters ocrdoc read it through and
+    the person's correction of its text."""
 
     number: int
     text: PageText
@@ -31,8 +37,7 @@ class PageEntry:
     correction: str | None = None  # the OCR text as the user corrected it
     correction_matches: list[Hit] = field(default_factory=list)
     ocr_dpi: int = ocr_module.OCR_DPI  # resolution the page was (and is re-)read at
-    ocr_max_pixels: int = ocr_module.MAX_PIXELS
-    ocr_filter: object = None  # letter-aware finish applied before the engine
+    filters: Filters | None = None  # what ocrdoc's rendering of the page went through
     structure: structure_module.Structure | None = None  # layout roles of the OCR lines
 
     @property
@@ -47,9 +52,16 @@ class PageEntry:
         return self.ocr if self.ocr is not None and self.is_image_page else self.text
 
     def read_ocr(self, page: object, backend: ocr_module.OCRBackend) -> PageText:
-        """Read the page with the engine at this page's resolution and finish."""
-        return ocr_module.recognise_page(page, backend, self.number, self.ocr_dpi,
-                                      max_pixel=self.ocr_max_pixels, filter_=self.ocr_filter)
+        """Read the redacted page again for the re-check, as ocrdoc read it: at this page's
+        resolution times its upscaling, through its filters, but for one: coloured ink is
+        not taken away, since it stays on the page (optdoc keeps a page's colours), and
+        whatever is still legible in it must be found."""
+        chosen = replace(self.filters or Filters(), remove_colour=False)
+        factor = max(1, chosen.upscale)
+        run = filters_module.pipeline(chosen) if filters_module.available() else None
+        return ocr_module.recognise_page(
+            page, backend, self.number, self.ocr_dpi * factor,
+            max_pixel=min(ocr_module.MAX_PIXELS * factor, MAX_PIXELS_UPSCALED), filter_=run)
 
     def matches_on(self, base: str) -> list[Hit]:
         """The hits that belong to ``base`` ("text" or "ocr"), manual boxes included

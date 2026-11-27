@@ -23,7 +23,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit
 from pseudonymed.core.text import say

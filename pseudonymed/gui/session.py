@@ -8,26 +8,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from optdoc import cleanup as cleanup_module
+from doccor.pictures import SUFFIXES as PICTURE_SUFFIXES
 
 from pseudonymed import working_state as state_mod
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Patient
 from pseudonymed.core.stored import field_values
 from pseudonymed.core.text import Text, say
+from pseudonymed.document.chain import DocumentChain
 from pseudonymed.document.text_file import TEXT_EXTENSIONS, is_text_file
 from pseudonymed.pipeline import (
-    OpenedDocument,
     PipelineOptions,
     Preparation,
-    Reading,
     Result,
     TextPreparation,
     analyse,
+    chain_settings,
     finalise,
-    load,
     prepare,
-    read,
+    read_chain,
     remember_decisions,
 )
 from pseudonymed.pseudonyms.pgp import Certificate
@@ -52,31 +51,31 @@ def _state_analysed(v: Preparation | TextPreparation) -> str:
                f"{len(v.pages)} page(s), {len(v.hits)} hit(s){ocr.en}")
 
 
-def _state_loaded(opened: OpenedDocument) -> str:
+def _state_loaded(pages: int, images: int) -> str:
     """State line of an opened document: its pages and how many lack a text layer."""
-    n = len(opened.candidates)
-    if n:
-        return say(f"{opened.page_count} Seite(n), {n} ohne Textebene (aufbereiten)",
-                   f"{opened.page_count} page(s), {n} without text layer (clean up)")
-    return say(f"{opened.page_count} Seite(n), geladen", f"{opened.page_count} page(s), loaded")
+    if images:
+        return say(f"{pages} Seite(n), {images} ohne Textebene (aufbereiten)",
+                   f"{pages} page(s), {images} without text layer (clean up)")
+    return say(f"{pages} Seite(n), geladen", f"{pages} page(s), loaded")
 
 
 @dataclass
 class Document:
-    """One document of the session with everything it has reached so far: the opened
-    template and its clean-up plan, the reading, the preparation, the pre-check, the
-    result; ``error`` holds the message of the step that failed."""
+    """One document of the session with everything it has reached so far: docrepro's chain
+    on it (bound, prepared, read: its steps are the desktop's steps of preparation and
+    recognition), the preparation, the pre-check, the result; ``error`` holds the message
+    of the step that failed, ``changed`` says that a person changed the chain since the
+    analysis."""
 
     path: Path
-    opened: OpenedDocument | None = None  # phase zero: open, pages known, clean-up suggested
-    cleanup: dict[int, cleanup_module.CleanupPlan] = field(default_factory=dict)
-    reading: Reading | None = None  # reading phase: text layer and OCR, correctable
+    chain: DocumentChain | None = None  # docrepro's steps on the original
     preparation: Preparation | TextPreparation | None = None
     precheck: Result | None = None  # the re-check run into a scratch folder
     precheck_version: int = -1  # review state the pre-check belongs to
     result: Result | None = None
     error: str = ""
     working_state: Path | None = None  # the JSON file the document was restored from
+    changed: bool = False  # the chain was changed by a person since the analysis
 
     @property
     def text_source(self) -> Path:
@@ -87,9 +86,30 @@ class Document:
         return self.path
 
     @property
+    def page_count(self) -> int:
+        """Number of pages as docrepro's first step in use sees them (0 before loading)."""
+        project = self._first_project()
+        return 0 if project is None else len(project.pages)
+
+    @property
+    def image_pages(self) -> list[int]:
+        """The pages (from 0) without a text layer of their own: scans and photos, the
+        pages to prepare and to read by OCR."""
+        project = self._first_project()
+        if project is None:
+            return []
+        return [n for n in range(len(project.pages)) if not project.has_text_layer(n)]
+
+    def _first_project(self) -> Any:
+        """The project of optdoc, else ocrdoc, where the chain has opened it."""
+        if self.chain is None:
+            return None
+        return self.chain.project("optdoc") or self.chain.project("ocrdoc")
+
+    @property
     def needs_cleanup(self) -> bool:
         """True when the opened document has pages without a text layer to clean up."""
-        return self.opened is not None and bool(self.opened.candidates)
+        return bool(self.image_pages)
 
     @property
     def readable(self) -> bool:
@@ -119,13 +139,17 @@ class Document:
                     else say("nicht freigegeben", "not released"))
         if self.preparation is not None:
             return _state_analysed(self.preparation)
-        if self.reading is not None:
-            ocr = _ocr_notice(self.reading.ocr_pages)
-            return say(f"{self.reading.page_count} Seite(n) gelesen{ocr}",
-                       f"{self.reading.page_count} page(s) read{ocr.en}")
-        if self.opened is not None:
-            return _state_loaded(self.opened)
+        if self.page_count:
+            return _state_loaded(self.page_count, len(self.image_pages))
         return say("noch nicht analysiert", "not analysed yet")
+
+    def close(self) -> None:
+        """Release what the document holds open: its preparation and its chain."""
+        if self.preparation is not None and not self.preparation.finalised:
+            self.preparation.close()
+        if self.chain is not None:
+            self.chain.close()
+            self.chain = None
 
 
 def _pending_preparation(d: Document) -> Preparation | TextPreparation:
@@ -151,23 +175,37 @@ def _capture_state(d: Document) -> state_mod.WorkingState | None:
     return old
 
 
+def _analysis_of_chain(chain: DocumentChain, source: Path, patient: Patient,
+                       opt: PipelineOptions, store: PseudonymStore) -> Preparation:
+    """Phase one over the reading of a document's chain as it stands now: what a person
+    prepared, the filters, areas and corrections in docrepro's steps all count."""
+    reading = read_chain(chain, opt, source)
+    try:
+        return analyse(reading, patient, opt, store=store)
+    except Exception:
+        reading.close()
+        raise
+
+
 def _fresh_analysis(d: Document, patient: Patient, opt: PipelineOptions,
                     store: PseudonymStore) -> Preparation | TextPreparation:
-    """Phase one of a document not analysed before: over its reading when the user went
-    through the text-recognition step, else from the file with the clean-up plan."""
-    if d.reading is not None and not d.reading.used_up:
-        return analyse(d.reading, patient, opt, store=store)
-    cleanup = dict(d.cleanup) if d.opened is not None else None
-    return prepare(d.path, patient, opt, store=store, cleanup=cleanup)
+    """Phase one of a document not analysed before: over the reading of its chain, a
+    text file from the file."""
+    if d.chain is not None:
+        return _analysis_of_chain(d.chain, d.path, patient, opt, store)
+    return prepare(d.path, patient, opt, store=store)
 
 
 def _analysis_from_state(d: Document, old: state_mod.WorkingState, patient: Patient,
                          opt: PipelineOptions, store: PseudonymStore,
                          ) -> Preparation | TextPreparation:
-    """Phase one over a saved working state: a text file is read again from its saved
-    text, a PDF or image from the saved reading, so clean-up, OCR and corrections stay."""
+    """Phase one of a document analysed before: a text file is read again from its saved
+    text, a PDF or image from its chain (as a person left it in docrepro's steps), else
+    from the saved state's, so preparation, OCR and corrections stay."""
     if old.is_text:
         return prepare(d.text_source, patient, opt, store=store)
+    if d.chain is not None:
+        return _analysis_of_chain(d.chain, old.source, patient, opt, store)
     reading = state_mod.reading_from(old, opt)
     try:
         return analyse(reading, patient, opt, store=store)
@@ -283,8 +321,7 @@ class Session:
             d = Document(state, working_state=state)
             self.documents.append(d)
             return d
-        if path.suffix.lower() not in {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
-                                       ".heic", ".heif", ".webp", *TEXT_EXTENSIONS}:
+        if path.suffix.lower() not in {".pdf", *PICTURE_SUFFIXES, *TEXT_EXTENSIONS}:
             return None
         if any(d.path == path for d in self.documents):
             return None
@@ -294,47 +331,57 @@ class Session:
 
     def remove(self, d: Document) -> None:
         """Drop a document from the session and release what it holds open."""
-        if d.preparation is not None and not d.preparation.finalised:
-            d.preparation.close()
-        if d.opened is not None:
-            d.opened.close()
-        if d.reading is not None:
-            d.reading.close()
+        d.close()
         self.documents.remove(d)
 
-    def read(self, d: Document) -> None:
-        """Reading phase for one document with the clean-up the user chose; text files
-        have nothing to read."""
-        if d.reading is not None:
-            d.reading.close()
-        d.reading, d.preparation, d.result, d.error = None, None, None, ""
-        if not d.readable:
+    def apply_reading_settings(self) -> None:
+        """Hand the OCR settings of the options (engine, language packs, table pass) to
+        every document's ocrdoc step that reads with other ones: it starts afresh with them
+        (the pages are read again; what was decided in it goes, as when another engine
+        reads)."""
+        settings = chain_settings(self.options)
+        wanted = {k: settings[k] for k in ("reader", "languages", "tables")}
+        for d in self.documents:
+            project = d.chain.project("ocrdoc") if d.chain is not None else None
+            if d.chain is not None and project is not None and any(
+                    getattr(project.options, k) != v for k, v in wanted.items()):
+                d.chain.reset("ocrdoc", wanted)
+
+    def read(self, d: Document, progress: Any = None) -> None:
+        """Reading phase for one document: docrepro's chain brought up to ocrdoc, which
+        reads every page it has not read yet (``progress`` hears page and pages); text
+        files have nothing to read."""
+        if d.chain is None:
             return
         try:
-            d.reading = read(d.path, self.options, dict(d.cleanup) if d.opened else None)
+            d.chain.ensure("ocrdoc").read_all(progress)
         except Exception as e:
             d.error = str(e)
             raise
 
     def load(self, d: Document) -> None:
-        """Phase zero for one document: open it and suggest the clean-up of its
-        image-only pages.  Text files have nothing to clean up."""
-        if d.opened is not None:
-            d.opened.close()
-        d.opened, d.cleanup, d.preparation, d.result, d.error = None, {}, None, None, ""
-        d.reading, d.precheck = None, None
+        """Phase zero for one document: docrepro's chain opened on it, up to its step of
+        preparation (which suggests how to prepare the pages without a text layer).  Text
+        files have nothing to prepare."""
+        d.close()
+        d.preparation, d.result, d.error, d.precheck, d.changed = None, None, "", None, False
         if d.working_state is not None:
             self._load_working_state(d)
             return
         if is_text_file(d.path):
             return
         try:
-            d.opened = load(d.path, self.options)
+            chain = DocumentChain.open(d.path, chain_settings(self.options),
+                                       parent=self.scratch())
+            try:
+                chain.ensure("optdoc" if chain.uses("optdoc") else "ocrdoc")
+            except Exception:
+                chain.close()
+                raise
         except Exception as e:
             d.error = str(e)
             raise
-        d.cleanup = {n: cleanup_module.CleanupPlan(**{**a.__dict__, "masks": list(a.masks)})
-                     for n, a in d.opened.suggestions.items()}
+        d.chain = chain
 
     def _load_working_state(self, d: Document) -> None:
         """Restore a saved working state: the review is filled in, the patient taken over."""
@@ -348,9 +395,12 @@ class Session:
             opt = a.options
             opt.matching = self.matching
             opt.remember_discarded = self.options.remember_discarded
+            if not a.is_text:
+                d.chain = state_mod.open_chain(a, parent=self.scratch())
             store = self.store()
             try:
-                d.preparation = state_mod.preparation_from(a, store=store, opt=opt)
+                d.preparation = state_mod.preparation_from(a, store=store, opt=opt,
+                                                           chain=d.chain)
             except Exception:
                 store.close()
                 raise
@@ -389,10 +439,7 @@ class Session:
             d.error = str(e)
             raise
         new.own_store = True  # the preparation owns and closes it
-        d.reading = None  # its documents now belong to the preparation
-        if d.opened is not None:
-            d.opened.close()
-            d.opened = None
+        d.changed = False
 
     def _options_for(self, v: Preparation | TextPreparation,
                      target_folder: Path | None) -> PipelineOptions:
@@ -507,12 +554,7 @@ class Session:
     def close(self) -> None:
         """Release every document and remove the pre-check folder."""
         for d in self.documents:
-            if d.preparation is not None and not d.preparation.finalised:
-                d.preparation.close()
-            if d.opened is not None:
-                d.opened.close()
-            if d.reading is not None:
-                d.reading.close()
+            d.close()
         if self._scratch is not None and self._scratch.exists():
             shutil.rmtree(self._scratch, ignore_errors=True)
             self._scratch = None

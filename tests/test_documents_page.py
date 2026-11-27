@@ -1,6 +1,6 @@
 """The documents step on its own: files dropped on the list, the working states of the
-entries, removal, loading in the background and the paper format for images.  Qt runs
-offscreen; every file is synthetic (Faker de_DE)."""
+entries, removal, loading in the background (docrepro's chain opened on every PDF and
+image).  Qt runs offscreen; every file is synthetic (Faker de_DE)."""
 
 from __future__ import annotations
 
@@ -156,10 +156,9 @@ def test_list_shows_the_work_states(qapp: QApplication, tmp_path: Path, report_p
     texts = [page.listing.item(i).text() for i in range(3)]
     assert texts[0].startswith("befund.pdf  –  ") and "Seite(n) mit Textebene" in texts[0]
     assert texts[1] == "gespraech.txt  –  Textdatei"
-    assert "ohne Textebene: unten aufbereiten" in texts[2]
+    assert "ohne Textebene: aufbereiten" in texts[2]
     assert reported and not page.is_loading
     assert page.status.text() == "3 Dokument(e), 1 mit Seiten zum Aufbereiten"
-    assert page.clean_up.tree.topLevelItemCount() == 1
 
     pdf, text, _ = page.session.documents
     page.session.analyse(pdf)
@@ -168,6 +167,10 @@ def test_list_shows_the_work_states(qapp: QApplication, tmp_path: Path, report_p
     assert "  –  analysiert, " in page.listing.item(0).text()
     assert "  –  Text, " in page.listing.item(1).text()
     assert page.listing.item(0).text().endswith(" Treffer")
+    pdf.changed = True  # a person changed the chain since: the analysis is to be made anew
+    page.refresh()
+    assert page.listing.item(0).text().endswith("  –  geändert: bitte erneut analysieren")
+    pdf.changed = False
     pdf.working_state = tmp_path / "befund.arbeitsstand.json"  # restored from a saved state
     page.refresh()
     assert "  –  Arbeitsstand, " in page.listing.item(0).text()
@@ -184,22 +187,23 @@ def test_list_shows_the_work_states(qapp: QApplication, tmp_path: Path, report_p
     page.session.close()
 
 
-def test_remove_clears_session_and_cleanup(qapp: QApplication, tmp_path: Path,
-                                           report_pdf: Path) -> None:
-    """Removing needs a selection; the removed document leaves the session, and the
-    clean-up panel below forgets its pages."""
+def test_remove_clears_session_and_chain(qapp: QApplication, tmp_path: Path,
+                                         report_pdf: Path) -> None:
+    """Removing needs a selection; the removed document leaves the session, and its chain
+    of docrepro is closed (its private folder removed)."""
     page = _page(tmp_path)
     scan = _scan(report_pdf, tmp_path / "scan.pdf")
     page.add([report_pdf, scan])
-    assert page.clean_up.tree.topLevelItemCount() == 1
+    removed = page.session.documents[1]
+    assert removed.chain is not None and removed.image_pages == [0, 1]
+    work = removed.chain.work
     page.remove()  # nothing selected: nothing happens
     assert page.listing.count() == 2
     page.listing.item(1).setSelected(True)
     page.remove()
     assert page.listing.count() == 1
     assert [d.path for d in page.session.documents] == [report_pdf]
-    assert page.clean_up.tree.topLevelItemCount() == 0
-    assert "nichts aufzubereiten" in page.clean_up.note.text()
+    assert removed.chain is None and not work.exists()
     assert page.status.text() == "1 Dokument(e)"
     page.session.close()
 
@@ -232,7 +236,7 @@ def test_error_on_open_inline(qapp: QApplication, tmp_path: Path) -> None:
     with pytest.raises(Exception, match="(?i)kaputt|document|pdf|file"):
         page.add([broken])
     d = page.session.documents[0]
-    assert d.error and d.opened is None and not page.is_loading
+    assert d.error and d.chain is None and not page.is_loading
     page.refresh()
     assert page.listing.item(0).text().startswith("kaputt.pdf  –  Fehler: ")
 
@@ -257,58 +261,33 @@ def test_loading_in_the_background(qapp: QApplication, tmp_path: Path, report_pd
     assert not page.is_loading
     assert len(dialogs.shown) == 1 and dialogs.shown[0][1] == "kaputt.pdf"
     first, second = session.documents
-    assert first.error and first.opened is None
-    assert second.opened is not None and second.opened.page_count == 2
+    assert first.error and first.chain is None
+    assert second.chain is not None and second.page_count == 2
     assert page.listing.item(0).text().startswith("kaputt.pdf  –  Fehler: ")
     assert "Seite(n) mit Textebene" in page.listing.item(1).text()
     session.close()
 
 
-def test_paper_format_reloads_images(qapp: QApplication, tmp_path: Path,
-                                     report_pdf: Path) -> None:
-    """Changing the paper size re-opens the images that are already in (PDFs are left
-    alone) and keeps the choice in the session options."""
-    page = _page(tmp_path)
-    photo = tmp_path / "foto.png"
-    with pymupdf.open(report_pdf) as doc:
-        doc[0].get_pixmap(dpi=60).save(photo)
-    page.add([photo, report_pdf])
-    image, pdf = page.session.documents
-    assert image.opened is not None and pdf.opened is not None
-    old_image, old_pdf = image.opened, pdf.opened
-    a4_height = old_image.doc[0].rect.height
-    page.paper.setCurrentIndex(page.paper.findData("a5"))
-    assert page.session.options.paper_size == "a5"
-    assert image.opened is not None and image.opened is not old_image
-    assert pdf.opened is old_pdf
-    assert image.opened.doc[0].rect.height < a4_height
-    assert "1 Seite(n)" in page.listing.item(0).text()
-    page.session.close()
-
-
-def test_optdoc_messages_in_the_interface_language(
-        qapp: QApplication, tmp_path: Path, report_pdf: Path,
-        monkeypatch: pytest.MonkeyPatch) -> None:
-    """An error optdoc raises while a file is opened is kept and shown in the language of
+def test_docrepro_messages_in_the_interface_language(
+        qapp: QApplication, tmp_path: Path) -> None:
+    """An error docrepro raises while a file is opened is kept and shown in the language of
     the interface: German, or English while the English translation is installed."""
     from pseudonymed.gui import translation
-    from pseudonymed.pipeline import reading
 
-    def broken(*_a: object, **_k: object) -> None:
-        raise ValueError("Unsupported file type: .pdf")
-
-    monkeypatch.setattr(reading, "open_file", broken)
+    broken = tmp_path / "kaputt.pdf"
+    broken.write_bytes(b"kein PDF")
     page = _page(tmp_path)
-    with pytest.raises(ValueError):
-        page.add([report_pdf])
-    assert page.session.documents[0].error == "Dateityp nicht unterstützt: .pdf"
+    with pytest.raises(Exception):  # noqa: B017  # docrepro's own kind of error
+        page.add([broken])
+    german = page.session.documents[0].error
+    assert "kaputt" not in german and "nicht" in german  # no path, the German wording
     translator = translation.install(qapp, "en_gb")
     assert translator is not None
     try:
         (tmp_path / "en").mkdir()
         english = _page(tmp_path / "en")
-        with pytest.raises(ValueError):
-            english.add([report_pdf])
-        assert english.session.documents[0].error == "Unsupported file type: .pdf"
+        with pytest.raises(Exception):  # noqa: B017
+            english.add([broken])
+        assert english.session.documents[0].error not in ("", german)
     finally:
         qapp.removeTranslator(translator)

@@ -6,7 +6,7 @@ import datetime as dt
 import re
 
 import pymupdf
-from optdoc.pagetext import PageText, read_text_layer
+from ocrdoc.pagetext import PageText, read_text_layer
 
 from pseudonymed.core.model import Kind, Patient
 from pseudonymed.detection.rules import (

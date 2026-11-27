@@ -29,7 +29,8 @@ def test_steps_are_refreshed_on_entering(qapp: QApplication, tmp_path: Path,
     entered: list[str] = []
     pages = {"patient": window.patient, "identifikatoren": window.identifiers,
              "vokabular": window.vocabulary, "dokumente": window.documents,
-             "texterkennung": window.ocr, "analysieren": window.analyse,
+             "aufbereiten": window.prepare, "filter": window.filters,
+             "bereiche": window.regions, "text": window.text, "analysieren": window.analyse,
              "pruefen": window.check, "kontrolle": window.control,
              "export": window.export, "rueckersetzen": window.reidentify,
              "datenbank": window.database}
@@ -40,9 +41,10 @@ def test_steps_are_refreshed_on_entering(qapp: QApplication, tmp_path: Path,
     for i in range(1, window.tabs.count()):
         window.tabs.setCurrentIndex(i)
     window.show_page(window.patient)
-    assert entered == ["identifikatoren", "vokabular", "texterkennung", "analysieren",
-                       "kontrolle", "export", "rueckersetzen", "datenbank"]
+    assert entered == ["identifikatoren", "vokabular", "aufbereiten", "filter", "bereiche",
+                       "text", "analysieren", "kontrolle", "export", "rueckersetzen",
+                       "datenbank"]
     assert window.page(-1) is None and window.page(window.tabs.count()) is None
     window._tab_changed(window.tabs.count())  # out of range: nothing happens
-    assert len(entered) == 8
+    assert len(entered) == 11
     window.close()

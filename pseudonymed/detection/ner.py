@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind
 from pseudonymed.core.text import say

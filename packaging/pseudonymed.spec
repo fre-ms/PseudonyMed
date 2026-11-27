@@ -2,21 +2,34 @@
 """PyInstaller specification: one folder with the desktop app and the command line.
 
 Build with ``uv run --group build pyinstaller packaging/pseudonymed.spec`` or via
-``packaging/build.py``, which also runs the smoke tests.  The OCR models are
-part of the rapidocr wheel and travel as data; nothing is downloaded at run time.
+``packaging/build.py``, which also runs the smoke tests.  The document layer is docrepro's
+(typdoc, optdoc, ocrdoc with doccor, joined by docrepro's chain): every package of it
+travels with what it needs, the OCR models of the rapidocr wheel, Camelot for ocrdoc's
+tables, zxing-cpp for the barcodes; nothing is downloaded at run time.
 """
 
 import importlib.util
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+    copy_metadata,
+)
 
 block_cipher = None
 wurzel = Path(SPECPATH).parent
+# docrepro and the packages of its steps PseudonyMed works with (tagdoc, the description,
+# stays out: PseudonyMed does not use it)
+DOCREPRO = ("docrepro", "doccor", "typdoc", "optdoc", "ocrdoc")
 
 datas, binaries, hiddenimports = [], [], []
-for paket in ("rapidocr", "onnxruntime", "pymupdf"):
+# rapidocr: its models and settings; camelot and playa: their parsers; pypdfium2: pdfium
+for paket in ("rapidocr", "onnxruntime", "pymupdf", "camelot", "playa", "pypdfium2",
+              "pypdfium2_raw"):
     d, b, h = collect_all(paket)
     datas += d
     binaries += b
@@ -38,12 +51,27 @@ for paket in ("spacy", "thinc", "de_core_news_lg", "de_core_news_md", "de_core_n
 binaries += collect_dynamic_libs("pillow_heif")
 binaries += collect_dynamic_libs("zxingcpp")
 hiddenimports += collect_submodules("pseudonymed")
-hiddenimports += collect_submodules("optdoc")  # loading, clean-up, OCR: the document layer
+for paket in DOCREPRO:  # the document layer: binding, preparing, reading, their panels
+    hiddenimports += collect_submodules(paket)
+    datas += collect_data_files(paket)
+# typdoc joins docrepro's chain through its entry point (docrepro.steps), read from the
+# metadata of its distribution
+datas += copy_metadata("typdoc")
+# packages compiled with mypyc (playa, Camelot's parser) import a helper module with a
+# hashed name that PyInstaller does not see: the one each of them names, and no other
+helpers = {f.name.split(".")[0]: f for path in sys.path if Path(path).is_dir()
+           for f in Path(path).glob("*__mypyc*")}
+found = importlib.util.find_spec("playa")
+if found is not None and found.origin is not None:
+    compiled = [so.read_bytes() for so in Path(found.origin).parent.rglob("*.so")]
+    hiddenimports += sorted(name for name in helpers
+                            if any(name.encode() in data for data in compiled))
 hiddenimports += collect_submodules("lexcor")  # packages of terms, their store, the matcher
 hiddenimports += collect_submodules("lexterm")  # the store of the vocabulary, the eponym heads
 hiddenimports += collect_submodules("lexident")  # the store of the identifiers, their recogniser
 hiddenimports += ["pillow_heif", "zxingcpp", "PIL.Image", "PIL.ImageFilter", "PIL.ImageOps",
-                  "shapely", "cv2", "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]
+                  "shapely", "cv2", "pyclipper", "omegaconf", "colorlog", "yaml",
+                  "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]
 
 # Qt modules the application does not use; leaving them out saves hundreds of megabytes.
 excludes = [
@@ -58,8 +86,10 @@ excludes = [
     "PySide6.QtOpenGL", "PySide6.QtOpenGLWidgets", "PySide6.QtNetworkAuth", "PySide6.QtTextToSpeech",
     "PySide6.QtHttpServer", "PySide6.QtSpatialAudio", "PySide6.QtGraphs", "PySide6.QtStateMachine",
     "tkinter", "matplotlib", "IPython", "jupyter", "notebook", "pytest", "torch", "paddle",
-    "openvino",
+    "openvino", "tensorrt", "MNN", "tagdoc",
 ]
+# ONNX Runtime switches its telemetry off only when the switch is set before it is loaded
+RUNTIME_HOOKS = [str(wurzel / "packaging" / "rth_offline.py")]
 
 gui_a = Analysis(
     [str(wurzel / "packaging" / "start_gui.py")],
@@ -68,7 +98,7 @@ gui_a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    runtime_hooks=[],
+    runtime_hooks=RUNTIME_HOOKS,
     excludes=excludes,
     cipher=block_cipher,
     noarchive=False,
@@ -80,11 +110,18 @@ cli_a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    runtime_hooks=[],
+    runtime_hooks=RUNTIME_HOOKS,
     excludes=excludes,
     cipher=block_cipher,
     noarchive=False,
 )
+# ONNX Runtime's C library is for other languages; the Python module carries its own copy,
+# and collect_all and the library's hook both bring it, as binary and as data (35 MB)
+for analysis in (gui_a, cli_a):
+    analysis.binaries = [e for e in analysis.binaries
+                         if not Path(e[0]).name.startswith("libonnxruntime")]
+    analysis.datas = [e for e in analysis.datas
+                      if not Path(e[0]).name.startswith("libonnxruntime")]
 MERGE((gui_a, "pseudonymed-gui", "pseudonymed-gui"), (cli_a, "pseudonymed", "pseudonymed"))
 
 gui_pyz = PYZ(gui_a.pure, gui_a.zipped_data, cipher=block_cipher)

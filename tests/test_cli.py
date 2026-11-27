@@ -90,8 +90,8 @@ def test_values_answer_to_their_german_and_their_english_word(
     from pseudonymed.cli import base
 
     assert base.german("letter", ("hash", "buchstabe")) == "buchstabe"
-    assert base.german("letter", ("a4", "letter", "bild")) == "letter"  # a paper size itself
-    assert base.german("image", ("bild",)) == "bild" and base.german("x", ("bild",)) == "x"
+    assert base.german("letter", ("a4", "letter")) == "letter"  # a value of its own
+    assert base.german("off", ("aus",)) == "aus" and base.german("x", ("aus",)) == "x"
     assert base.choice("--datum", "age", ("jahr", "alter")) == "alter"
     assert base.choice("--datum", "alter", ("jahr", "alter")) == "alter"
 
@@ -99,11 +99,11 @@ def test_values_answer_to_their_german_and_their_english_word(
     store = tmp_path / "store.sqlite"
     texts = []
     for folder, words in (("de", ["--datum", "alter", "--vorschau", "nie", "--unlesbar",
-                                  "lassen", "--aufbereiten", "aus", "--ocr", "aus", "--papier",
-                                  "bild", "--schema", "buchstabe"]),
+                                  "lassen", "--aufbereiten", "aus", "--ocr", "aus",
+                                  "--schema", "buchstabe"]),
                           ("en", ["--date", "age", "--preview", "never", "--unreadable",
-                                  "keep", "--clean-up", "off", "--ocr", "off", "--paper",
-                                  "image", "--schema", "letter"])):
+                                  "keep", "--clean-up", "off", "--ocr", "off",
+                                  "--schema", "letter"])):
         r = runner.invoke(app, ["pseudonymisieren", str(report_pdf), "--patient", str(pfile),
                                 "--speicher", str(store), "--ziel", str(tmp_path / folder),
                                 *words])

@@ -8,15 +8,16 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+from ocrdoc import ocr as ocr_module
+from ocrdoc.ocr import OCRWord, page_text_from_words
 from optdoc import cleanup as cleanup_module
-from optdoc import ocr as ocr_module
-from optdoc.ocr import OCRWord, page_text_from_words
 
 from pseudonymed.checks.report import as_text
 from pseudonymed.core.model import Kind, Patient
 from pseudonymed.detection import codes as codes_module
-from pseudonymed.document import optdoc_adapter
-from pseudonymed.pipeline import PipelineOptions, pseudonymise
+from pseudonymed.document import docrepro_adapter
+from pseudonymed.document.chain import DocumentChain
+from pseudonymed.pipeline import PipelineOptions, chain_settings, pseudonymise
 from pseudonymed.pseudonyms.store import PseudonymStore
 from pseudonymed.redaction.pdf import RedactionOptions, rasterise_document
 from tests.synthetic import long_date
@@ -73,7 +74,7 @@ def test_scan_is_read_and_redacted(tmp_path: Path, report_pdf: Path, patient: Pa
     # the output has no text layer with clear data, and OCR of the output finds none either
     with pymupdf.open(res.target_pdf) as d:
         assert found_plain_data("\n".join(p.get_text() for p in d), patient) == []
-        b = optdoc_adapter.backend(backend)
+        b = docrepro_adapter.backend(backend)
         after = "\n".join(ocr_module.recognise_page(p, b, i).text for i, p in enumerate(d))
     assert found_plain_data(after, patient) == []
     assert len(after) > 400 and ("Befund" in after or "Kontrolle" in after)
@@ -281,18 +282,19 @@ def test_correct_ocr_text(tmp_path: Path, report_pdf: Path, patient: Patient,
 @pytest.mark.skipif(not cleanup_module.available(), reason="OpenCV fehlt")
 def test_cleanup_before_the_ocr(tmp_path: Path, report_pdf: Path, patient: Patient,
                                 store: PseudonymStore) -> None:
-    """A tilted, shadowed scan: the loading phase suggests straightening and background
-    clean-up, the pipeline applies it before OCR and records it; the hits are found."""
-    from pseudonymed.pipeline import load
-
-    scan = _scan(report_pdf, tmp_path / "scan.pdf", rotation=2.5)
-    opened = load(scan)
-    assert opened.candidates == [0, 1] and not opened.photo
-    a = opened.suggestions[0]
+    """A tilted, shadowed scan: optdoc suggests straightening and background clean-up,
+    the pipeline applies it before OCR and records it; the hits are found."""
+    chain = DocumentChain.open(scan := _scan(report_pdf, tmp_path / "scan.pdf", rotation=2.5),
+                               chain_settings(PipelineOptions()))
+    project = chain.ensure("optdoc")
+    assert [n for n in range(len(project.pages)) if project.cleanable(n)] == [0, 1]
+    a = project.suggestion(0)
     assert a.straighten and abs(abs(a.angle) - 2.5) < 0.5, a
-    assert opened.preview(0, a)[0].startswith(b"\x89PNG")
-    opened.close()
-    assert load(report_pdf).candidates == []  # a text layer needs no clean-up
+    assert project.preview(0, a)[0].startswith(b"\x89PNG")
+    born_digital = DocumentChain.open(report_pdf, chain_settings(PipelineOptions()))
+    plain = born_digital.ensure("optdoc")
+    assert not any(plain.cleanable(n) for n in range(len(plain.pages)))  # a text layer stays
+    born_digital.close()
     res = pseudonymise(scan, patient, PipelineOptions(), store=store)
     assert res.released, as_text(res.report)
     assert any("aufbereitet" in w and "begradigt" in w for w in res.report.notes)
@@ -302,13 +304,16 @@ def test_cleanup_before_the_ocr(tmp_path: Path, report_pdf: Path, patient: Patie
                         store=store)
     assert not any("aufbereitet" in w for w in without.report.notes)
     assert "aufbereitung" not in without.report.options
-    # an explicit choice wins over the suggestion
+    # a person's choice wins over the suggestion, and comes in with the chain document
     from optdoc.cleanup import CleanupPlan
 
     from pseudonymed.pipeline import finalise, prepare
 
+    project.set_plan(0, CleanupPlan(masks=[(56, 60, 400, 95)]))
+    project.set_plan(1, None)
     v = prepare(scan, patient, PipelineOptions(suffix="_eigen"), store=store,
-                cleanup={0: CleanupPlan(masks=[(56, 60, 400, 95)])})
+                chain=chain.document())
+    chain.close()
     assert set(v.cleaned_up) == {0} and v.cleaned_up[0].masks
     res3 = finalise(v)
     assert res3.released

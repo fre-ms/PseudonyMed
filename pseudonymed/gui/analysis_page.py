@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from pseudonymed.config import Settings, load_settings, save_settings
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import ner as ner_module
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.session import Document, Session
 from pseudonymed.gui.translation import interface_language, shown, shown_error
 from pseudonymed.gui.worker import Worker
@@ -185,8 +185,9 @@ class AnalysisPage(QWidget):
         self.again_button = QPushButton(self.tr("Erneut analysieren"))
         self.again_button.setToolTip(self.tr(
             "Auch schon analysierte Dokumente mit den jetzigen Einstellungen neu durchsuchen."
-            " Aufbereitung, Texterkennung und Korrekturen bleiben; Kästen, Masken,"
-            " Aufnahmen und verworfene Treffer werden übernommen."))
+            " Aufbereitung, Filter, Bereiche und Berichtigungen der Schritte 5 bis 8 gelten,"
+            " wie sie jetzt sind; Kästen, Masken, Aufnahmen und verworfene Treffer werden"
+            " übernommen."))
         self.again_button.clicked.connect(lambda: self.analyse(again=True))
         bottom.addWidget(self.status, 1)
         bottom.addWidget(self.button)
@@ -386,7 +387,7 @@ class AnalysisPage(QWidget):
             self.session.matching = decision
             self._run_next()  # same document again
             return
-        d.error = optdoc_adapter.message(e, interface_language())
+        d.error = docrepro_adapter.message(e, interface_language())
         QMessageBox.warning(self, d.path.name, d.error)
         if self._queue and self._queue[0] is d:
             self._queue.pop(0)

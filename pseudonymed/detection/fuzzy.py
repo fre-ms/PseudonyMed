@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind, Patient, Person, Role
 from pseudonymed.detection.variants import without_accents

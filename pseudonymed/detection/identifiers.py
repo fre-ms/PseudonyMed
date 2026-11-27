@@ -56,7 +56,7 @@ from lexcor import Change, Store, StoreError
 from lexcor import Entry as Listed
 from lexident.forms import norm
 from lexident.types import HOSPITAL_TOWN, ID, LOCATION_HOSPITAL, OTHER, PROFESSION
-from optdoc.pagetext import PageText
+from ocrdoc.pagetext import PageText
 
 from pseudonymed import environment
 from pseudonymed.core.model import Hit, Kind

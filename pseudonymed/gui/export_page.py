@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.checks.report import as_text
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.session import Document, Session
 from pseudonymed.gui.translation import interface_language, shown
 from pseudonymed.gui.worker import Worker
@@ -368,7 +368,7 @@ class ExportPage(QWidget):
 
     def _error(self, e: Exception, d: Document) -> None:
         """Note the error on the document and in the protocol, then go on."""
-        d.error = optdoc_adapter.message(e, interface_language())
+        d.error = docrepro_adapter.message(e, interface_language())
         self.output.appendPlainText(
             self.tr("{name}: Fehler: {fehler}").format(name=d.path.name, fehler=d.error) + "\n")
         self._run_next()

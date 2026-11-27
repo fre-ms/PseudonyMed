@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
-from optdoc import ocr as ocr_module
-from optdoc.pagetext import PageText
+from ocrdoc import ocr as ocr_module
+from ocrdoc.pagetext import PageText
 from PySide6.QtWidgets import QApplication
 from typer.testing import CliRunner
 
@@ -15,7 +15,15 @@ from pseudonymed import working_state as state_mod
 from pseudonymed.checks.report import as_text
 from pseudonymed.cli import app
 from pseudonymed.core.model import Hit, Kind, Patient
-from pseudonymed.pipeline import PageEntry, PipelineOptions, analyse, finalise, prepare
+from pseudonymed.document.chain import DocumentChain
+from pseudonymed.pipeline import (
+    PageEntry,
+    PipelineOptions,
+    analyse,
+    finalise,
+    prepare,
+    read_chain,
+)
 from pseudonymed.pipeline.preparation import PreparationBase
 from pseudonymed.pseudonyms.reidentification import reidentify
 from pseudonymed.pseudonyms.store import PseudonymStore, one_time_store
@@ -97,6 +105,25 @@ def test_changed_document_and_foreign_file(tmp_path: Path, report_pdf: Path, pat
         state_mod.read(foreign)
 
 
+def test_superseded_format_refused(tmp_path: Path, report_pdf: Path, patient: Patient,
+                                   store: PseudonymStore) -> None:
+    """A state of version 1 (PseudonyMed's own clean-up plans and OCR words) is not read:
+    the message says so in both languages."""
+    v = _prepared(report_pdf, patient, store)
+    _document, configuration = state_mod.save(v, tmp_path)
+    v.close()
+    data = json.loads(configuration.read_text(encoding="utf-8"))
+    data[state_mod.FORMAT_MARK] = 1
+    configuration.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(state_mod.WorkingStateError, match="abgelösten Format 1") as caught:
+        state_mod.read(configuration)
+    assert "superseded format 1" in caught.value.args[0].en
+    data[state_mod.FORMAT_MARK] = state_mod.VERSION + 1
+    configuration.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(state_mod.WorkingStateError, match="neueren"):
+        state_mod.read(configuration)
+
+
 def test_recipient_mode_refused(report_pdf: Path, patient: Patient) -> None:
     with one_time_store() as sp:
         opt = PipelineOptions(recipient="x", recipient_fingerprint="y")
@@ -136,8 +163,9 @@ def test_scan_without_repeated_ocr(tmp_path: Path, report_pdf: Path, patient: Pa
     v.set_ocr_text(0, v.ocr_text(0).replace("Diagnosen", "Diagnosen (korrigiert)"))
     document, configuration = state_mod.save(v, tmp_path)
     v.close()
-    monkeypatch.setattr(ocr_module, "recognise_page",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("OCR lief erneut")))
+    for name in ("recognise_page", "recognise_words"):
+        monkeypatch.setattr(ocr_module, name, lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("OCR lief erneut")))
     a = state_mod.read(configuration)
     v2 = state_mod.preparation_from(a, store=store)
     assert v2.ocr_pages == [1, 2] and "(korrigiert)" in v2.ocr_text(0)
@@ -148,6 +176,74 @@ def test_scan_without_repeated_ocr(tmp_path: Path, report_pdf: Path, patient: Pa
     assert {f.rule for f in v3.hits} & {f.rule for f in v2.hits}
     v2.close()
     v3.close()
+
+
+def _photo(report_pdf: Path, target: Path) -> Path:
+    """A photographed page of the synthetic report: a JPEG at 150 dpi, slightly tilted, on
+    a grey background."""
+    import io
+
+    import pymupdf
+    from PIL import Image
+
+    with pymupdf.open(report_pdf) as d:
+        page = Image.open(io.BytesIO(d[0].get_pixmap(dpi=150).tobytes("png"))).convert("RGB")
+    sheet = Image.new("RGB", (page.width + 160, page.height + 160), (110, 110, 105))
+    sheet.paste(page.rotate(1.5, expand=True, fillcolor=(110, 110, 105)), (60, 60))
+    sheet.save(target, quality=90)
+    return target
+
+
+def _results(chain: DocumentChain) -> dict[str, bytes]:
+    """What docrepro's chain makes of its original: the prepared document optdoc gives (the
+    one PseudonyMed redacts), and ocrdoc's PDF with its text layer, its reading and its
+    Markdown."""
+    try:
+        made = {"prepared": chain.output("optdoc").read_bytes()}
+        stage = chain.stage("ocrdoc")
+        assert stage is not None
+        written = stage.adapter.write(chain.ensure("ocrdoc"), chain.work / "results", "x", None)
+        made.update({kind: written[kind].read_bytes()
+                     for kind in ("document", "reading", "markdown")})
+    finally:
+        chain.close()
+    return made
+
+
+@pytest.mark.skipif(not ocr_module.available_backends(), reason="kein OCR-Backend installiert")
+def test_photo_round_trip_byte_for_byte(tmp_path: Path, report_pdf: Path, patient: Patient,
+                                        store: PseudonymStore) -> None:
+    """A photographed page goes through docrepro (bound into a PDF, prepared, read), a
+    correction is made; the working state keeps the original as it came and docrepro's
+    chain document, and opening it again gives the prepared document and the reading byte
+    for byte, without reading anything again, with the hits on the same text."""
+    photo = _photo(report_pdf, tmp_path / "foto.jpg")
+    v = prepare(photo, patient, PipelineOptions(), store=store)
+    assert v.ocr_pages == [1] and v.cleaned_up and len(v.hits) > 5
+    v.set_ocr_text(0, v.ocr_text(0).rstrip("\n") + "\nZusatz: von Hand.\n")
+    document, configuration = state_mod.save(v, tmp_path / "ablage")
+    assert document.name == "foto.arbeitsstand.jpg"
+    assert document.read_bytes() == photo.read_bytes()  # the original, byte for byte
+    data = json.loads(configuration.read_text(encoding="utf-8"))
+    assert data["kette"]["format"] == "docrepro-chain" and "aufbereitung" not in data
+    assert [s["tool"] for s in data["kette"]["steps"] if s["used"]] == [
+        "typdoc", "optdoc", "ocrdoc"]
+    assert not any("ocr" in page or "text" in page for page in data["seiten"])
+    before = _results(DocumentChain.open(photo, document=v.chain))
+    a = state_mod.read(configuration)
+    after = _results(state_mod.open_chain(a))
+    assert after == before  # prepared document, searchable PDF, reading, Markdown
+    reading = json.loads(after["reading"])
+    assert reading["format"] == "ocrdoc-reading" and reading["version"] == 2
+    assert reading["pages"][0]["unit"] == "pt" and reading["pages"][0]["source"] == "ocr"
+    v2 = state_mod.preparation_from(a, store=store)
+    assert v2.doc.tobytes(no_new_id=True) == v.doc.tobytes(no_new_id=True)
+    assert v2.pages[0].ocr.as_dict() == v.pages[0].ocr.as_dict()
+    assert v2.ocr_text(0) == v.ocr_text(0) and "Zusatz: von Hand." in v2.ocr_text(0)
+    assert [f.as_dict() for f in v2.hits] == [f.as_dict() for f in v.hits]
+    assert v2.chain == v.chain
+    v.close()
+    v2.close()
 
 
 # -- taking words into the list --------------------------------------------------------------------
@@ -298,6 +394,34 @@ def test_mark_again_displaces_only_analysis_matches_beneath() -> None:
     assert state_mod._already_marked(box, page.hits)
     other = _matches(0, 0, rule="manuell", source="manuell", rects=[(1.0, 2.0, 3.0, 5.0)])
     assert not state_mod._already_marked(other, page.hits)
+
+
+def test_boxes_stay_off_pages_that_lie_otherwise_now(tmp_path: Path, report_pdf: Path,
+                                                    patient: Patient,
+                                                    store: PseudonymStore) -> None:
+    """A page turned in the preparation after the review: the boxes and masks drawn there
+    are not put back on it (they would cover something else), the discards are, and a
+    warning says so; the other pages keep theirs."""
+    from optdoc.cleanup import CleanupPlan
+
+    from tests.test_ocr import _scan
+
+    scan = _scan(report_pdf, tmp_path / "scan.pdf")
+    chain = DocumentChain.open(scan)
+    v = analyse(read_chain(chain, PipelineOptions()), patient, PipelineOptions(), store=store)
+    v.add_mask(0, (56, 60, 300, 90))
+    v.add_mask(1, (56, 60, 300, 90))
+    old = state_mod.capture(v)
+    v.close()
+    assert state_mod.moved_pages(old, v) == set()
+    chain.project("optdoc").set_plan(0, CleanupPlan(rotation=180))
+    v2 = analyse(read_chain(chain, PipelineOptions()), patient, PipelineOptions(), store=store)
+    assert state_mod.moved_pages(old, v2) == {0}
+    state_mod.adopt_decisions(old, v2)
+    assert [f.page for f in v2.hits if f.rule == "maske"] == [1]
+    assert any("Seite(n) 1 liegen nach der Aufbereitung anders" in w for w in v2.warnings)
+    v2.close()
+    chain.close()
 
 
 def test_adopt_decisions_counts_and_skips_missing_pages() -> None:

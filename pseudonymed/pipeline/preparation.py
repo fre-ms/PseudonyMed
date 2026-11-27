@@ -5,18 +5,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pymupdf
+from ocrdoc import ocr as ocr_module
+from ocrdoc.pagetext import Box
 from optdoc import cleanup as cleanup_module
-from optdoc import ocr as ocr_module
-from optdoc.pagetext import Box
 
 from pseudonymed.checks.recheck import tolerance_key
 from pseudonymed.core.model import Hit, Kind, Patient
 from pseudonymed.core.text import say
 from pseudonymed.detection.fuzzy import Target
 from pseudonymed.detection.rules import Rule, box_to_hits
+from pseudonymed.document import chain as chain_module
 from pseudonymed.pipeline.detect import correction_matches, discard_remembered, recognise_pages
 from pseudonymed.pipeline.options import PipelineOptions
 from pseudonymed.pipeline.pages import (
@@ -128,6 +129,9 @@ class Preparation(PreparationBase):
     backend: ocr_module.OCRBackend | None
     doc: pymupdf.Document
     original: pymupdf.Document
+    chain: dict[str, Any] = field(default_factory=dict)  # docrepro's chain document
+    original_data: bytes = b""  # the original the chain document makes the reading from
+    original_suffix: str = ".pdf"
 
     @property
     def hits(self) -> list[Hit]:
@@ -161,8 +165,10 @@ class Preparation(PreparationBase):
             raise ValueError(say("Diese Seite hat keinen OCR-Text.", "This page has no OCR text."))
         if unchanged(s, text):
             s.correction, s.correction_matches = None, []
+            self.chain = chain_module.with_correction(self.chain, number, None)
             return []
         s.correction = text
+        self.chain = chain_module.with_correction(self.chain, number, text)
         r = Toolkit.rebuilt(self.code, self.assignment, self.rules, self.targets, self.opt)
         s.correction_matches = correction_matches(s, r, self.opt)
         self.version += 1
@@ -279,5 +285,6 @@ def analyse(
         rules=r.rules, targets=r.targets, backend=reading.backend, doc=reading.doc,
         original=reading.original, pages=reading.pages, without_text=reading.without_text,
         warnings=list(r.warnings) + list(reading.warnings), notes=notes,
-        cleaned_up=reading.plan, discarded=discarded,
+        cleaned_up=reading.plan, discarded=discarded, chain=reading.chain,
+        original_data=reading.original_data, original_suffix=reading.original_suffix,
     )

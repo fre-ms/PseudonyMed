@@ -121,7 +121,7 @@ def test_both_names_work_in_either_language(tmp_path: Path) -> None:
 def test_the_english_line_names_the_english_values(tmp_path: Path) -> None:
     """Help, defaults and messages name the words of the language; both words are taken."""
     english = _run(["pseudonymise", "--help"], tmp_path, "en").stdout
-    for words in ("'year'", "'age'", "never.", "keep.", "tesseract or off.", "or image",
+    for words in ("'year'", "'age'", "never.", "keep.", "tesseract or off.", "auto or off.",
                   "[default: year]", "[default: redact]"):
         assert words in english, (words, english)
     for words in ("[default: jahr]", "immer", "(off)", "'alter'"):

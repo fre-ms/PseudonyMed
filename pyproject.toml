@@ -20,8 +20,16 @@ classifiers = [
 dependencies = [
   # <2: PyMuPDF 2.0 (MuPDF 1.28.5) shifts glyphs after a redaction, see docs/pymupdf-redaction-shift.md
   "pymupdf>=1.25,<2",
-  # loading, clean-up, OCR, page text, structure: the document layer lives in optdoc
-  "optdoc>=0.1.0",
+  # the document layer is docrepro's: typdoc binds photos into a PDF, optdoc prepares the
+  # pages, ocrdoc recognises them (text layer, OCR, areas), and docrepro's chain joins the
+  # steps and writes the chain document that makes the prepared document and its reading
+  # again from the original.  The steps are named as well, since PseudonyMed uses them
+  # directly: their projects, their page texts, their panels
+  "docrepro>=0.11",
+  "doccor>=0.4",
+  "typdoc>=0.3",
+  "optdoc[cleanup]>=0.12",  # OpenCV, NumPy, Pillow, pillow-heif
+  "ocrdoc[ocr,barcodes]>=0.5",  # RapidOCR with its models, onnxruntime, zxing-cpp
   # packages of terms, their store and their matcher: the core that lexterm builds on
   "lexcor>=0.2.7",
   # the vocabulary that guesswork must leave alone lives in lexterm's store, with its matcher
@@ -33,10 +41,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ocr = ["optdoc[ocr]>=0.1.0"]  # RapidOCR, onnxruntime, Pillow, pillow-heif
-codes = ["zxing-cpp>=2.2", "pillow>=10"]
 carddav = ["keyring>=25"]
-gui = ["PySide6>=6.7"]
+# the window, and the panels of optdoc and ocrdoc that are its steps of preparation and
+# recognition
+gui = ["PySide6>=6.7", "doccor[gui]>=0.4", "optdoc[gui]>=0.12", "ocrdoc[gui]>=0.5"]
 pgp = ["pysequoia>=0.1.30"]  # key capsules for recipients (OpenPGP)
 ner = [
   "spacy>=3.8",
@@ -70,8 +78,14 @@ quality = [
 ]
 
 [tool.uv.sources]
-# a released tag, not the working tree next door: PseudonyMed moves to a new optdoc on purpose
-optdoc = { git = "https://github.com/fre-ms/optdoc", tag = "v0.1.0" }
+# released tags, not the working trees next door: PseudonyMed moves to a new docrepro on purpose
+# (one tag of docrepro's repository names one state of all its packages: every step comes
+# from the same tag, else uv refuses the conflicting URLs)
+docrepro = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0" }
+doccor = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0", subdirectory = "packages/doccor" }
+typdoc = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0", subdirectory = "packages/typdoc" }
+optdoc = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0", subdirectory = "packages/optdoc" }
+ocrdoc = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0", subdirectory = "packages/ocrdoc" }
 lexcor = { git = "https://github.com/fre-ms/lexcor", tag = "v0.2.7" }
 lexterm = { git = "https://github.com/fre-ms/lexterm", tag = "v0.2.9" }
 lexident = { git = "https://github.com/fre-ms/lexident", tag = "v0.2.4" }
@@ -115,8 +129,3 @@ ignore_missing_imports = true
 # PyMuPDF ships annotations that are incomplete (constants, Document iteration): read as Any.
 module = ["pymupdf"]
 follow_imports = "skip"
-
-[[tool.mypy.overrides]]
-# optdoc is annotated but ships no py.typed marker yet: check against its annotations anyway.
-module = ["optdoc", "optdoc.*"]
-follow_untyped_imports = true

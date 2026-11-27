@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-from optdoc.ocr import OCRWord, page_text_from_words
+from ocrdoc.ocr import OCRWord, page_text_from_words
 from typer.testing import CliRunner
 
 from pseudonymed.core.model import Patient
@@ -73,7 +73,7 @@ def test_fuzzy_search_spares_medical_terms() -> None:
 
 @pytest.mark.skipif(not ner_module.available(), reason="spaCy oder Modell fehlt")
 def test_ner_spares_medical_terms(patient: Patient) -> None:
-    from optdoc.pagetext import read_text_layer
+    from ocrdoc.pagetext import read_text_layer
 
     doc = pymupdf.open()
     pdf_page = doc.new_page()

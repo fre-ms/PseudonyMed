@@ -6,8 +6,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pymupdf
 import pytest
+from doccor.errors import DocError
 
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -169,7 +169,7 @@ def test_error_in_synchronous_run(qapp: QApplication, tmp_path: Path,  # noqa: F
     broken = tmp_path / "kaputt.pdf"
     broken.write_bytes(b"kein PDF")
     assert session.add(broken) is not None
-    with pytest.raises(pymupdf.FileDataError):
+    with pytest.raises(DocError):  # docrepro's step says it cannot read the file
         page.analyse()
     assert "kaputt.pdf" in page.status.text()
     _tidy_up(qapp, session, page)

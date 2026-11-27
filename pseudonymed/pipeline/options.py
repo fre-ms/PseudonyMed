@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
-from optdoc import cleanup as cleanup_module
-from optdoc import ocr as ocr_module
+from ocrdoc import ocr as ocr_module
 
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Hit, Report
@@ -25,8 +24,7 @@ class PipelineOptions:
         "redact_drugs": "medikamente_schwaerzen", "redact_doses": "dosierungen_schwaerzen",
         "redact_lab_tests": "laborwerte_schwaerzen", "redact_measurements": "messwerte_schwaerzen",
         "fuzzy_text": "unscharf_text", "clean_up": "aufbereiten",
-        "remember_discarded": "verworfene_merken",
-        "cleanup": "aufbereitung", "preview": "vorschau", "paper_size": "papierformat",
+        "remember_discarded": "verworfene_merken", "preview": "vorschau",
         "ocr_tables": "ocr_tabellen", "vocabulary": "vokabular", "structured": "gliedern",
         "recipient": "empfaenger", "recipient_fingerprint": "empfaenger_fingerabdruck",
         "reference_population": "referenzpopulation", "own_places": "eigene_orte",
@@ -42,7 +40,7 @@ class PipelineOptions:
     ocr: str = "auto"  # "auto", "rapidocr", "tesseract" or "aus"
     ocr_languages: str = ""  # language packs: "deu+eng" (Tesseract) or "de", "latin" (RapidOCR)
     ocr_dpi: int = ocr_module.OCR_DPI
-    codes: bool = True  # blank barcodes and QR codes (extra "codes")
+    codes: bool = True  # blank barcodes and QR codes (zxing-cpp, with ocrdoc)
     unreadable: str = "schwaerzen"  # lines OCR could not read: "schwaerzen" or "lassen"
     ner: bool = False  # people and places the rules do not know (extra "ner")
     medical_terms: bool = True  # protect medical terms from NER and fuzzy OCR matching
@@ -53,11 +51,9 @@ class PipelineOptions:
     redact_lab_tests: bool = False  # the lab name, the examination
     redact_measurements: bool = False  # the measurement after a lab name
     fuzzy_text: bool = True  # text files: fuzzy search for misspelt identifiers (transcripts)
-    clean_up: str = "auto"  # image-only pages: "auto" (suggested clean-up) or "aus"
+    clean_up: str = "auto"  # image-only pages: "auto" (optdoc's suggestion) or "aus"
     remember_discarded: bool = False  # remember discarded hits per patient in the store
-    cleanup: dict[int, cleanup_module.CleanupPlan] | None = None  # explicit choice per page
     preview: str = "auto"  # "auto" (pages that needed OCR), "immer", "nie"
-    paper_size: str = "a4"  # page size for photos and images: a4, a5, a3, letter, legal, bild
     ocr_tables: bool = True  # Tesseract: second pass for sparse text (tables), merged in
     vocabulary: bool = True  # write <name>_pseudonym.vokabular.txt with the discarded guesses
     structured: bool = True  # OCR text as Markdown: paragraphs joined, headings, lists, tables
@@ -90,7 +86,6 @@ class PipelineOptions:
             "messwerte_schwaerzen": self.redact_measurements,
             "unscharf_text": self.fuzzy_text,
             "aufbereiten": self.clean_up,
-            "papierformat": self.paper_size,
             "ocr_tabellen": self.ocr_tables,
             "gliedern": self.structured,
             "empfaenger": self.recipient_fingerprint or None,

@@ -8,7 +8,7 @@ import re
 
 import pymupdf
 import pytest
-from optdoc.pagetext import read_text_layer
+from ocrdoc.pagetext import read_text_layer
 
 from pseudonymed.checks import recheck as rc
 from pseudonymed.core.model import Kind, Recheck

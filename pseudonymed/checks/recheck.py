@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pymupdf
-from optdoc.pagetext import PageText, read_text_layers
+from ocrdoc.pagetext import PageText, read_text_layers
 
 from pseudonymed.core.model import Kind, Recheck, Role
 from pseudonymed.core.text import say

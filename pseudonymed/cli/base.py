@@ -32,7 +32,7 @@ from pseudonymed.config import (
 )
 from pseudonymed.core.model import Patient
 from pseudonymed.core.text import english, in_language
-from pseudonymed.document import optdoc_adapter
+from pseudonymed.document import docrepro_adapter
 from pseudonymed.pseudonyms.store import (
     SCHEMATA,
     PseudonymStore,
@@ -71,7 +71,7 @@ FLAGS_EN = {
     "--medikamente-schwaerzen/--medikamente-lassen": "--redact-drugs/--keep-drugs",
     "--messwerte-schwaerzen/--messwerte-lassen": "--redact-measurements/--keep-measurements",
     "--modus": "--mode", "--ner/--kein-ner": "--ner/--no-ner", "--neu": "--new",
-    "--neu-analysieren": "--reanalyse", "--nr": "--number", "--papier": "--paper",
+    "--neu-analysieren": "--reanalyse", "--nr": "--number",
     "--passwort-datei": "--password-file", "--privater-schluessel": "--private-key",
     "--rastern": "--rasterise", "--referenzpopulation": "--reference-population",
     "--schluessel": "--key", "--schluesselbund/--kein-schluesselbund": "--keyring/--no-keyring",
@@ -116,7 +116,7 @@ def flag(name: str) -> str:
 
 # the German words that options take as their value, and the English ones that stand for them
 VALUES_EN = {
-    "alter": "age", "anrede": "salutation", "aus": "off", "bild": "image",
+    "alter": "age", "anrede": "salutation", "aus": "off",
     "buchstabe": "letter", "ersetzen": "replace", "immer": "always", "jahr": "year",
     "kliniken-at": "hospitals-at", "lassen": "keep", "liste": "list", "nie": "never",
     "schwaerzen": "redact", "vollname": "full-name", "zusammenfuehren": "merge",
@@ -171,8 +171,8 @@ def shown(text: object) -> str:
 
 
 def error_message(e: BaseException) -> str:
-    """The message of an error in the command line's language, optdoc's and the core's alike."""
-    return optdoc_adapter.message(e, LANGUAGE)
+    """The message of an error in the command line's language, docrepro's and the core's alike."""
+    return docrepro_adapter.message(e, LANGUAGE)
 
 
 _OPTION_NAMES = re.compile(r"--?[\w-]+(?:,--?[\w-]+)+")

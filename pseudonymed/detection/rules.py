@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from optdoc.pagetext import Box, PageText
+from ocrdoc.pagetext import Box, PageText
 
 from pseudonymed.core.model import Hit, Kind, Patient, Person, Role
 from pseudonymed.detection import variants as v

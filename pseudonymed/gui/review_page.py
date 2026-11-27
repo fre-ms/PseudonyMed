@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from optdoc.pagetext import Box
+from ocrdoc.pagetext import Box
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -183,9 +183,10 @@ class ReviewPage(QWidget):
         """The button that writes the working state."""
         self.save = QPushButton(self.tr("Arbeitsstand speichern …"))
         self.save.setToolTip(self.tr(
-            "Das aufbereitete Dokument und eine Konfigurationsdatei schreiben, aus denen sich"
-            " die Sichtprüfung später wieder aufnehmen und abwandeln lässt (Aufbereitung,"
-            " Texterkennung, Treffer, Entscheidungen). Beide Dateien enthalten Klardaten."))
+            "Das Original und eine Konfigurationsdatei mit der Kette von docrepro schreiben,"
+            " aus denen sich die Sichtprüfung später wieder aufnehmen und abwandeln lässt"
+            " (Aufbereitung, Texterkennung, Treffer, Entscheidungen). Beide Dateien enthalten"
+            " Klardaten."))
         self.save.clicked.connect(self.choose_working_state)
         r.addWidget(self.save)
 
