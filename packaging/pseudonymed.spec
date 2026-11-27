@@ -42,7 +42,9 @@ ICON = str(ICON) if ICON is not None and ICON.exists() else None
 datas += [(str(wurzel / "pseudonymed" / "data"), "pseudonymed/data")]  # medical vocabulary
 # NER travels only when the build environment has spaCy and a German model (extra "ner").
 for paket in ("spacy", "thinc", "de_core_news_lg", "de_core_news_md", "de_core_news_sm",
-              "pysequoia", "keyring"):
+              "pysequoia", "keyring",
+              # the Mac's Contacts app through pyobjc (macOS only)
+              "objc", "Foundation", "CoreFoundation", "Contacts"):
     if importlib.util.find_spec(paket) is not None:
         d, b, h = collect_all(paket)
         datas += d
@@ -163,5 +165,10 @@ if sys.platform == "darwin":
             "NSDownloadsFolderUsageDescription": "PseudonyMed liest die Dokumente, die Sie zum Pseudonymisieren auswählen.",
             "NSRemovableVolumesUsageDescription": "PseudonyMed liest Dokumente und schreibt Ergebnisse auf externe Datenträger, wenn Sie sie dort ablegen.",
             "NSNetworkVolumesUsageDescription": "PseudonyMed liest Dokumente und schreibt Ergebnisse auf Netzlaufwerken, wenn Sie sie dort ablegen.",
+            # shown once, when the address books of the Contacts app are first loaded
+            "NSContactsUsageDescription": "PseudonyMed sucht in Ihren Kontakten den Patienten, dessen Dokumente Sie pseudonymisieren. Die Kontakte bleiben auf diesem Mac; PseudonyMed ändert nichts daran.",
+            # the texts above in English as well (packaging/build.py writes the .lproj files)
+            "CFBundleDevelopmentRegion": "de",
+            "CFBundleLocalizations": ["de", "en"],
         },
     )

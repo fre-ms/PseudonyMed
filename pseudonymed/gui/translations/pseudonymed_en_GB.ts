@@ -4,118 +4,158 @@
 <context>
     <name>AddressBookDialog</name>
     <message>
-        <location filename="../address_book_dialog.py" line="43"/>
+        <location filename="../address_book_dialog.py" line="50"/>
         <source>Adressbücher einrichten</source>
         <translation>Set up address books</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="47"/>
+        <location filename="../address_book_dialog.py" line="54"/>
         <source>Lokales Adressbuch</source>
         <translation>Local address book</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="52"/>
+        <location filename="../address_book_dialog.py" line="59"/>
         <source>vCard-Datei (.vcf, auch mit vielen Karten) oder Ordner mit vCard-Dateien</source>
         <translation>vCard file (.vcf, may hold many cards) or a folder of vCard files</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="53"/>
+        <location filename="../address_book_dialog.py" line="60"/>
         <source>Datei …</source>
         <translation>File …</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="55"/>
+        <location filename="../address_book_dialog.py" line="62"/>
         <source>Ordner …</source>
         <translation>Folder …</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="62"/>
-        <source>Exportieren Sie Kontakte aus Apple Kontakte, Thunderbird, Outlook oder Nextcloud als vCard; die Datei bleibt auf diesem Rechner.</source>
-        <translation>Export contacts from Apple Contacts, Thunderbird, Outlook or Nextcloud as vCard; the file stays on this machine.</translation>
+        <location filename="../address_book_dialog.py" line="69"/>
+        <source>Exportieren Sie Kontakte aus Thunderbird, Outlook oder Nextcloud als vCard; die Datei bleibt auf diesem Rechner.</source>
+        <translation>Export contacts from Thunderbird, Outlook or Nextcloud as vCard; the file stays on this machine.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="69"/>
+        <location filename="../address_book_dialog.py" line="80"/>
         <source>Nextcloud (CardDAV)</source>
         <translation>Nextcloud (CardDAV)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="73"/>
+        <location filename="../address_book_dialog.py" line="84"/>
         <source>Adresse</source>
         <translation>Address</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="75"/>
+        <location filename="../address_book_dialog.py" line="86"/>
         <source>Benutzer</source>
         <translation>User</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="79"/>
+        <location filename="../address_book_dialog.py" line="90"/>
         <source>App-Passwort (Nextcloud → Einstellungen → Sicherheit → Geräte &amp; Sitzungen)</source>
         <translation>App password (Nextcloud → Settings → Security → Devices &amp; sessions)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="80"/>
+        <location filename="../address_book_dialog.py" line="91"/>
         <source>App-Passwort</source>
         <translation>App password</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="86"/>
+        <location filename="../address_book_dialog.py" line="97"/>
         <source>Adressbücher laden</source>
         <translation>Load address books</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="90"/>
+        <location filename="../address_book_dialog.py" line="101"/>
         <source>Adressbuch</source>
         <translation>Address book</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="92"/>
+        <location filename="../address_book_dialog.py" line="103"/>
         <source>Das App-Passwort kommt in den Schlüsselbund des Betriebssystems ({bund}).</source>
         <translation>The app password goes into the operating system&apos;s keyring ({bund}).</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="94"/>
+        <location filename="../address_book_dialog.py" line="105"/>
         <source>Kein Schlüsselbund verfügbar: das App-Passwort wird in der Konfigurationsdatei abgelegt (nur für Sie lesbar).</source>
         <translation>No keyring available: the app password is kept in the configuration file (readable by you only).</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="112"/>
+        <location filename="../address_book_dialog.py" line="123"/>
         <source>vCard-Datei</source>
         <translation>vCard file</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="113"/>
+        <location filename="../address_book_dialog.py" line="124"/>
         <source>vCard (*.vcf *.vcard);;Alle Dateien (*)</source>
         <translation>vCard (*.vcf *.vcard);;All files (*)</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="119"/>
+        <location filename="../address_book_dialog.py" line="130"/>
         <source>Ordner mit vCard-Dateien</source>
         <translation>Folder of vCard files</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="136"/>
+        <location filename="../address_book_dialog.py" line="137"/>
+        <source>Kontakte dieses Mac</source>
+        <translation>Contacts on this Mac</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="139"/>
+        <source>In der Kontakte-App dieses Mac suchen</source>
+        <translation>Search the Contacts app of this Mac</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="149"/>
+        <source>Zugriff erlauben und Adressbücher laden</source>
+        <translation>Allow access and load address books</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="165"/>
+        <source>macOS fragt beim ersten Laden, ob PseudonyMed die Kontakte lesen darf. Sie bleiben auf diesem Rechner; gelesen wird nur bei der Suche.</source>
+        <translation>macOS asks the first time they are loaded whether PseudonyMed may read the contacts. They stay on this machine; they are read only when you search.</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="168"/>
+        <source>Zugriff: {zustand}</source>
+        <translation>Access: {zustand}</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="198"/>
+        <source>{n} Adressbuch/Adressbücher; gesucht wird in den angehakten.</source>
+        <translation>{n} address book(s); the ticked ones are searched.</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="207"/>
+        <source>Kontakte dieses Mac: kein Zugriff oder kein Adressbuch.</source>
+        <translation>Contacts on this Mac: no access or no address book.</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="214"/>
+        <source>Bitte mindestens ein Adressbuch der Kontakte-App anhaken.</source>
+        <translation>Please tick at least one address book of the Contacts app.</translation>
+    </message>
+    <message>
+        <location filename="../address_book_dialog.py" line="232"/>
         <source>Adresse, Benutzer und App-Passwort eingeben.</source>
         <translation>Enter address, user and app password.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="141"/>
-        <location filename="../address_book_dialog.py" line="179"/>
+        <location filename="../address_book_dialog.py" line="237"/>
+        <location filename="../address_book_dialog.py" line="282"/>
         <source>Verbindung fehlgeschlagen: {fehler}</source>
         <translation>Connection failed: {fehler}</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="153"/>
+        <location filename="../address_book_dialog.py" line="249"/>
         <source>{n} Adressbuch/Adressbücher gefunden; bitte wählen.</source>
         <translation>{n} address book(s) found; please choose.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="164"/>
+        <location filename="../address_book_dialog.py" line="260"/>
         <source>{pfad}: keine vCard-Datei(en) gefunden.</source>
         <translation>{pfad}: no vCard file(s) found.</translation>
     </message>
     <message>
-        <location filename="../address_book_dialog.py" line="173"/>
+        <location filename="../address_book_dialog.py" line="276"/>
         <source>Bitte das App-Passwort eingeben.</source>
         <translation>Please enter the app password.</translation>
     </message>
@@ -374,72 +414,72 @@
 <context>
     <name>ChainStepPage</name>
     <message>
-        <location filename="../chain_pages.py" line="167"/>
+        <location filename="../chain_pages.py" line="168"/>
         <source>Texterkennung starten</source>
         <translation>Start text recognition</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="178"/>
+        <location filename="../chain_pages.py" line="179"/>
         <source>Dokument / Seite</source>
         <translation>Document / page</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="195"/>
+        <location filename="../chain_pages.py" line="196"/>
         <source>Weiter: Filter für die Texterkennung</source>
         <translation>Next: filters for OCR</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="196"/>
+        <location filename="../chain_pages.py" line="197"/>
         <source>Weiter: Bereiche</source>
         <translation>Next: areas</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="196"/>
+        <location filename="../chain_pages.py" line="197"/>
         <source>Weiter: Text prüfen</source>
         <translation>Next: check the text</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="197"/>
+        <location filename="../chain_pages.py" line="198"/>
         <source>Weiter: Analysieren</source>
         <translation>Next: analyse</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="242"/>
+        <location filename="../chain_pages.py" line="243"/>
         <source>{n} Textdatei(en): sie brauchen weder Aufbereitung noch Texterkennung.</source>
         <translation>{n} text file(s): they need neither preparation nor text recognition.</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="246"/>
+        <location filename="../chain_pages.py" line="247"/>
         <source>Noch kein Dokument: Scans, Fotos und PDFs im Schritt „Dokumente“ hinzufügen.</source>
         <translation>No document yet: add scans, photos and PDFs in the step “Documents”.</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="255"/>
+        <location filename="../chain_pages.py" line="256"/>
         <source>Seite {nummer}</source>
         <translation>Page {nummer}</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="257"/>
+        <location filename="../chain_pages.py" line="258"/>
         <source> (Scan/Foto)</source>
         <translation> (scan/photo)</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="294"/>
+        <location filename="../chain_pages.py" line="295"/>
         <source>Der Schritt wird auf das gebracht, was die Schritte davor jetzt geben …</source>
         <translation>The step is brought up to what the steps before it give now …</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="383"/>
+        <location filename="../chain_pages.py" line="389"/>
         <source>Gelesen: {n} Dokument(e).</source>
         <translation>Read: {n} document(s).</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="389"/>
+        <location filename="../chain_pages.py" line="395"/>
         <source>Lese {name} …</source>
         <translation>Reading {name} …</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="426"/>
+        <location filename="../chain_pages.py" line="432"/>
         <source>Das ging nicht: {fehler}</source>
         <translation>That did not work: {fehler}</translation>
     </message>
@@ -1780,6 +1820,11 @@
 (drop a text file here)</translation>
     </message>
     <message>
+        <location filename="../patient_page.py" line="245"/>
+        <source>Kein Adressbuch eingerichtet: vCard-Datei, Kontakte dieses Mac oder Nextcloud unter „Adressbücher einrichten …“.</source>
+        <translation>No address book set up: a vCard file, the contacts on this Mac or Nextcloud under “Set up address books …”.</translation>
+    </message>
+    <message>
         <location filename="../patient_page.py" line="263"/>
         <source>Patientendatei JSON/TOML (*.json *.toml);;Alle Dateien (*)</source>
         <translation>Patient file JSON/TOML (*.json *.toml);;All files (*)</translation>
@@ -1845,11 +1890,6 @@
         <translation>Address books saved.</translation>
     </message>
     <message>
-        <location filename="../patient_page.py" line="245"/>
-        <source>Kein Adressbuch eingerichtet: lokale vCard-Datei oder Nextcloud unter „Adressbücher einrichten …“.</source>
-        <translation>No address book set up: a local vCard file or Nextcloud under “Set up address books …”.</translation>
-    </message>
-    <message>
         <location filename="../patient_page.py" line="254"/>
         <source>Adressbuch</source>
         <translation>Address book</translation>
@@ -1910,52 +1950,52 @@
 <context>
     <name>ReadingSettings</name>
     <message>
-        <location filename="../chain_pages.py" line="63"/>
+        <location filename="../chain_pages.py" line="64"/>
         <source>Texterkennung (OCR) für Scans und Fotos</source>
         <translation>Text recognition (OCR) for scans and photos</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="66"/>
+        <location filename="../chain_pages.py" line="67"/>
         <source>automatisch</source>
         <translation>automatic</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="69"/>
+        <location filename="../chain_pages.py" line="70"/>
         <source>aus (nur Textebene)</source>
         <translation>off (text layer only)</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="71"/>
+        <location filename="../chain_pages.py" line="72"/>
         <source>OCR-Programm</source>
         <translation>OCR engine</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="73"/>
+        <location filename="../chain_pages.py" line="74"/>
         <source>Sprachpakete</source>
         <translation>Language packs</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="78"/>
+        <location filename="../chain_pages.py" line="79"/>
         <source>Tabellen: Gitter erkennen und die Zellen ohne Linien in einem zweiten Durchgang lesen (Tesseract)</source>
         <translation>Tables: detect grids and read the cells without their rules in a second pass (Tesseract)</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="83"/>
+        <location filename="../chain_pages.py" line="84"/>
         <source>Erkannten Text gliedern: Absätze zusammenfügen, Überschriften, Listen und Tabellen als Markdown (für das Sprachmodell)</source>
         <translation>Structure the recognised text: join paragraphs, mark headings, lists and tables as Markdown (for the language model)</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="101"/>
+        <location filename="../chain_pages.py" line="102"/>
         <source>Installierte Tesseract-Sprachen: {liste}</source>
         <translation>Installed Tesseract languages: {liste}</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="105"/>
+        <location filename="../chain_pages.py" line="106"/>
         <source>Es wird nur die Textebene der PDFs gelesen.</source>
         <translation>Only the text layer of PDFs is read.</translation>
     </message>
     <message>
-        <location filename="../chain_pages.py" line="109"/>
+        <location filename="../chain_pages.py" line="110"/>
         <source>RapidOCR: Sprachtyp de (Standard), en, latin, ch …; Modelle sind im Paket.</source>
         <translation>RapidOCR: language type de (default), en, latin, ch …; the models are in the package.</translation>
     </message>

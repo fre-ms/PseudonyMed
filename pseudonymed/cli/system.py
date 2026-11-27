@@ -132,7 +132,8 @@ def _show_keys(store: Path | None, settings: Settings) -> None:
     if settings.local_address_book:
         typer.echo(w(f"Lokales Adressbuch:  {settings.local_address_book}",
                      f"Local address book:  {settings.local_address_book}"))
-    typer.echo("OpenPGP:             " + (", ".join(pgp_module.engines()) or
+    _show_mac_contacts(settings)
+    typer.echo("OpenPGP:            " + (", ".join(pgp_module.engines()) or
                                          w("nicht verfügbar (Extra 'pgp' oder GnuPG)",
                                            "not available (extra 'pgp' or GnuPG)")))
     if settings.recipient_key:
@@ -141,6 +142,24 @@ def _show_keys(store: Path | None, settings: Settings) -> None:
                      f" (Fingerabdruck {fingerprint})",
                      f"Recipient key:       {settings.recipient_key}"
                      f" (fingerprint {fingerprint})"))
+
+
+def _show_mac_contacts(settings: Settings) -> None:
+    """Whether the Mac's Contacts app is searched and may be read (asks macOS nothing)."""
+    from pseudonymed.sources import mac_contacts
+
+    if not (mac_contacts.supported() or settings.mac_contacts):
+        return
+    state = mac_contacts.access_text(mac_contacts.access())
+    books = len(settings.mac_address_books)
+    if not settings.mac_contacts:
+        use = w("aus", "off")
+    elif books:
+        use = w(f"an, {books} Adressbuch/Adressbücher", f"on, {books} address book(s)")
+    else:
+        use = w("an, alle Adressbücher", "on, every address book")
+    typer.echo(w(f"Kontakte (Mac):      {use}; Zugriff {state}",
+                 f"Contacts (Mac):      {use}; access {state.en}"))
 
 
 def _show_accounts() -> None:

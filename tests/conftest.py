@@ -56,6 +56,15 @@ def pytest_unconfigure(config: pytest.Config) -> None:
             os.environ[name] = value
 
 
+@pytest.fixture(autouse=True)
+def no_real_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reads, or asks macOS about, the Contacts app of the machine it runs on: the
+    tests of the Mac's contacts bring a framework of their own (tests/contacts_fake.py)."""
+    from pseudonymed.sources import mac_contacts
+
+    monkeypatch.setattr(mac_contacts, "_framework", lambda: None)
+
+
 @pytest.fixture(scope="session")
 def isolated_data_folder() -> Path:
     return Path(os.environ["PSEUDONYMED_DATENORDNER"])

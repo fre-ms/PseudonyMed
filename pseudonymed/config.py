@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -62,6 +62,9 @@ class Settings:
     store_database: str = ""  # pseudonym database elsewhere than the data folder
     store_key: str = ""  # key file elsewhere than next to the database
     local_address_book: str = ""  # a vCard file or a folder of vCard files as address book
+    mac_contacts: bool = False  # search the address books of the Mac's Contacts app
+    # identifiers of the Contacts app's address books to search; empty = every one
+    mac_address_books: list[str] = field(default_factory=list)
     reference_population: int = 83_600_000  # people the residual-risk estimate chooses from
     own_places: str = ""  # places of the sender that are not the patient's, comma-separated
 
@@ -95,6 +98,9 @@ def load_settings(path: str | Path | None = None) -> Settings:
         store_database=str(store.get("datenbank", "")),
         store_key=str(store.get("schluessel", "")),
         local_address_book=str(address_book.get("lokal", "")),
+        mac_contacts=address_book.get("mac") is True,
+        mac_address_books=[str(b) for b in address_book.get("mac_adressbuecher", [])
+                           if str(b).strip()],
         reference_population=int(control.get("referenzpopulation", 83_600_000) or 83_600_000),
         own_places=str(control.get("eigene_orte", "")),
     )
@@ -123,6 +129,8 @@ def _write(path: Path, carddav: dict, e: Settings) -> Path:
               "", "[speicher]", f"datenbank = {_toml_value(e.store_database)}",
               f"schluessel = {_toml_value(e.store_key)}",
               "", "[adressbuch]", f"lokal = {_toml_value(e.local_address_book)}",
+              f"mac = {'true' if e.mac_contacts else 'false'}",
+              "mac_adressbuecher = [" + ", ".join(map(_toml_value, e.mac_address_books)) + "]",
               "", "[kontrolle]", f"referenzpopulation = {int(e.reference_population)}",
               f"eigene_orte = {_toml_value(e.own_places)}"]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

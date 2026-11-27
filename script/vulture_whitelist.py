@@ -34,6 +34,7 @@ import_identifiers
 check_identifiers
 set_up
 local_contacts
+mac_contacts_command
 address_books
 run_search
 show_contact
@@ -64,6 +65,7 @@ config
 pytestmark
 isolated_data_folder
 carddav_environment
+no_real_contacts  # autouse: no test reaches the machine's Contacts app
 lexicon_on
 small_lexicon
 without_variables

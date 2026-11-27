@@ -29,6 +29,7 @@ from pseudonymed.cli.base import (
 from pseudonymed.config import (
     PASSWORD_ENV_VAR,
     CardDAVConfig,
+    Settings,
     load_settings,
     save_config,
     save_password,
@@ -37,8 +38,8 @@ from pseudonymed.core.model import Patient
 from pseudonymed.sources.carddav import CardDAVClient, CardDAVError
 
 contacts_app = typer.Typer(
-    help=w("Patientensuche im CardDAV-Adressbuch (Nextcloud).",
-           "Patient search in the CardDAV address book (Nextcloud)."),
+    help=w("Patientensuche in den Adressbüchern (vCard-Datei, Kontakte dieses Mac, Nextcloud).",
+           "Patient search in the address books (vCard file, contacts on this Mac, Nextcloud)."),
     no_args_is_help=True,
 )
 add_group(contacts_app, "kontakte", "contacts")
@@ -137,6 +138,82 @@ def local_contacts(
     save_settings(e, config)
     typer.echo(w(f"Lokales Adressbuch: {e.local_address_book} ({len(files)} Datei(en)).",
                  f"Local address book: {e.local_address_book} ({len(files)} file(s))."))
+
+
+@command(contacts_app, "mac", "mac", help=w(
+    "Die Kontakte-App dieses Mac durchsuchen (alle oder gewählte Adressbücher) oder anzeigen.",
+    "Search the Contacts app of this Mac (every or chosen address books), or show it."))
+def mac_contacts_command(
+    on: Annotated[bool | None, typer.Option(
+        *flags("--an/--aus"), help=w("Kontakte dieses Mac durchsuchen oder nicht.",
+                                     "Search the contacts on this Mac, or not."))] = None,
+    books: Annotated[list[str] | None, typer.Option(
+        *flags("--adressbuch"),
+        help=w("Nur dieses Adressbuch der Kontakte-App (Name oder Kennung, mehrfach möglich).",
+               "Only this address book of the Contacts app (name or identifier, may be"
+               " repeated)."))] = None,
+    every: Annotated[bool, typer.Option(*flags("--alle"),
+                                        help=w("Alle Adressbücher der Kontakte-App.",
+                                               "Every address book of the Contacts app."))]
+    = False,
+    config: ConfigOption = None,
+) -> None:
+    """Switch the Mac's contacts on (asking macOS for access) or off, choose their address
+    books, or show the state and the address books there are."""
+    from pseudonymed.config import save_settings
+    from pseudonymed.sources import mac_contacts
+
+    if not mac_contacts.supported():
+        abort(w("Die Kontakte-App gibt es nur auf dem Mac.", "The Contacts app is on a Mac only."))
+    e = load_settings(config)
+    if on is False:
+        e.mac_contacts = False
+        save_settings(e, config)
+        typer.echo(w("Kontakte dieses Mac werden nicht mehr durchsucht.",
+                     "The contacts on this Mac are no longer searched."))
+        return
+    if on or books or every:
+        _switch_mac_on(e, books or [], every)
+        save_settings(e, config)
+    _print_mac_contacts(e)
+
+
+def _switch_mac_on(e: Settings, books: list[str], every: bool) -> None:
+    """Ask macOS for access (the first time) and switch the Mac's contacts on in ``e``, with
+    the address books named, or every one; stops with the reason when that cannot be."""
+    from pseudonymed.sources import mac_contacts
+
+    state = mac_contacts.ask()
+    if state != mac_contacts.GRANTED:
+        abort(w(f"Kein Zugriff auf die Kontakte dieses Mac: {mac_contacts.access_text(state)}",
+                f"No access to the contacts on this Mac: {mac_contacts.access_text(state).en}"))
+    try:
+        chosen = mac_contacts.choose(mac_contacts.address_books(), books)
+    except mac_contacts.MacContactsError as ex:
+        abort(error_message(ex), cause=ex)
+    e.mac_contacts = True
+    if books or every:
+        e.mac_address_books = [b.identifier for b in chosen]
+
+
+def _print_mac_contacts(e: Settings) -> None:
+    """The state of the Mac's contacts and, once they may be read, their address books with
+    the chosen ones marked."""
+    from pseudonymed.sources import mac_contacts
+
+    state = mac_contacts.access()
+    use = w("an", "on") if e.mac_contacts else w("aus", "off")
+    typer.echo(w(f"Kontakte dieses Mac: {use}; Zugriff {mac_contacts.access_text(state)}",
+                 f"Contacts on this Mac: {use}; access {mac_contacts.access_text(state).en}"))
+    if state != mac_contacts.GRANTED:
+        return
+    try:
+        books = mac_contacts.address_books()
+    except mac_contacts.MacContactsError as ex:
+        abort(error_message(ex), cause=ex)
+    for b in books:
+        mark = "x" if not e.mac_address_books or b.identifier in e.mac_address_books else " "
+        typer.echo(f"  [{mark}] {shown(b.shown):40}  {b.identifier}")
 
 
 @command(contacts_app, "adressbuecher", "address-books",

@@ -52,7 +52,8 @@ def w(de: str, en: str) -> str:
 
 # German option declarations and their English counterparts ("--a/--no-a" for switches)
 FLAGS_EN = {
-    "--adressbuch": "--address-book", "--arbeitsstand": "--working-state",
+    "--adressbuch": "--address-book", "--alle": "--all", "--an/--aus": "--on/--off",
+    "--arbeitsstand": "--working-state",
     "--aufbereiten": "--clean-up", "--ausgabe": "--output", "--benutzer": "--user",
     "--bericht/--kein-bericht": "--report/--no-report", "--buchstabe": "--letter",
     "--codes/--keine-codes": "--codes/--no-codes", "--datei": "--file",
@@ -381,9 +382,10 @@ def search_contacts(term: str, config: Path | None) -> list[Patient]:
 
     if not address_book.is_set_up(config):
         typer.echo(w("Kein Adressbuch eingerichtet: 'pseudonymed kontakte einrichten'"
-                     " (Nextcloud) oder 'pseudonymed kontakte lokal DATEI' (vCard-Datei oder"
-                     " Ordner).",
-                     "No address book set up: 'pseudonymed contacts setup' (Nextcloud) or"
+                     " (Nextcloud), 'pseudonymed kontakte mac --an' (Kontakte dieses Mac) oder"
+                     " 'pseudonymed kontakte lokal DATEI' (vCard-Datei oder Ordner).",
+                     "No address book set up: 'pseudonymed contacts setup' (Nextcloud),"
+                     " 'pseudonymed contacts mac --on' (contacts on this Mac) or"
                      " 'pseudonymed contacts local FILE' (vCard file or folder)."), err=True)
         raise typer.Exit(code=1)
     result = address_book.search(term, config)

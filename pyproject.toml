@@ -38,6 +38,8 @@ dependencies = [
   "lexident>=0.2.4",
   "platformdirs>=4",
   "typer>=0.12",
+  # the address books of the Mac's Contacts app, read through Apple's Contacts framework
+  "pyobjc-framework-contacts>=13.0 ; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
@@ -122,7 +124,7 @@ warn_redundant_casts = true
 [[tool.mypy.overrides]]
 module = ["pymupdf.*", "rapidocr.*", "onnxruntime.*", "cv2.*", "numpy.*", "PIL.*",
           "pillow_heif.*", "zxingcpp.*", "spacy.*", "pysequoia.*", "keyring.*", "faker.*",
-          "PySide6.*", "typer.*"]
+          "PySide6.*", "typer.*", "Contacts", "Foundation"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

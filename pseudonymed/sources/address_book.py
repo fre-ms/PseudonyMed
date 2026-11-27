@@ -1,4 +1,5 @@
-"""Address books: a local vCard file or folder and the CardDAV server, searched together."""
+"""Address books: a local vCard file or folder, the Mac's Contacts app and the CardDAV
+server, searched together."""
 
 from __future__ import annotations
 
@@ -8,6 +9,7 @@ from pathlib import Path
 from pseudonymed.config import CardDAVConfig, load_config, load_password, load_settings
 from pseudonymed.core.model import Patient
 from pseudonymed.core.text import error_text, say
+from pseudonymed.sources import mac_contacts
 from pseudonymed.sources.carddav import CardDAVClient, CardDAVError, fits
 from pseudonymed.sources.vcf import patients_from_vcf
 
@@ -45,17 +47,26 @@ def search_local(path: str | Path, term: str) -> list[Patient]:
 
 
 def is_set_up(config_file: str | Path | None = None) -> bool:
-    """True when a local address book or a CardDAV account is configured."""
-    return bool(load_settings(config_file).local_address_book) or \
+    """True when a local address book, the Mac's contacts or a CardDAV account is
+    configured."""
+    settings = load_settings(config_file)
+    return bool(settings.local_address_book) or settings.mac_contacts or \
         load_config(config_file).complete
+
+
+def _add_new(result: SearchResult, patients: list[Patient]) -> None:
+    """Add the patients a source found, leaving out those an earlier source gave."""
+    known = {p.key() for p in result.patients}
+    result.patients += [p for p in patients if p.key() not in known]
 
 
 def search(term: str, config_file: str | Path | None = None,
            carddav: CardDAVConfig | None = None) -> SearchResult:
-    """Local book first, then the CardDAV server; a failing source becomes a message
-    instead of an exception, so the other one still answers."""
+    """Local book first, then the Mac's contacts, then the CardDAV server; a failing source
+    becomes a message instead of an exception, so the others still answer."""
     result = SearchResult()
-    local = load_settings(config_file).local_address_book
+    settings = load_settings(config_file)
+    local = settings.local_address_book
     if local:
         result.sources.append(f"lokal ({local})")
         try:
@@ -63,6 +74,15 @@ def search(term: str, config_file: str | Path | None = None,
         except (OSError, ValueError) as e:
             result.error.append(say(f"Lokales Adressbuch {local}: {e}",
                                     f"Local address book {local}: {error_text(e, 'en')}"))
+    if settings.mac_contacts:
+        result.sources.append(say("Kontakte dieses Mac", "Contacts on this Mac"))
+        try:
+            # switched on, so asking is wanted; macOS forgets the answer whenever the app is
+            # signed anew (an ad-hoc signature per build), and asks once again then
+            mac_contacts.ask()
+            _add_new(result, mac_contacts.search(term, settings.mac_address_books))
+        except mac_contacts.MacContactsError as e:
+            result.error.append(e.args[0])
     k = carddav or load_config(config_file)
     if k.complete:
         result.sources.append(f"CardDAV ({k.code})")
@@ -76,9 +96,7 @@ def search(term: str, config_file: str | Path | None = None,
             try:
                 client = CardDAVClient(k.url, k.user, password)
                 contacts = client.search(client.address_book(k.address_book), term)
-                known = {p.key() for p in result.patients}
-                result.patients += [kk.patient for kk in contacts
-                                    if kk.patient.key() not in known]
+                _add_new(result, [kk.patient for kk in contacts])
             except CardDAVError as e:
                 result.error.append(say(f"CardDAV: {e}", f"CardDAV: {error_text(e, 'en')}"))
     return result

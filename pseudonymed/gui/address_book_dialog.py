@@ -1,10 +1,13 @@
-"""Setting up the address books: a local vCard file or folder, and Nextcloud (CardDAV)."""
+"""Setting up the address books: a local vCard file or folder, the Mac's Contacts app, and
+Nextcloud (CardDAV)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -14,6 +17,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -29,14 +34,16 @@ from pseudonymed.config import (
     save_password,
     save_settings,
 )
-from pseudonymed.gui.translation import shown_error
+from pseudonymed.gui.translation import shown, shown_error
+from pseudonymed.sources import mac_contacts
 from pseudonymed.sources.address_book import local_files
 from pseudonymed.sources.carddav import CardDAVClient, CardDAVError
 
 
 class AddressBookDialog(QDialog):
-    """Where patients come from: a local vCard file or folder, and a Nextcloud address
-    book over CardDAV with its app password kept in the keyring."""
+    """Where patients come from: a local vCard file or folder, the address books of the
+    Mac's Contacts app, and a Nextcloud address book over CardDAV with its app password
+    kept in the keyring."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -59,11 +66,15 @@ class AddressBookDialog(QDialog):
         line.addWidget(folder)
         lf.addRow(line)
         self.local_info = QLabel(self.tr(
-            "Exportieren Sie Kontakte aus Apple Kontakte, Thunderbird, Outlook oder Nextcloud als"
-            " vCard; die Datei bleibt auf diesem Rechner."))
+            "Exportieren Sie Kontakte aus Thunderbird, Outlook oder Nextcloud als vCard; die"
+            " Datei bleibt auf diesem Rechner."))
         self.local_info.setWordWrap(True)
         lf.addRow(self.local_info)
         outer.addWidget(local)
+
+        self.mac: QCheckBox | None = None
+        if mac_contacts.supported():
+            outer.addWidget(self._mac_group())
 
         k = load_config()
         cloud = QGroupBox(self.tr("Nextcloud (CardDAV)"))
@@ -120,6 +131,91 @@ class AddressBookDialog(QDialog):
         if path:
             self.local.setText(path)
 
+    # -- the Mac's Contacts app --------------------------------------------------------------------
+    def _mac_group(self) -> QGroupBox:
+        """The Contacts app's part: search it or not, and which of its address books."""
+        group = QGroupBox(self.tr("Kontakte dieses Mac"))
+        box = QVBoxLayout(group)
+        self.mac = QCheckBox(self.tr("In der Kontakte-App dieses Mac suchen"))
+        self.mac.setChecked(load_settings().mac_contacts)
+        self.mac.toggled.connect(self._mac_toggled)
+        box.addWidget(self.mac)
+        self.mac_books = QListWidget()
+        self.mac_books.setMaximumHeight(120)
+        box.addWidget(self.mac_books)
+        line = QHBoxLayout()
+        self.mac_info = QLabel("")
+        self.mac_info.setWordWrap(True)
+        load = QPushButton(self.tr("Zugriff erlauben und Adressbücher laden"))
+        load.clicked.connect(self.load_mac_address_books)
+        line.addWidget(self.mac_info, 1)
+        line.addWidget(load)
+        box.addLayout(line)
+        if mac_contacts.access() == mac_contacts.GRANTED:
+            self.load_mac_address_books()  # allowed before: nothing is asked
+        else:
+            self._mac_state()
+        return group
+
+    def _mac_state(self) -> str:
+        """Show in the info line whether macOS lets PseudonyMed read the contacts."""
+        state = mac_contacts.access()
+        if state == mac_contacts.UNDECIDED:
+            self.mac_info.setText(self.tr(
+                "macOS fragt beim ersten Laden, ob PseudonyMed die Kontakte lesen darf. Sie"
+                " bleiben auf diesem Rechner; gelesen wird nur bei der Suche."))
+        else:
+            self.mac_info.setText(self.tr("Zugriff: {zustand}").format(
+                zustand=shown(mac_contacts.access_text(state))))
+        return state
+
+    def _mac_toggled(self, on: bool) -> None:
+        """Ticking the box loads the address books (asking macOS the first time)."""
+        if on and not self.mac_books.count():
+            self.load_mac_address_books()
+
+    def load_mac_address_books(self) -> list[str]:
+        """List the Contacts app's address books, ticked as chosen (all when none is),
+        asking macOS for access first if it was never asked; returns their identifiers,
+        empty without access."""
+        if mac_contacts.ask() != mac_contacts.GRANTED:
+            self._mac_state()
+            return []
+        try:
+            books = mac_contacts.address_books()
+        except mac_contacts.MacContactsError as e:
+            self.mac_info.setText(shown_error(e))
+            return []
+        chosen = load_settings().mac_address_books
+        self.mac_books.clear()
+        for b in books:
+            item = QListWidgetItem(shown(b.shown))
+            item.setData(Qt.ItemDataRole.UserRole, b.identifier)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            ticked = not chosen or b.identifier in chosen
+            item.setCheckState(Qt.CheckState.Checked if ticked else Qt.CheckState.Unchecked)
+            self.mac_books.addItem(item)
+        self.mac_info.setText(self.tr("{n} Adressbuch/Adressbücher; gesucht wird in den"
+                                      " angehakten.").format(n=len(books)))
+        return [b.identifier for b in books]
+
+    def _mac_choice(self) -> list[str] | None:
+        """The identifiers of the ticked address books, [] when every one is ticked (then
+        books added later are searched as well); None, with the reason shown, when the
+        contacts may not be read or none is ticked."""
+        if not self.mac_books.count() and not self.load_mac_address_books():
+            self.status.setText(self.tr("Kontakte dieses Mac: kein Zugriff oder kein"
+                                        " Adressbuch."))
+            return None
+        items = [self.mac_books.item(i) for i in range(self.mac_books.count())]
+        ticked = [str(t.data(Qt.ItemDataRole.UserRole)) for t in items
+                  if t.checkState() == Qt.CheckState.Checked]
+        if not ticked:
+            self.status.setText(self.tr("Bitte mindestens ein Adressbuch der Kontakte-App"
+                                        " anhaken."))
+            return None
+        return [] if len(ticked) == len(items) else ticked
+
     # -- CardDAV -----------------------------------------------------------------------------------
     def _config(self) -> CardDAVConfig:
         """The CardDAV settings as the fields hold them now (without the password)."""
@@ -154,10 +250,9 @@ class AddressBookDialog(QDialog):
             n=len(books)))
         return [b.uri for b in books]
 
-    def save(self) -> bool:
-        """Check both sources and write the settings; a CardDAV password goes to the
-        keyring, or into the configuration file when there is none.  Closes the dialog
-        on success; False (with the reason in the status line) otherwise."""
+    def _local_and_mac(self) -> bool:
+        """Check the vCard file and the Mac's contacts and write them into the settings;
+        False, with the reason in the status line, when one of them does not hold."""
         e = load_settings()
         local = self.local.text().strip()
         if local and not local_files(local):
@@ -165,7 +260,21 @@ class AddressBookDialog(QDialog):
                 pfad=local))
             return False
         e.local_address_book = str(Path(local).expanduser()) if local else ""
+        if self.mac is not None:
+            e.mac_contacts = self.mac.isChecked()
+            chosen = self._mac_choice() if e.mac_contacts else e.mac_address_books
+            if chosen is None:
+                return False
+            e.mac_address_books = chosen
         save_settings(e)
+        return True
+
+    def save(self) -> bool:
+        """Check every source and write the settings; a CardDAV password goes to the
+        keyring, or into the configuration file when there is none.  Closes the dialog
+        on success; False (with the reason in the status line) otherwise."""
+        if not self._local_and_mac():
+            return False
         k = self._config()
         password = self.password.text()
         if k.complete:

@@ -242,8 +242,8 @@ class PatientPage(QWidget):
             return None
         if not address_book.is_set_up():
             self.note.setText(self.tr(
-                "Kein Adressbuch eingerichtet: lokale vCard-Datei oder Nextcloud unter"
-                " „Adressbücher einrichten …“."))
+                "Kein Adressbuch eingerichtet: vCard-Datei, Kontakte dieses Mac oder Nextcloud"
+                " unter „Adressbücher einrichten …“."))
             if not self.synchronous:
                 self.set_up_address_books()
             return None

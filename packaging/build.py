@@ -60,7 +60,43 @@ def fix_app_plist() -> None:
         print("Info.plist: LSBackgroundOnly entfernt")
     if changed:
         plist.write_bytes(plistlib.dumps(data))
+    localise_usage(plist.parent, data)
     sign_app(plist.parent.parent)
+
+
+# the privacy texts of Info.plist (German there) in English, for a Mac set to English
+_READS = "PseudonyMed reads the documents you choose to pseudonymise."
+USAGE_EN = {
+    "NSDesktopFolderUsageDescription": _READS,
+    "NSDocumentsFolderUsageDescription": _READS,
+    "NSDownloadsFolderUsageDescription": _READS,
+    "NSRemovableVolumesUsageDescription":
+        "PseudonyMed reads documents and writes results on external drives when you keep"
+        " them there.",
+    "NSNetworkVolumesUsageDescription":
+        "PseudonyMed reads documents and writes results on network drives when you keep"
+        " them there.",
+    "NSContactsUsageDescription":
+        "PseudonyMed looks in your contacts for the patient whose documents you pseudonymise."
+        " The contacts stay on this Mac; PseudonyMed changes nothing in them.",
+}
+
+
+def localise_usage(contents: Path, data: dict) -> None:
+    """InfoPlist.strings in German and English, so that macOS asks in the Mac's language;
+    the German texts are those of Info.plist."""
+    def strings(texts: dict[str, str]) -> str:
+        quoted = {k: v.replace("\\", "\\\\").replace('"', '\\"') for k, v in texts.items()}
+        return "".join(f'"{k}" = "{v}";\n' for k, v in quoted.items())
+
+    german = {k: data[k] for k in USAGE_EN if k in data}
+    missing = set(USAGE_EN) - set(german)
+    assert not missing, f"Info.plist without {sorted(missing)}"
+    for language, texts in (("de", german), ("en", USAGE_EN)):
+        folder = contents / "Resources" / f"{language}.lproj"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "InfoPlist.strings").write_text(strings(texts), encoding="utf-8")
+    print("InfoPlist.strings: de, en")
 
 
 def sign_app(app: Path) -> None:
@@ -89,6 +125,10 @@ def smoke_test() -> None:
         assert data.get("CFBundleIconFile"), "App ohne Icon (packaging/icon.py laufen lassen)"
         assert (plist.parent / "Resources" / data["CFBundleIconFile"]).exists() or (
             plist.parent / "Resources" / (data["CFBundleIconFile"] + ".icns")).exists()
+        # without the text macOS refuses the contacts without asking
+        assert data.get("NSContactsUsageDescription"), "Info.plist ohne NSContactsUsageDescription"
+        english = plist.parent / "Resources" / "en.lproj" / "InfoPlist.strings"
+        assert "NSContactsUsageDescription" in english.read_text(encoding="utf-8")
         subprocess.run(["codesign", "--verify", "--deep", "--strict",
                         str(ROOT / "dist" / "PseudonyMed.app")], check=True)
     with tempfile.TemporaryDirectory() as folder:
@@ -101,6 +141,8 @@ def smoke_test() -> None:
         # docrepro's steps, typdoc found through its entry point, and an OCR engine
         assert "docrepro 0.11.0 (typdoc " in out.stdout and "optdoc " in out.stdout
         assert "rapidocr" in out.stdout, "RapidOCR not shipped"
+        if sys.platform == "darwin":  # pyobjc reached Apple's Contacts framework (asks nothing)
+            assert "Kontakte (Mac):      aus; Zugriff" in out.stdout, "Contacts not shipped"
         import importlib.util
 
         if importlib.util.find_spec("de_core_news_md") is not None:
