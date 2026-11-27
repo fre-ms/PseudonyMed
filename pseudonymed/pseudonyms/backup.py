@@ -17,6 +17,15 @@ codes for the same people); merging two different pseudonym spaces is refused.  
 vocabulary follows the mode: restoring makes it exactly what the archive holds, merging
 adds what is new.  An archive made before the vocabulary left the database carries it as
 a table of that database, which is taken over in the same way.
+
+The identifiers (the bundled lists with what the user deleted from them, the user's own
+entries, lists fetched on request) live in lexident's store and travel as a store of their
+own that holds these lists and nothing else: a terminology another program keeps in the
+same store is no part of a backup.  Restoring makes the store's own lists exactly those of
+the archive after copying the current ones aside, and leaves the packages of other
+programs alone; merging adds the user's own entries that are new.  An archive made while
+the identifiers were tables of the database brings those tables, which are taken over as
+on first use.
 """
 
 from __future__ import annotations
@@ -40,15 +49,19 @@ from pseudonymed import TOOL
 from pseudonymed.config import config_path
 from pseudonymed.core.stored import as_stored, field_values
 from pseudonymed.core.text import english, say
+from pseudonymed.detection import identifier_lists, identifiers, lexicon
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms.statistics import key_id, statistics, store_paths
 
-VERSION = 2  # 2: the vocabulary travels as a CSV beside the database, no longer inside it
+# 2: the vocabulary travels as a CSV beside the database, no longer inside it
+# 3: the identifiers travel as a store of their lists, no longer inside the database either
+VERSION = 3
 NAME_DB = "pseudonyme.sqlite"
 NAME_KEY = "pseudonymschluessel.txt"
 NAME_CONFIG = "konfig.toml"
 NAME_VOCABULARY = "vokabular.csv"
+NAME_IDENTIFIERS = "lexident.sqlite"
 NAME_MANIFEST = "manifest.json"
 _MARK = "pseudonymed_sicherung"
 _FORMER_MARK = "anonymed_sicherung"  # backups written before the project was renamed
@@ -241,13 +254,27 @@ def _sha(data: bytes) -> str:
 
 
 def _db_copy(db: Path) -> bytes:
-    """A consistent snapshot of the database through SQLite's backup API, without the table
-    a database may still have from the time it kept the vocabulary."""
+    """A consistent snapshot of the database through SQLite's backup API, without the
+    tables a database may still have from the time it kept the vocabulary and the
+    identifiers."""
     with tempfile.TemporaryDirectory() as folder:
         target = Path(folder) / NAME_DB
         _copy_database(db, target)
         vocab_mod.drop_table(target)
+        identifier_lists.drop_tables(target)
         return target.read_bytes()
+
+
+def _identifiers_copy() -> bytes:
+    """The lists of the identifiers as a store of their own.  Opening the store first takes
+    over what the pseudonym database still holds and installs the bundled lists."""
+    try:
+        with tempfile.TemporaryDirectory() as folder:
+            with identifiers.IdentifierTable() as table:
+                table.export_lists(Path(folder) / NAME_IDENTIFIERS)
+            return (Path(folder) / NAME_IDENTIFIERS).read_bytes()
+    except (identifiers.IdentifierError, StoreError) as error:
+        raise _vocabulary_error(error) from error
 
 
 def _vocabulary_csv() -> bytes:
@@ -261,8 +288,8 @@ def _vocabulary_csv() -> bytes:
 
 
 def _vocabulary_error(error: ValueError) -> BackupError:
-    """An error of the vocabulary or of its store as an error of the backup, with both of
-    its languages."""
+    """An error of the vocabulary, of the identifiers or of their stores as an error of the
+    backup, with both of its languages."""
     if isinstance(error, StoreError):
         return BackupError(say(error.message("de"), error.message("en")))
     return BackupError(*error.args)
@@ -299,10 +326,13 @@ def export(target: Path, store_path: Path | None = None, config: bool = True,
 
 def _collect_contents(db: Path, key: Path, config: bool, vocabulary: bool) -> dict[str, bytes]:
     """The archive's files by name: a database snapshot, the key, and on request the
-    configuration and the vocabulary.  The vocabulary is read first: opening it takes a
-    vocabulary over that the database still holds, and the snapshot is to follow that."""
+    configuration and the vocabulary, and always the identifiers.  Vocabulary and
+    identifiers are read first: opening them takes over what the database still holds, and
+    the snapshot is to follow that."""
     words = _vocabulary_csv() if vocabulary else None
-    contents: dict[str, bytes] = {NAME_DB: _db_copy(db), NAME_KEY: key.read_bytes()}
+    listed = _identifiers_copy()
+    contents: dict[str, bytes] = {NAME_DB: _db_copy(db), NAME_KEY: key.read_bytes(),
+                                  NAME_IDENTIFIERS: listed}
     if config and config_path().exists():
         contents[NAME_CONFIG] = config_path().read_bytes()
     if words is not None:
@@ -419,6 +449,8 @@ class ImportReport:
     config_replaced: bool = False
     vocabulary_terms: int = 0  # restoring: the terms of the vocabulary the archive brought
     new_vocabulary: int = 0  # merging: the terms that were new
+    identifiers: int = 0  # restoring: the identifiers the archive brought
+    new_identifiers: int = 0  # merging: the user's own identifiers that were new
 
     def description(self, language: str = "de") -> str:
         """One sentence per mode: what was restored, or how many entries were new."""
@@ -431,17 +463,19 @@ class ImportReport:
                     + (", Konfiguration ersetzt" if self.config_replaced else "")
                     + (f", Vokabular mit {self.vocabulary_terms} Begriffen"
                        if self.vocabulary_terms else "")
+                    + (f", {self.identifiers} Identifikatoren" if self.identifiers else "")
                     + (". Vorherige Fassung gesichert: "
                        + ", ".join(p.name for p in self.prior_backups)
                        if self.prior_backups else "."))
         return (f"Zusammengeführt: {self.new_patients} neue Patienten, {self.new_aliases} neue"
                 f" Schreibweisen, {self.new_mappings} neue Zuordnungen, {self.new_discarded}"
-                f" neue Verwerfungen, {self.new_vocabulary} neue Vokabeln.")
+                f" neue Verwerfungen, {self.new_vocabulary} neue Vokabeln,"
+                f" {self.new_identifiers} neue eigene Identifikatoren.")
 
     def _description_en(self) -> str:
         """The English sentence of :meth:`description`."""
         words = (f", vocabulary of {self.vocabulary_terms} terms" if self.vocabulary_terms
-                 else "")
+                 else "") + (f", {self.identifiers} identifiers" if self.identifiers else "")
         if self.mode == "ersetzen":
             return (f"Restored: {self.new_patients} patients, {self.new_mappings} mappings,"
                     f" {self.new_discarded} discards; key"
@@ -452,7 +486,8 @@ class ImportReport:
                        if self.prior_backups else "."))
         return (f"Merged: {self.new_patients} new patients, {self.new_aliases} new spellings,"
                 f" {self.new_mappings} new mappings, {self.new_discarded} new discards,"
-                f" {self.new_vocabulary} new vocabulary terms.")
+                f" {self.new_vocabulary} new vocabulary terms,"
+                f" {self.new_identifiers} new identifiers of your own.")
 
 
 def _safety_copy(path: Path, stamp: str) -> Path | None:
@@ -506,6 +541,7 @@ def import_file(archive: Path, store_path: Path | None = None, passphrase: str |
             _merge(e, report)
         _protect(key, db)
         _take_vocabulary(e, contents.get(NAME_VOCABULARY), vocabulary, report)
+        _take_identifiers(e, contents.get(NAME_IDENTIFIERS), report)
     return report
 
 
@@ -641,6 +677,74 @@ def _merge_vocabulary(e: _ImportContext, file: Path, report: ImportReport) -> No
         groups = vocab_mod.table_terms(e.archive_db) or {}
         report.new_vocabulary = sum(vocabulary.add(terms, category)
                                     for category, terms in groups.items())
+
+
+def _take_identifiers(e: _ImportContext, listed: bytes | None, report: ImportReport) -> None:
+    """The archive's identifiers: the snapshot of their store, or for an archive made while
+    they were tables of the database those tables.  Restoring makes the store what the
+    archive holds, merging adds the user's own entries that are new.  A restored database
+    never keeps the tables."""
+    snapshot = e.archive_db.with_name(NAME_IDENTIFIERS)
+    if listed is not None:
+        snapshot.write_bytes(listed)
+    try:
+        if report.mode == "ersetzen":
+            _restore_identifiers(e, snapshot, report)
+        else:
+            _merge_identifiers(e, snapshot, report)
+    except (identifiers.IdentifierError, StoreError) as error:
+        raise _vocabulary_error(error) from error
+
+
+def _restore_identifiers(e: _ImportContext, snapshot: Path, report: ImportReport) -> None:
+    """Make the identifiers what the archive holds, after copying the current lists aside:
+    the lists of its store take the place of the store's own, or the tables an archive of
+    the former kind restored with the database are taken over.  Either way the restored
+    database keeps no such tables, the bundled lists are brought up to date afterwards, and
+    packages of other programs in the store stay as they are."""
+    from pseudonymed.pseudonyms.store import default_path
+
+    if e.db.resolve() != default_path().resolve() \
+            and identifier_lists.former_tables(default_path()) is not None:
+        # another database is restored while the default one still waits to hand its
+        # identifiers over: they move first, so that the copy set aside holds them
+        identifiers.IdentifierTable().close()
+    report.prior_backups += [p for p in (_identifiers_aside(e.stamp),) if p]
+    with identifiers.IdentifierTable(seed=False) as table:
+        if snapshot.exists():
+            table.take_lists(snapshot)
+        table.adopt(e.db)
+        report.identifiers = table.count()
+        table.seed()
+    identifier_lists.drop_tables(e.db)
+
+
+def _identifiers_aside(stamp: str) -> Path | None:
+    """Copy the store's own lists of identifiers into ``lexident.sqlite.vor-import-<stamp>``
+    before a restore replaces them; None when there are none."""
+    target = identifiers.default_path()
+    if not target.exists():
+        return None
+    copy = target.with_name(f"{target.name}.vor-import-{stamp}")
+    with identifiers.IdentifierTable(seed=False) as table:
+        if not table.export_lists(copy):
+            copy.unlink()
+            return None
+    _protect(copy)
+    return copy
+
+
+def _merge_identifiers(e: _ImportContext, snapshot: Path, report: ImportReport) -> None:
+    """Add the user's own identifiers of the archive that the store lacks, each with the
+    source's identifier and what the source says of it when it has them."""
+    if snapshot.exists():
+        with identifiers.IdentifierTable(snapshot, readonly=True) as archived:
+            own = archived.own_rows()
+    else:
+        former = identifier_lists.former_tables(e.archive_db)
+        own = list(former.rows.get(lexicon.USER, [])) if former else []
+    with identifiers.IdentifierTable() as table:
+        report.new_identifiers = table.add_rows(own)
 
 
 def _forget_vocabulary() -> None:

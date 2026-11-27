@@ -7,7 +7,6 @@ demography table, hospital names are invented."""
 from __future__ import annotations
 
 import io
-import sqlite3
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -18,6 +17,7 @@ from typer.testing import CliRunner
 
 from pseudonymed.detection import extra_data as extra
 from pseudonymed.detection import lexicon
+from pseudonymed.detection.identifiers import IdentifierTable
 from tests.test_gui import qapp  # noqa: F401
 
 HEADER = ["Bundesland", "KA-Nr.", "Bezeichnung", "Kurzbezeichnung", "Versorgungssektor",
@@ -72,24 +72,34 @@ def workbook(path: Path) -> Path:
     return path
 
 
-def _rows(con: sqlite3.Connection) -> dict[str, tuple[str, str]]:
-    return {k: (b, z) for b, k, z in con.execute(
-        "SELECT begriff, kennung, zusatz FROM lexikon WHERE quelle = ?",
-        (extra.SOURCE_HOSPITALS_AT, ))}
+def _concepts(table: IdentifierTable) -> dict[str, dict[str, str]]:
+    """What the store says of every hospital of the ministry's list, by its code."""
+    url = table.store.local_url(extra.SOURCE_HOSPITALS_AT)
+    return {concept.code: concept.properties for concept in table.store.package(url).concepts}
 
 
 def test_workbook_is_read_and_mapped(tmp_path: Path) -> None:
-    con = sqlite3.connect(tmp_path / "p.sqlite")
-    report = extra.load_clinics_at(con, file=workbook(tmp_path / "KA-Verzeichnis 2026-09-18.xlsx"))
-    assert report.count == 4 and report.without_municipality == 0 and report.state == "2026-09-18"
-    z = _rows(con)
-    assert set(z) == {"AT:K901.1", "AT:K901.2", "AT:K902", "AT:K903"}
-    assert '"gemeinde":"10101"' in z["AT:K901.1"][1]
-    assert '"gemeinde":"10901"' in z["AT:K901.2"][1]  # second site, own municipality
-    assert '"gemeinde":"10901"' in z["AT:K902"][1] and '"typ":"reha"' in z["AT:K902"][1]
-    assert '"gemeinde":"92301"' in z["AT:K903"][1] and '"typ":"psychiatrie"' in z["AT:K903"][1]
-    assert extra.loaded_sources(con) == [(extra.SOURCE_HOSPITALS_AT, 4,
-                                          extra.loaded_sources(con)[0][2])]
+    with IdentifierTable(tmp_path / "lexident.sqlite") as table:
+        report = extra.load_clinics_at(
+            table, file=workbook(tmp_path / "KA-Verzeichnis 2026-09-18.xlsx"))
+        assert report.count == 4 and report.without_municipality == 0
+        assert report.state == "2026-09-18"
+        z = _concepts(table)
+        assert set(z) == {"AT:K901.1", "AT:K901.2", "AT:K902", "AT:K903"}
+        assert z["AT:K901.1"]["gemeinde"] == "10101"
+        assert z["AT:K901.2"]["gemeinde"] == "10901"  # second site, own municipality
+        assert z["AT:K902"]["gemeinde"] == "10901" and z["AT:K902"]["typ"] == "reha"
+        assert z["AT:K903"]["gemeinde"] == "92301" and z["AT:K903"]["typ"] == "psychiatrie"
+        (source, count, state), = table.loaded()
+        assert (source, count) == (extra.SOURCE_HOSPITALS_AT, 4) and state.startswith("2026-09-18 ")
+        info = table.store.info(table.store.local_url(extra.SOURCE_HOSPITALS_AT))
+        assert info.copyright == extra.CLINICS_AT_NOTE and not info.redistributable
+        assert {e.category for e in table.all_items()} == {"Klinik"} and table.count() == 4
+        towns = {e.term for e in table.store.entries() if e.cls == "hospital-town"}
+        assert towns == {z[code]["ort"] for code in z}
+        # loaded again, the list takes the place of the one before
+        extra.load_clinics_at(table, file=workbook(tmp_path / "KA-Verzeichnis 2026-09-18.xlsx"))
+        assert table.count() == 4 and len(table.loaded()) == 1
 
 
 def test_find_workbook_on_the_page() -> None:
@@ -104,11 +114,12 @@ def test_find_workbook_on_the_page() -> None:
 def test_survives_reloading_the_bundled_data(tmp_path: Path,
                                              monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PSEUDONYMED_LEXIKON", "1")
-    con = sqlite3.connect(tmp_path / "p.sqlite")
-    extra.load_clinics_at(con, file=workbook(tmp_path / "m.xlsx"))
-    monkeypatch.setattr(lexicon, "SOURCES", (lexicon.SOURCES[2],))  # a small bundled source
-    lexicon.ensure(con, force=True)
-    assert len(_rows(con)) == 4
+    titles = next(q for q in lexicon.SOURCES if q.name == "Titel")  # a small bundled source
+    monkeypatch.setattr(lexicon, "SOURCES", (titles,))
+    with IdentifierTable(tmp_path / "lexident.sqlite") as table:
+        extra.load_clinics_at(table, file=workbook(tmp_path / "m.xlsx"))
+        assert table.seed(force=True).keys() == {"Titel"}
+        assert len(_concepts(table)) == 4 and dict(table.categories())["Klinik"] == 4
 
 
 def test_window_loads_from_the_ministry(qapp: QApplication, tmp_path: Path,  # noqa: F811
@@ -142,10 +153,11 @@ def test_command_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
     result = CliRunner().invoke(app, ["datenbank", "zusatzdaten", "kliniken-at", "--datei",
-                                      str(workbook(tmp_path / "m.xlsx")), "--speicher",
-                                      str(tmp_path / "p.sqlite")])
+                                      str(workbook(tmp_path / "m.xlsx"))])
     assert result.exit_code == 0, result.output
     assert "außer zu kommerziellen Zwecken" in result.output and "4 Einträge" in result.output
+    with IdentifierTable() as table:  # in the store of the identifiers, not in the database
+        assert table.path == tmp_path / "daten" / "lexident.sqlite" and table.count() == 4
     wrong = CliRunner().invoke(app, ["datenbank", "zusatzdaten", "unbekannt"])
     assert wrong.exit_code != 0
 
@@ -153,8 +165,9 @@ def test_command_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_broken_file(tmp_path: Path) -> None:
     file = tmp_path / "kaputt.xlsx"
     file.write_bytes(b"kein zip")
-    with pytest.raises(zipfile.BadZipFile):
-        extra.load_clinics_at(sqlite3.connect(":memory:"), file=file)
+    with IdentifierTable(tmp_path / "lexident.sqlite") as table, \
+            pytest.raises(zipfile.BadZipFile):
+        extra.load_clinics_at(table, file=file)
     empty = io.BytesIO()
     with zipfile.ZipFile(empty, "w") as z:
         z.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/'
@@ -162,8 +175,9 @@ def test_broken_file(tmp_path: Path) -> None:
         z.writestr("xl/_rels/workbook.xml.rels", '<Relationships xmlns="http://schemas.'
                    'openxmlformats.org/package/2006/relationships"/>')
     (tmp_path / "leer.xlsx").write_bytes(empty.getvalue())
-    with pytest.raises(extra.ExtraDataError):
-        extra.load_clinics_at(sqlite3.connect(":memory:"), file=tmp_path / "leer.xlsx")
+    with IdentifierTable(tmp_path / "lexident.sqlite") as table, \
+            pytest.raises(extra.ExtraDataError):
+        extra.load_clinics_at(table, file=tmp_path / "leer.xlsx")
 
 
 def test_cells_from_shared_strings_and_values() -> None:

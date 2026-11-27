@@ -4,20 +4,18 @@ Some lists may not travel with PseudonyMed under its free licence.  The Austrian
 health permits reprinting its directory of hospitals "except for commercial purposes", which
 rules out bundling it in an AGPL repository that anyone may sell.  PseudonyMed therefore does not
 ship it: on the user's request it fetches the current workbook from the ministry and writes
-it into the user's own lexicon under a source of its own, which the reloading of the bundled
-data leaves alone.  Nothing is passed on.
+it into the user's own store of identifiers as a list of its own, which the updates of the
+bundled lists leave alone.  Nothing is passed on.
 """
 
 from __future__ import annotations
 
 import csv
 import dataclasses
-import datetime as dt
 import gzip
 import hashlib
 import json
 import re
-import sqlite3
 import unicodedata
 import urllib.parse
 import urllib.request
@@ -27,10 +25,14 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pseudonymed import __version__
 from pseudonymed.core.text import english, say
-from pseudonymed.detection import lexicon
+from pseudonymed.detection import identifier_lists, lexicon
+
+if TYPE_CHECKING:
+    from pseudonymed.detection.identifiers import IdentifierTable
 
 SOURCE_HOSPITALS_AT = "Kliniken AT (BMASGPK)"
 PAGE_HOSPITALS_AT = (
@@ -443,9 +445,10 @@ def hospitals_at_rows(data: bytes) -> tuple[list[lexicon.Row], int]:
     return lines, without
 
 
-def load_clinics_at(connection: sqlite3.Connection, file: Path | None = None,
+def load_clinics_at(table: IdentifierTable, file: Path | None = None,
                     fetcher: Callable[[str], bytes] = fetch) -> LoadReport:
-    """Fetch (or read) the ministry's workbook and replace the source in the lexicon."""
+    """Fetch (or read) the ministry's workbook and put its hospitals into the store of the
+    identifiers as a list of their own, in place of the one loaded before."""
     if file is None:
         page = fetcher(PAGE_HOSPITALS_AT).decode("utf-8", errors="replace")
         url = find_workbook(page)
@@ -458,28 +461,7 @@ def load_clinics_at(connection: sqlite3.Connection, file: Path | None = None,
                                  "The workbook holds no hospitals."))
     date = re.search(r"(\d{4}-\d{2}-\d{2})", urllib.parse.unquote(origin))
     state = date.group(1) if date else ""
-    connection.executescript(lexicon.SCHEMA)
-    connection.execute("DELETE FROM lexikon WHERE quelle = ?", (SOURCE_HOSPITALS_AT,))
-    before = connection.total_changes
-    connection.executemany(
-        "INSERT OR IGNORE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        ((b, k, r, SOURCE_HOSPITALS_AT, code, extra) for b, k, r, code, extra in lines))
-    n = connection.total_changes - before
-    connection.execute(
-        "INSERT OR REPLACE INTO lexikon_meta (quelle, stand, anzahl, geladen) VALUES (?, ?, ?, ?)",
-        (SOURCE_HOSPITALS_AT, f"{state} {hashlib.sha256(data).hexdigest()[:16]}".strip(), n,
-         dt.datetime.now().isoformat(timespec="seconds")))
-    connection.commit()
+    rows = identifier_lists.visible((b, k, code, extra) for b, k, _r, code, extra in lines)
+    n = table.install(SOURCE_HOSPITALS_AT, rows,
+                      f"{state} {hashlib.sha256(data).hexdigest()[:16]}".strip(), CLINICS_AT_NOTE)
     return LoadReport(SOURCE_HOSPITALS_AT, n, without, state, origin)
-
-
-def loaded_sources(connection: sqlite3.Connection) -> list[tuple[str, int, str]]:
-    """User-loaded sources: (source, rows, loaded at)."""
-    bundled = {q.name for q in lexicon.SOURCES}
-    try:
-        return [(q, n, g) for q, n, g in connection.execute(
-            "SELECT quelle, anzahl, geladen FROM lexikon_meta ORDER BY quelle")
-            if q not in bundled]
-    except sqlite3.OperationalError:
-        return []

@@ -108,10 +108,11 @@ class _DefaultVocabulary:
         self._cache: tuple[Path, int, MedicalTerms] | None = None
 
     def __call__(self) -> MedicalTerms:
-        """The vocabulary used by the pipeline: every package of the store, built again
-        only when the store's version changed; the bundled lists when the store is
-        unusable.  A vocabulary that could not be taken over from the pseudonym database
-        is no such case: that error is passed on."""
+        """The vocabulary used by the pipeline: the store's own lists (a terminology of
+        another program in the same store protects nothing), built again only when the
+        store's version changed; the bundled lists when the store is unusable.  A
+        vocabulary that could not be taken over from the pseudonym database is no such
+        case: that error is passed on."""
         from pseudonymed.detection import vocabulary as vocab_mod
 
         try:
@@ -119,7 +120,7 @@ class _DefaultVocabulary:
                 path, version = v.path, v.version()
                 if self._cache is not None and self._cache[:2] == (path, version):
                     return self._cache[2]
-                fb = MedicalTerms(lexterm.cover(v.store),
+                fb = MedicalTerms(v.cover(),
                                   [(k, len(terms)) for k, terms in v.per_category().items()])
         except (sqlite3.Error, OSError, StoreError):
             return load()

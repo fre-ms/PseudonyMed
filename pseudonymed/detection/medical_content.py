@@ -32,14 +32,13 @@ from __future__ import annotations
 import re
 import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 
 from lexcor import StoreError
+from lexident import Candidate, Recogniser
 from optdoc.pagetext import PageText
 
 from pseudonymed.core.model import Hit, Kind
 from pseudonymed.detection import lexicon
-from pseudonymed.detection.identifiers import Candidate, IdentifierTable, Recogniser
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
 CATEGORY_DRUG = "Medikament"
@@ -60,7 +59,6 @@ _OTHER_CATEGORIES = ("Erkrankung", "Symptom", "Befund", "Anatomie", "Physiologie
 _NOT_DRUG = {"sauerstoff", "salz", "kochsalz", "wasser", "zucker", "alkohol", "ethanol",
              "koffein", "nikotin", "luft", "licht", "kaffee", "tee"}
 _ABBREVIATION = re.compile(r"^(?=.{2,6}$)(?=(?:.*[A-ZÄÖÜ]){2}|.*\d)")
-_TRANS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
 # -- measurements -----------------------------------------------------------------------------
 _UNIT = (r"(?:%|‰|mmHg|mm/h|fl|fL|pg|INR|Ratio|(?:Tsd\.?|G|T|Mio\.?)/[µμunp]?[lL]"
@@ -138,11 +136,6 @@ class Selection:
         return self.lab_tests or self.measurements
 
 
-def _norm(text: str) -> str:
-    """Key of a term: whitespace collapsed, case-folded, umlauts transliterated."""
-    return " ".join(text.split()).casefold().translate(_TRANS)
-
-
 def _is_abbreviation(term: str) -> bool:
     """Short entries and abbreviations count only as listed ("Hb", "LSD", "HbA1c")."""
     return len(term) <= 3 or bool(_ABBREVIATION.match(term))
@@ -209,20 +202,22 @@ def dose_before(text: str, start: int) -> tuple[int, int] | None:
 
 
 # -- the lists ------------------------------------------------------------------------------------
-def _rows(connection: sqlite3.Connection,
-          vocabulary: dict[str, list[str]]) -> list[tuple[str, str]]:
+def _drugs(medical: list[tuple[str, str, str]]) -> list[str]:
+    """The drug names of the bundled medical lists, each once: one that also names a
+    disease, a finding and the like is left out, whatever the case of its letters."""
+    other = {lexicon.key(term) for term, cls, _source in medical if cls in _OTHER_CATEGORIES}
+    return list(dict.fromkeys(term for term, cls, _source in medical
+                              if cls == CATEGORY_DRUG and lexicon.key(term) not in other))
+
+
+def _rows(vocabulary: dict[str, list[str]]) -> list[tuple[str, str]]:
     """Drug names and lab names, both always (a term on both lists needs both): those of
-    the lexicon, then the terms of the vocabulary's categories of these names."""
-    connection.executescript(lexicon.SCHEMA)
-    other = ",".join("?" * len(_OTHER_CATEGORIES))
-    lines = [(b, CATEGORY_DRUG) for (b,) in connection.execute(
-        "SELECT DISTINCT l.begriff FROM lexikon l WHERE l.klasse = ? AND l.rolle = ?"
-        " AND NOT EXISTS (SELECT 1 FROM lexikon m WHERE m.begriff = l.begriff"
-        f" AND m.rolle = ? AND m.klasse IN ({other}))",
-        (CATEGORY_DRUG, lexicon.MEDICAL, lexicon.MEDICAL, *_OTHER_CATEGORIES))]
-    lines += [(b, CATEGORY_LAB_TEST) for (b,) in connection.execute(
-        "SELECT DISTINCT begriff FROM lexikon WHERE klasse = ? AND quelle = ?",
-        (CATEGORY_LAB_TEST, SOURCE_LAB_TESTS))]
+    the bundled medical lists (:func:`_drugs`; of the lab names the curated list only),
+    then the terms of the vocabulary's categories of these names."""
+    medical = lexicon.medical_rows()
+    lines = [(term, CATEGORY_DRUG) for term in _drugs(medical)]
+    lines += [(term, CATEGORY_LAB_TEST) for term, cls, source in medical
+              if cls == CATEGORY_LAB_TEST and source == SOURCE_LAB_TESTS]
     for category, names in VOCABULARY_CATEGORIES.items():
         lines += [(b, category) for k, terms in vocabulary.items() if k.lower() in names
                   for b in terms]
@@ -233,23 +228,21 @@ class MedicalSearch:
     """The matcher over drug and lab names plus the chosen levels."""
 
     def __init__(self, lines: list[tuple[str, str]], selection: Selection) -> None:
-        """Index the ``(begriff, klasse)`` rows; drug names under three characters and the
-        everyday substances are left out, a term on both lists is noted in ``both``."""
+        """Index the ``(begriff, klasse)`` rows in lexident's matcher, which gives a place
+        every class that lists it; drug names under three characters and the everyday
+        substances are left out."""
         self.selection = selection
         self.recogniser = Recogniser(registry_numbers=False)
-        per_class: dict[str, set[str]] = {CATEGORY_DRUG: set(), CATEGORY_LAB_TEST: set()}
         for term, category in lines:
             if category == CATEGORY_DRUG and (len(term) < 3
                                               or term.casefold() in _NOT_DRUG):
                 continue
-            if self.recogniser.add(term, category, exact=_is_abbreviation(term)):
-                per_class[category].add(_norm(term))
-        self.both = per_class[CATEGORY_DRUG] & per_class[CATEGORY_LAB_TEST]
+            self.recogniser.add(term, category, exact=_is_abbreviation(term))
 
     def using(self, selection: Selection) -> MedicalSearch:
         """The same lists with another selection (the lists are shared)."""
         new = object.__new__(MedicalSearch)
-        new.selection, new.recogniser, new.both = selection, self.recogniser, self.both
+        new.selection, new.recogniser = selection, self.recogniser
         return new
 
     def missing_lists(self) -> list[str]:
@@ -261,10 +254,12 @@ class MedicalSearch:
             missing.append(CATEGORY_LAB_TEST)
         return missing
 
-    def _category(self, text: str, start: int, end: int, category: str) -> str:
-        """A term on both lists: by the context, else by what is asked for."""
-        if _norm(text[start:end]) not in self.both:
-            return category
+    def _category(self, text: str, k: Candidate) -> str:
+        """The class of a place; one that both lists name: by the context, else by what is
+        asked for."""
+        if len(k.classes) == 1:
+            return k.classes[0]
+        start, end = k.start, k.end
         value, dose = measurement(text, end), dose_after(text, end)
         if value is not None and (dose is None or value[1] >= dose[1]):
             return CATEGORY_LAB_TEST  # "Kalium 4,1 mmol/l"; "Kalium 40 mmol 1-0-1" is a dose
@@ -297,7 +292,7 @@ class MedicalSearch:
         """(start, end, kind) of every element to redact, kind being the pseudonym prefix."""
         out: list[tuple[int, int, str]] = []
         for k in self.recogniser.candidates(text):
-            category = self._category(text, k.start, k.end, k.category)
+            category = self._category(text, k)
             if category == CATEGORY_DRUG:
                 out += self._drug_spans(text, k)
             else:
@@ -323,28 +318,28 @@ class MedicalSearch:
 
 # -- the matcher used by the analysis ----------------------------------------------------------
 class _DefaultSearch:
-    """The matcher for the chosen medical levels, its lists kept until the lexicon or the
-    vocabulary changes; ``cache_clear`` makes the next call rebuild them.  A callable
+    """The matcher for the chosen medical levels, its lists kept until the bundled lists or
+    the vocabulary change; ``cache_clear`` makes the next call rebuild them.  A callable
     object rather than a function with a bolted-on attribute, so that ``cache_clear`` is
     typed."""
 
     def __init__(self) -> None:
         """Starts without cached lists."""
-        self._cache: tuple[tuple[Path, Path, int, int], MedicalSearch] | None = None
+        self._cache: tuple[tuple[object, ...], MedicalSearch] | None = None
 
     def __call__(self, selection: Selection) -> MedicalSearch | None:
         """The matcher for the chosen levels (None when none is chosen), its lists rebuilt
-        only when the lexicon or the vocabulary changed."""
+        only when the bundled lists or the vocabulary changed."""
         if not selection.active:
             return None
         from pseudonymed.detection.vocabulary import Vocabulary
 
         try:
-            with IdentifierTable() as table, Vocabulary() as v:
-                key = (table.path, v.path, lexicon.version(table.connection), v.version())
+            with Vocabulary() as v:
+                key = (v.path, v.version(), lexicon.medical_state())
                 if self._cache is not None and self._cache[0] == key:
                     return self._cache[1].using(selection)
-                search = MedicalSearch(_rows(table.connection, v.per_category()), selection)
+                search = MedicalSearch(_rows(v.per_category()), selection)
         except (sqlite3.Error, OSError, StoreError):
             return MedicalSearch([], selection)
         self._cache = (key, search)

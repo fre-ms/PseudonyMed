@@ -3,29 +3,41 @@
 The GeMTeX annotation guideline for identifying information (2nd version, 7 September
 2025, doi:10.5281/zenodo.15747389) marks more than the patient's names and numbers: the
 patient's PROFESSION, hospitals and practices (LOCATION_HOSPITAL), studies the patient
-takes part in (ID) and academic titles (NAME_TITLE).  The ``feature`` rows of the lexicon
-(:mod:`pseudonymed.detection.lexicon`) list such identifiers.  The identifiers step shows
-them and lets the user add, change and delete rows, and the analysis redacts what it
-finds by default.  Every hit is a suggestion that the visual review may discard.
+takes part in (ID) and academic titles (NAME_TITLE).  Such identifiers live in the store of
+lexident, the library that recognises them (``lexident.sqlite``, a store of lexcor's): the
+bundled lists are installed there as packages, the user's own entries are lists of the
+store's own, and a bundled entry the user deletes is hidden in the store's overlay.  All of
+them are lists the store itself gave a URL
+(:func:`pseudonymed.detection.store_table.own_lists`); a package another program installed
+there under a URL of its own is not PseudonyMed's and is neither shown, looked for nor
+changed.  The identifiers step shows them and lets the user add, change and delete entries
+(:class:`IdentifierTable`), and the analysis redacts what lexident finds by default.  Every
+hit is a suggestion that the visual review may discard.
 
 A bare dictionary match would redact half of every letter ("Bauer", "Leiter", "CARE"),
-so each class has a context rule:
+so each class has a rule of context, which is lexident's (it was written here):
 
-* hospitals (``Klinik``): the official name, or its main part (before " – ", without the
-  legal form), wherever it stands.  Names made only of generic words ("Klinik für
-  Geriatrische Rehabilitation") are skipped;
+* hospitals (``Klinik``): the official name, or its main part, wherever it stands, and
+  "Klinikum <town>" for a town that has a listed hospital;
 * professions (``Beruf``): only next to a cue such as "arbeitet als", "von Beruf",
-  "gelernte", "Ausbildung zur" or "ist", or in a social-history paragraph.  The first
-  profession after a cue takes it ("arbeitet als Arzthelferin beim Hausarzt");
+  "gelernte", or in a social-history paragraph;
 * studies (``Studie``): registry numbers (NCT, DRKS, ISRCTN, EU CT, EudraCT) always;
-  acronyms only in exactly the registered spelling and with a study cue nearby;
+  acronyms only in a registered spelling and with a study cue nearby;
 * titles (``Titel``): only directly before or after a person the analysis found already
   (patient, relatives, referrers, NER).  This pass runs after the NER;
 * every other class, including the user's own (``Sonstiges``): wherever it stands.
 
-An employment status (berentet, arbeitslos) is no PROFESSION in GeMTeX and stays.
-Identifier hits are guesses like the NER's: they are dashed in the review and are not
-part of the final re-check.
+lexident gives a place every class whose rule holds there.  PseudonyMed names a place by
+one class, for its pseudonym and its rule (:func:`category_of`): a hospital before a
+profession before a study before a class of the user's own (by name) before ``Sonstiges``.
+The place is redacted whichever class names it.  An
+employment status (berentet, arbeitslos) is no PROFESSION in GeMTeX and stays.  Identifier
+hits are guesses like the NER's: they are dashed in the review and are not part of the
+final re-check.
+
+Until November 2026 the identifiers were rows of the table ``lexikon`` of the pseudonym
+database.  A database that still has the table hands them over on first use
+(:meth:`IdentifierTable.adopt`).
 """
 
 from __future__ import annotations
@@ -34,124 +46,59 @@ import csv
 import json
 import re
 import sqlite3
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+import lexident
+from lexcor import Change, Store, StoreError
+from lexcor import Entry as Listed
+from lexident.forms import norm
+from lexident.types import HOSPITAL_TOWN, ID, LOCATION_HOSPITAL, OTHER, PROFESSION
 from optdoc.pagetext import PageText
 
+from pseudonymed import environment
 from pseudonymed.core.model import Hit, Kind
-from pseudonymed.detection import lexicon, list_import
+from pseudonymed.core.text import say
+from pseudonymed.detection import identifier_lists as lists
+from pseudonymed.detection import lexicon, list_import, overlay
+from pseudonymed.detection.identifier_lists import CATEGORY_HOSPITAL, CATEGORY_OTHER, Row
+from pseudonymed.detection.store_table import StoreTable, own_lists
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
-CATEGORY_HOSPITAL = "Klinik"
 CATEGORY_PROFESSION = "Beruf"
-CATEGORY_STUDY = "Studie"
+CATEGORY_STUDY = lists.CATEGORY_STUDY
 CATEGORY_TITLE = "Titel"
-CATEGORY_OTHER = "Sonstiges"
 CATEGORIES = (CATEGORY_HOSPITAL, CATEGORY_PROFESSION, CATEGORY_STUDY, CATEGORY_TITLE,
               CATEGORY_OTHER)
 PREFIX = {CATEGORY_OTHER: "Identifikator"}
-FEATURE_SOURCES = ("Berufe", "Titel", "Kliniken", "Studien")
+STORE_NAME = "lexident.sqlite"
 MIN_LENGTH = 3
-MAX_WORDS = 16
-
-# What the step shows and the analysis redacts: identifier rows, without the employment
-# status (no GeMTeX type) and without the registry numbers of the studies (the pattern
-# below finds every registry number, listed or not; the acronym rows carry the number).
-_VISIBLE = ("rolle = 'merkmal' AND klasse != 'Erwerbsstatus'"
-            " AND NOT (klasse = 'Studie' AND quelle = 'Studien' AND zusatz != '')")
-
-_TOKEN = re.compile(r"[^\W\d_]\w*|\d+\w*")  # parts of hyphenated words are tokens of their own
-_TRANS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
-_SUFFIXES = ("ern", "en", "es", "er", "em", "e", "n", "s")
-_GAP = re.compile(r"[\s.,'’&/()+:–—-]{0,6}")
-
-# -- hospital names -----------------------------------------------------------------------------
-_LEGAL_FORM = re.compile(
-    r"[\s,]+(?:gemeinnützige\s+)?(?:g?GmbH(?:\s*&\s*Co\.?\s*KG)?|g?AG|KG|mbH|e\.\s?V\.|eV|SE"
-    r"|KdöR|AöR|gGmbH)\.?\s*$", re.IGNORECASE)
-_SEPARATOR = re.compile(r"\s+[–—-]\s+")
-# "Klinikum Augsburg": a generic hospital word before a town that has a hospital in the list.
-_HOSPITAL_WORDS = (
-    "Klinikum", "Klinik", "Kliniken", "Krankenhaus", "Kreisklinik", "Kreisklinikum",
-    "Kreiskrankenhaus", "Stadtklinik", "Städtisches Klinikum", "Uniklinik", "Uniklinikum",
-    "Universitätsklinik", "Universitätsklinikum", "Bezirksklinikum", "Bezirkskrankenhaus",
-    "Spital", "Kantonsspital", "Landesklinikum", "Landeskrankenhaus", "Fachklinik",
-)
-_BRACKET = re.compile(r"\s*\([^)]*\)")
-# A one-word name must say that it is a hospital ("Eifelklinik", not "Saarland" or "Caritas").
-_HOSPITAL_WORD = re.compile(
-    r"(?i)klinik|clinic|spital|krankenhaus|sanatorium|hospital|zentrum|centrum")
-_GENERIC = {
-    "klinik", "kliniken", "klinikum", "klinika", "krankenhaus", "krankenhaeuser", "fachklinik",
-    "fachkliniken", "fachklinikum", "fachkrankenhaus", "tagesklinik", "nachtklinik",
-    "rehaklinik", "rehabilitationsklinik", "reha", "rehabilitation", "rehabilitationszentrum",
-    "fruehrehabilitation", "zentrum", "zentren", "centrum", "center", "abteilung", "ambulanz",
-    "institutsambulanz", "praxis", "mvz", "medizinisches", "versorgungszentrum", "hospital",
-    "spital", "spitaeler", "sanatorium", "kurklinik", "akutklinik", "privatklinik",
-    "psychiatrie", "psychotherapie", "psychosomatik", "neurologie", "geriatrie", "orthopaedie",
-    "chirurgie", "innere", "medizin", "kinder", "jugend", "jugendliche", "erwachsene",
-    "kinder-", "jugendpsychiatrie", "gesundheit", "suchtmedizin", "sucht", "entwoehnung",
-    "standort", "haus", "station", "tagesstaette", "wohnheim", "heim", "pflegeheim",
-    "fuer", "und", "der", "die", "das", "des", "dem", "den", "am", "an", "im", "in", "zum",
-    "zur", "st", "sankt", "gmbh", "ggmbh", "ag", "kg", "co", "ev", "mbh", "uniklinik",
-    "universitaetsklinikum", "universitaetsklinik", "kreisklinik", "kreiskrankenhaus",
-    "stadtklinik", "bezirksklinikum", "bezirkskrankenhaus", "landesklinik", "landeskrankenhaus",
-    "allgemeines", "allgemeinkrankenhaus", "evangelisches", "katholisches", "staedtisches",
-    "akademisches", "lehrkrankenhaus", "therapie", "therapiezentrum", "psychische",
-    "psychischen", "psychiatrisch", "seelische", "seelischen", "behandlung", "pflege",
-    "akutgeriatrie", "geriatrische", "neurologische", "psychiatrische", "psychosomatische",
-}
-
-# -- professions ----------------------------------------------------------------------------------
-# The cue has to stand right before the profession ("gelernter Tischler", "arbeitet seit 2010
-# als Busfahrer", "ist Polizist", "Beruf: Lehrerin") or right after it ("Lehrerin von Beruf",
-# "als Koch tätig", "Landwirt im Ruhestand").
-_PROFESSION_BEFORE = re.compile(
-    r"(?i)(?:\b(?:gelernte?[nrms]?|ehemalige?[nrms]?|frühere?[nrms]?|pensionierte?[nrms]?"
-    r"|berentete?[nrms]?|verrentete?[nrms]?|selbstst?ändige?[nrms]?|freiberufliche?[nrms]?"
-    r"|ausgebildete?[nrms]?|angehende?[nrms]?|arbeitslose?[nrms]?)"
-    r"|\b(?:arbeite[nt]?e?[nt]?|gearbeitet|tätig|beschäftigt|angestellt|jobbt|Tätigkeit|Arbeit"
-    r"|Job|Stelle|Anstellung|zuletzt|Ausbildung|Umschulung|Lehre|Weiterbildung|Beruf|beruflich)"
-    r"\b(?:[ \t]+\S+){0,4}?[ \t]+(?:als|zum|zur)"
-    r"|\b(?:von[ \t]+Beruf|Beruf(?:sbezeichnung)?[ \t]*:|beruflich)"
-    r"|\b(?:ist|war|sei|wäre|wurde|wird|bin)(?:[ \t]+(?:von[ \t]+Beruf|seit[ \t]+\S+|jetzt|früher"
-    r"|dort|hier|eine?r?|gelernte?r?|ehemalige?r?))?)\s+$")
-_PROFESSION_AFTER = re.compile(
-    r"(?i)^[ \t]*,?[ \t]*(?:\S+[ \t]+){0,3}?(?:von[ \t]+Beruf|tätig|beschäftigt|angestellt"
-    r"|gearbeitet|im[ \t]+Ruhestand|in[ \t]+Rente|berentet|a\.[ \t]?D\.)")
-_SALUTATION = re.compile(r"(?i)\b(?:Herr|Herrn|Frau|Hr|Fr|Dr|Prof|Familie|Fam)\.?\s+$")
-# Words of the classification that rarely name the patient's own profession.
-_NOT_PROFESSION = {"angehoerige", "angehoeriger", "ordner", "ordnerin", "mitglied", "partner",
-                   "partnerin", "spender", "spenderin", "halter", "halterin", "betreuer",
-                   "betreuerin", "patient", "patientin", "pate", "patin"}
-_SOCIAL_HISTORY = re.compile(
-    r"(?i)\b(?:Sozialanamnese|Berufsanamnese|Sozial-\s*und\s*Berufsanamnese|Soziale\s+Situation"
-    r"|Sozialanamnestisch|Beruf\s*:)")
-_HEADING = re.compile(r"\n[A-ZÄÖÜ][\w /-]{2,40}:\s*(?:\n|$)")
-_SENTENCE_END = re.compile(r"[.!?](?=\s+[A-ZÄÖÜ])|\n\s*\n")
-
-# -- studies --------------------------------------------------------------------------------------
-_ACRONYM = re.compile(r"(?=(?:.*[A-ZÄÖÜ]){2}|.*\d)(?=(?:.*[^\W\d_]){2})")  # "CARE", "HoPe", "POEM3"
-_STUDY_CUE = re.compile(
-    r"(?i)\b(?:Studie\w*|Studien\w*|Trial|Register\w*|Kohorte\w*|randomisiert\w*|eingeschlossen"
-    r"|Einschluss|Teilnahme|teilnehm\w*|Proband\w*|Prüfzentrum|Prüfärzt\w*|Prüfarzt|Screening)\b")
-_STUDY_ID = re.compile(r"\b(?:NCT\d{8}|DRKS\d{8}|ISRCTN\d{8}|20\d{2}-5\d{5}-\d{2}-\d{2})\b")
-_EUDRACT = re.compile(r"(?i)\bEudra\s?CT(?:[\s-]*(?:Nr\.?|No\.?|Nummer|number))?[\s:]*"
-                      r"((?:19|20)\d{2}-\d{6}-\d{2})\b")
-
+# the class a place is named by when it carries several: these first, in this order (the
+# name of a hospital stands for itself, a profession has its cue right beside it, a study
+# only somewhere near), then a class of the user's own by its name, and the catch-all last
+_RANK = (LOCATION_HOSPITAL, PROFESSION, ID)
 _PERSON_KINDS = (Kind.NAME, Kind.FIRST_NAME, Kind.SURNAME, Kind.BIRTH_NAME)
+Recogniser = lexident.Recogniser
+Written = dict[str, list[Row]]  # the rows taken over into each list, by the list's URL
+Key = tuple[str, str, str]  # term, class, identifier
 
 
-def _norm(token: str) -> str:
-    """Case-folded token with the umlauts transliterated, the key of the index."""
-    return token.casefold().translate(_TRANS)
+class IdentifierError(ValueError):
+    """The store does not hold the identifiers it was to take over; the message is for the
+    user."""
+
+
+def default_path() -> Path:
+    """The store that holds the identifiers: ``lexident.sqlite`` in the folder of the lex
+    stores (:func:`pseudonymed.environment.lex_folder`)."""
+    return environment.lex_folder() / STORE_NAME
 
 
 def rule_name(category: str) -> str:
     """Rule id of a class: ``identifier.hospital``, ``identifier.sonstiges`` …"""
-    return "identifikator." + (re.sub(r"\W+", "_", _norm(category)).strip("_") or "sonstiges")
+    return "identifikator." + (re.sub(r"\W+", "_", norm(category)).strip("_") or "sonstiges")
 
 
 def prefix(category: str) -> str:
@@ -160,264 +107,13 @@ def prefix(category: str) -> str:
     return PREFIX.get(category, category.strip() or PREFIX[CATEGORY_OTHER])
 
 
-def _specific(name: str) -> bool:
-    """Whether a hospital name holds a word of its own (a place, a saint, a brand)
-    rather than generic words only."""
-    for token in _TOKEN.findall(name):
-        part = _norm(token)
-        if (len(part) >= 3 and part.isalpha() and part not in _GENERIC
-                and not re.search(r"(?:isch|lich)(?:e[nrms]?)?$", part)):
-            return True
-    return False
-
-
-def hospital_forms(name: str) -> set[str]:
-    """The official name, its main part before a dash and both without the legal form or
-    parentheses; only forms with a word of their own."""
-    forms = {name, _SEPARATOR.split(name)[0]}
-    forms |= {_LEGAL_FORM.sub("", f).strip(" ,") for f in forms}
-    forms |= {_BRACKET.sub("", f).strip(" ,") for f in forms}
-    return {f for f in forms if len(f) >= 6 and _specific(f)
-            and (len(_TOKEN.findall(f)) > 1 or _HOSPITAL_WORD.search(f))}
-
-
-def _title_forms(term: str) -> set[str]:
-    """A title as entered; nothing for a nobiliary particle ("zur", "von")."""
-    if len(term) < 2 or (term.islower() and len(term) <= 4):
-        return set()
-    return {term}
-
-
-def _study_forms(term: str) -> set[str]:
-    """A study acronym as registered; nothing for a plain word ("Dekan", "Radix")."""
-    if len(term) < MIN_LENGTH or not _ACRONYM.match(term):
-        return set()
-    return {term}
-
-
-def _word_forms(term: str, exact: bool | None) -> set[str]:
-    """Any other entry as entered; one matched only in its exact spelling may be short ("Hb")."""
-    return {term} if len(term) >= (2 if exact else MIN_LENGTH) else set()
-
-
-def _forms_for(term: str, category: str, exact: bool | None) -> set[str]:
-    """The forms under which an entry of a class goes into the index: hospitals with their
-    short forms, professions without words that rarely name the patient's own."""
-    if category == CATEGORY_TITLE:
-        return _title_forms(term)
-    if category == CATEGORY_STUDY:
-        return _study_forms(term)
-    if category == CATEGORY_HOSPITAL:
-        return hospital_forms(term)
-    forms = _word_forms(term, exact)
-    if category == CATEGORY_PROFESSION:
-        return {f for f in forms if _norm(f) not in _NOT_PROFESSION}
-    return forms
-
-
-# -- matching -------------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class _Pattern:
-    """One indexed form of an entry: its tokens as typed and normalised."""
-
-    normal: tuple[str, ...]
-    original: tuple[str, ...]
-    category: str
-    exact: bool  # registered spelling only (acronyms, titles)
-    closing: str  # closing full stop or parenthesis of the entry ("Dr. med.", "Halle (Saale)")
-
-
-@dataclass(frozen=True)
-class Candidate:
-    """A span of the text that an entry of the class matched."""
-
-    start: int
-    end: int
-    category: str
-
-
-class Recogniser:
-    """The identifier rows with their matcher."""
-
-    def __init__(self, registry_numbers: bool = True) -> None:
-        self.registry_numbers = registry_numbers  # NCT, DRKS … as study hits
-        self.index: dict[str, list[_Pattern]] = {}
-        self.per_class: dict[str, int] = {}
-        self._seen: set[tuple[tuple[str, ...], str]] = set()
-
-    @property
-    def count(self) -> int:
-        """How many rows the matcher took on, over all classes."""
-        return sum(self.per_class.values())
-
-    def add(self, term: str, category: str, exact: bool | None = None) -> int:
-        """Add one row (hospitals with their short forms); returns how many forms.
-        ``exact`` asks for the registered spelling (default: titles and studies only)."""
-        term = " ".join(term.split())
-        new = sum(self._form(form, category, exact) for form in _forms_for(term, category, exact))
-        if new:
-            self.per_class[category] = self.per_class.get(category, 0) + 1
-        return new
-
-    def add_place(self, place: str) -> int:
-        """Short hospital names for a town with a hospital: "Klinikum <town>",
-        "Krankenhaus <town>" …, also without a parenthesised addition ("Halle (Saale)")."""
-        places = {" ".join(place.split()), _BRACKET.sub("", place).strip()}
-        return sum(self._form(f"{w} {o}", CATEGORY_HOSPITAL)
-                   for o in places if len(o) >= 3 for w in _HOSPITAL_WORDS)
-
-    def _form(self, form: str, category: str, exact: bool | None = None) -> int:
-        """Index one form (1) unless it is empty, too long or known already (0)."""
-        original = tuple(_TOKEN.findall(form))
-        if not original or len(original) > MAX_WORDS:
-            return 0
-        normal = tuple(_norm(t) for t in original)
-        if (normal, category) in self._seen:
-            return 0
-        self._seen.add((normal, category))
-        if exact is None:
-            exact = category in (CATEGORY_TITLE, CATEGORY_STUDY)
-        self.index.setdefault(normal[0], []).append(
-            _Pattern(normal, original, category, exact, form[-1] if form[-1] in ".)" else ""))
-        return 1
-
-    @staticmethod
-    def _matches(muster_original: str, muster_normal: str, token: str, exact: bool) -> bool:
-        """Whether a token is one word of an entry: exactly, or normalised with an
-        inflection ending, keeping a capital where the entry has one."""
-        if exact:
-            return token == muster_original
-        if muster_original[:1].isupper() and not token[:1].isupper():
-            return False
-        n = _norm(token)
-        if n == muster_normal:
-            return True
-        return len(muster_normal) >= 4 and any(
-            n.endswith(s) and n[:-len(s)] == muster_normal for s in _SUFFIXES)
-
-    def _starting_at(self, text: str, tokens: list[re.Match[str]],
-                     i: int) -> list[tuple[int, _Pattern]]:
-        """Every entry that matches from token ``i`` on: (end offset, entry)."""
-        n = _norm(tokens[i].group())
-        key = {n} | {n[:-len(s)] for s in _SUFFIXES if n.endswith(s) and len(n) > len(s) + 3}
-        matches: list[tuple[int, _Pattern]] = []
-        for index_key in key:
-            for m in self.index.get(index_key, ()):
-                end = self._end_of(text, tokens, i, m)
-                if end is not None:
-                    matches.append((end, m))
-        return matches
-
-    def _end_of(self, text: str, tokens: list[re.Match[str]], i: int,
-                m: _Pattern) -> int | None:
-        """End offset of entry ``m`` when its words match the tokens from ``i`` on, each
-        joined to the previous one; None otherwise."""
-        if i + len(m.normal) > len(tokens):
-            return None
-        for k, (orig, norm) in enumerate(zip(m.original, m.normal, strict=True)):
-            t = tokens[i + k]
-            if k and not _connected(text, tokens[i + k - 1], t):
-                return None
-            if not self._matches(orig, norm, t.group(), m.exact):
-                return None
-        end = tokens[i + len(m.normal) - 1].end()
-        if m.closing and text[end:end + 1] == m.closing:
-            end += 1
-        return end
-
-    def candidates(self, text: str, title: bool = False) -> list[Candidate]:
-        """Non-overlapping hits in reading order that pass their class's context rule;
-        titles only when asked (they need the people found)."""
-        tokens = list(_TOKEN.finditer(text))
-        out: list[Candidate] = []
-        profession_end = 0
-        i = 0
-        while i < len(tokens):
-            selected = self._match_at(text, tokens, i, title, profession_end)
-            if selected is None:
-                i += 1
-                continue
-            out.append(selected)
-            if selected.category == CATEGORY_PROFESSION:
-                profession_end = selected.end
-            while i < len(tokens) and tokens[i].start() < selected.end:
-                i += 1
-        if not title and self.registry_numbers:
-            out += _study_numbers(text, out)
-            out.sort(key=lambda k: k.start)
-        return out
-
-    def _match_at(self, text: str, tokens: list[re.Match[str]], i: int, title: bool,
-                  profession_end: int) -> Candidate | None:
-        """The longest entry at token ``i`` of the wanted kind (titles or the rest) that
-        passes its class's context rule; None when none does."""
-        a = tokens[i].start()
-        for end, m in sorted(self._starting_at(text, tokens, i), key=lambda t: -(t[0] - a)):
-            if (m.category == CATEGORY_TITLE) == title \
-                    and _in_context(m.category, text, a, end, profession_end):
-                return Candidate(a, end, m.category)
-        return None
-
-
-def _connected(text: str, before: re.Match[str], token: re.Match[str]) -> bool:
-    """Whether two neighbouring tokens belong to one entry: at most six characters of
-    punctuation or space between them and no paragraph break."""
-    between = text[before.end():token.start()]
-    return _GAP.fullmatch(between) is not None and "\n\n" not in between
-
-
-def _in_context(category: str, text: str, a: int, b: int, profession_end: int) -> bool:
-    """Whether a hit passes the context rule of its class: a profession needs a cue, a study
-    acronym a study word nearby; every other class matches wherever it stands."""
-    if category == CATEGORY_PROFESSION:
-        return _profession_in_context(text, a, b, profession_end)
-    if category == CATEGORY_STUDY:
-        return _study_in_context(text, a, b)
-    return True
-
-
-def _sentence_start(text: str, a: int, boundary: int) -> int:
-    """Offset where the sentence around ``a`` begins: after the last sentence end within
-    80 characters, never before ``boundary``."""
-    begin = max(0, a - 80, boundary)
-    last = None
-    for m in _SENTENCE_END.finditer(text, begin, a):
-        last = m
-    return last.end() if last is not None else begin
-
-
-def _profession_in_context(text: str, a: int, b: int, profession_end: int) -> bool:
-    """Whether a profession at ``a:b`` has a cue right before or after it, or stands in a
-    social-history paragraph; a salutation before it makes it a name."""
-    before = text[_sentence_start(text, a, profession_end):a]
-    if _SALUTATION.search(before):
-        return False  # "Herr Bauer": a name
-    if _PROFESSION_BEFORE.search(before):
-        return True
-    sentence_end = _SENTENCE_END.search(text, b)
-    if _PROFESSION_AFTER.search(text[b:min(b + 60,
-                                           sentence_end.start() if sentence_end else len(text))]):
-        return True
-    window = text[max(0, a - 300, profession_end):a]
-    header = None
-    for m in _SOCIAL_HISTORY.finditer(window):
-        header = m
-    return header is not None and not _HEADING.search(window, header.end())
-
-
-def _study_in_context(text: str, a: int, b: int) -> bool:
-    """Whether a study word stands within 40 characters on the same line."""
-    before = text[max(0, a - 40):a].rsplit("\n", 1)[-1]
-    after = text[b:b + 40].split("\n", 1)[0]
-    return bool(_STUDY_CUE.search(before) or _STUDY_CUE.search(after))
-
-
-def _study_numbers(text: str, occupied: list[Candidate]) -> list[Candidate]:
-    """Registry numbers (NCT, DRKS, ISRCTN, EU CT, labelled EudraCT) outside the hits."""
-    spans = [(m.start(), m.end()) for m in _STUDY_ID.finditer(text)]
-    spans += [(m.start(1), m.end(1)) for m in _EUDRACT.finditer(text)]
-    return [Candidate(x, y, CATEGORY_STUDY) for x, y in spans
-            if not any(x < k.end and y > k.start for k in occupied)]
+def category_of(classes: Iterable[str]) -> str:
+    """The one class PseudonyMed names a place by that carries these classes of lexident's:
+    a hospital before a profession before a study before a class of the user's own (the
+    first by name) before the catch-all."""
+    first = min(classes, key=lambda cls: (
+        _RANK.index(cls) if cls in _RANK else len(_RANK) + (cls == OTHER), cls))
+    return lists.category_of(first)
 
 
 # -- hits -----------------------------------------------------------------------------------------
@@ -444,71 +140,31 @@ def find_identifiers(page: PageText, recogniser: Recogniser, assignment: Pseudon
     matches: list[Hit] = []
     for k in recogniser.candidates(page.text):
         if _free(k.start, k.end, existing + matches):
-            matches.append(_hit(page, k.start, k.end, k.category, assignment, source))
+            matches.append(_hit(page, k.start, k.end, category_of(k.classes), assignment,
+                                source))
     return matches
 
 
 def find_titles(page: PageText, recogniser: Recogniser, assignment: PseudonymAssignment,
                 existing: list[Hit], source: str = "text") -> list[Hit]:
     """Titles directly before a person ("Prof. Dr. med. Person K7Q4MX") or after it
-    ("…, Dipl.-Ing."), run after the NER; adjacent titles become one hit."""
-    persons = [f for f in existing if f.end > f.start
+    ("…, Dipl.-Ing."), run after the NER; adjacent titles become one hit, and a chain that
+    overlaps an existing hit is left out."""
+    persons = [(f.start, f.end) for f in existing if f.end > f.start
                and (f.kind in _PERSON_KINDS or f.rule == "ner.person")]
     if not persons:
         return []
-    candidates = recogniser.candidates(page.text, title=True)
-    matches = [
-        _hit(page, chain[0].start, chain[-1].end, CATEGORY_TITLE, assignment, source)
-        for p in persons
-        for chain in (_titles_before(page.text, candidates, p.start),
-                      _titles_after(page.text, candidates, p.end))
-        if chain]
-    return _without_overlap(matches, existing)
-
-
-def _adjacent(between: str) -> bool:
-    """Whether a title and its neighbour are separated by spaces, one comma and at most
-    one line break only."""
-    return re.fullmatch(r"[ \t]*,?[ \t]*\n?[ \t]*", between) is not None
-
-
-def _titles_before(text: str, candidates: list[Candidate], boundary: int) -> list[Candidate]:
-    """The unbroken chain of titles that ends right before ``boundary``, a person's start."""
-    chain: list[Candidate] = []
-    for k in reversed([k for k in candidates if k.end <= boundary]):
-        if not _adjacent(text[k.end:boundary]):
-            break
-        chain.insert(0, k)
-        boundary = k.start
-    return chain
-
-
-def _titles_after(text: str, candidates: list[Candidate], boundary: int) -> list[Candidate]:
-    """The unbroken chain of titles that starts right after ``boundary``, a person's end."""
-    chain: list[Candidate] = []
-    for k in [k for k in candidates if k.start >= boundary]:
-        if not _adjacent(text[boundary:k.start]):
-            break
-        chain.append(k)
-        boundary = k.end
-    return chain
-
-
-def _without_overlap(matches: list[Hit], existing: list[Hit]) -> list[Hit]:
-    """The hits in reading order, the longer first at the same start, each one only where
-    neither an existing hit nor an accepted one lies."""
-    unique: list[Hit] = []
-    for f in sorted(matches, key=lambda f: (f.start, -f.end)):
-        if _free(f.start, f.end, existing + unique):
-            unique.append(f)
-    return unique
+    chains = lexident.titles(page.text, recogniser.candidates(page.text, title=True), persons,
+                             [(f.start, f.end) for f in existing])
+    return [_hit(page, chain.start, chain.end, CATEGORY_TITLE, assignment, source)
+            for chain in chains]
 
 
 # -- the table behind the identifiers step ------------------------------------------------------
 @dataclass(frozen=True)
 class Entry:
-    """One visible row of the lexicon: the identifier, its class, where it came from, the
-    source's id and the JSON addition of the reference data."""
+    """One identifier of the step: the term, its class, where it came from, the source's
+    id of what it names and, for a hospital, the JSON addition of the reference data."""
 
     term: str
     category: str
@@ -523,8 +179,8 @@ class Entry:
 
     @property
     def own(self) -> bool:
-        """Whether the user entered or changed the row (bundled rows leave a trace when
-        deleted, the user's own do not)."""
+        """Whether the user entered or changed the row (bundled rows are hidden when
+        deleted and can be brought back, the user's own are gone)."""
         return self.source == lexicon.USER
 
     @property
@@ -568,152 +224,315 @@ _DETAILS: dict[str, Callable[[Entry], str]] = {
 }
 
 
-class IdentifierTable:
-    """Reads and writes the identifier rows of the lexicon in the pseudonym database.
-    Deleting or changing a bundled row records the deletion, so that the next update of
-    the bundled data does not bring it back; a changed bundled row becomes the user's."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
-        """Open the pseudonym database (the configured one by default), create the tables
-        it lacks and load the bundled lexicon where its data changed."""
-        from pseudonymed.pseudonyms import store
+def _place_from(extra: str) -> str:
+    """The town in a hospital's JSON addition; empty without one or when unreadable."""
+    return lists.town_of(lists.addition_of(extra))
 
-        self.path = Path(path) if path else store.default_path()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(str(self.path), check_same_thread=False)
-        self.connection.executescript(store._SCHEMA)  # the whole store, not only the lexicon
-        store._protect(self.path, 0o600)
-        lexicon.ensure(self.connection)
-        self.connection.executescript(lexicon.SCHEMA)
 
-    def close(self) -> None:
-        """Close the database connection."""
-        self.connection.close()
+@dataclass(frozen=True)
+class _Place:
+    """Where an identifier stands in the store: package, concept, term and its language,
+    and whether the package is a list of the user's own."""
 
-    def __enter__(self) -> IdentifierTable:
-        return self
+    url: str
+    code: str
+    term: str
+    language: str
+    own: bool
 
-    def __exit__(self, *exc: object) -> None:
-        self.close()
+
+@dataclass(frozen=True)
+class _View:
+    """The identifiers as the store shows them in one state: the entries in the order of
+    the alphabet, and the places behind each key."""
+
+    state: tuple[int, int]
+    entries: list[Entry]
+    places: dict[Key, list[_Place]]
+
+
+def _own_name(category: str) -> str:
+    """The name of the user's own list of a class."""
+    return f"{lexicon.USER}: {category}"
+
+
+def _urls(store: Store) -> list[str]:
+    """The URLs of the store's own lists: only these are PseudonyMed's identifiers."""
+    return [info.url for info in own_lists(store)]
+
+
+def _user_urls(store: Store) -> set[str]:
+    """The lists of the user's own entries among the store's own lists."""
+    return {info.url for info in own_lists(store)
+            if info.title.startswith(f"{lexicon.USER}: ")}
+
+
+def _normal(key: Key) -> Key:
+    """A key as the view files it: the letters A to Z of its term without their case."""
+    return lists.key(" ".join(key[0].split())), key[1], key[2]
+
+
+def _state(store: Store) -> tuple[int, int]:
+    """What tells one state of a store's file from another: the counter every change
+    raises, and when the file was written last.  A file put in a store's place, as a
+    restored backup is, may well carry the counter of the one before."""
+    return store.version(), store.path.stat().st_mtime_ns
+
+
+Said = dict[tuple[str, str], Mapping[str, str]]  # (package, concept): its properties
+
+
+def _said(store: Store, urls: Iterable[str]) -> Said:
+    """What some packages of a store say of each of their concepts."""
+    return {(url, concept.code): concept.properties
+            for url in urls for concept in store.package(url).concepts}
+
+
+def _entry(e: Listed, source: str, said: Mapping[str, str]) -> Entry:
+    """A term in force as an entry of the table, with what its package says of it."""
+    addition = lists.unfold(said, e.term)
+    return Entry(e.term, lists.category_of(e.cls), source, "" if e.code == e.term else e.code,
+                 json.dumps(addition, ensure_ascii=False) if addition else "")
+
+
+def _read(store: Store) -> _View:
+    """The identifiers in force in the store's own lists.  The towns that have a hospital
+    are none: they only form names of hospitals.  A hospital carries what its package says
+    of it."""
+    titles = {info.url: info.title or info.url for info in own_lists(store)}
+    own = _user_urls(store)
+    found = [e for e in store.entries(titles) if e.cls != HOSPITAL_TOWN]
+    said = _said(store, sorted({e.system for e in found if e.cls == LOCATION_HOSPITAL}))
+    entries: list[Entry] = []
+    places: dict[Key, list[_Place]] = {}
+    for e in found:
+        entry = _entry(e, lexicon.USER if e.system in own else titles[e.system],
+                       said.get((e.system, e.code), {}))
+        entries.append(entry)
+        places.setdefault(_normal(entry.key), []).append(
+            _Place(e.system, e.code, e.term, e.language, e.system in own))
+    entries.sort(key=lambda entry: (lists.key(entry.term), entry.term, entry.category,
+                                    entry.code))
+    return _View(_state(store), entries, places)
+
+
+_views: dict[str, _View] = {}  # the store read last, by its key: a window asks many times
+
+
+def _view(store: Store) -> _View:
+    """The identifiers in force in a store, read again only when the store has changed."""
+    seen = _views.get(store.key)
+    if seen is None or seen.state != _state(store):
+        _views.clear()
+        seen = _views[store.key] = _read(store)
+    return seen
+
+
+class IdentifierTable(StoreTable):
+    """Reads and writes the identifiers in lexident's store.  A bundled entry that is
+    deleted or changed is hidden in the store's overlay, so that the next update of the
+    bundled data does not bring it back; a changed entry becomes the user's own."""
+
+    def __init__(self, path: str | Path | None = None, seed: bool = True,
+                 readonly: bool = False) -> None:
+        """Open the store in the file ``path`` (default: ``lexident.sqlite`` in the folder
+        of the lex stores).  With ``seed`` the bundled lists whose data changed are
+        installed, and before that the default store takes over the identifiers a pseudonym
+        database still keeps in tables.  ``readonly`` reads a store that exists and writes
+        nothing; lexcor's ``StoreError`` says that there is none."""
+        self.path = Path(path) if path else default_path()
+        self._open(lexident.open_store(self.path, readonly=readonly), seed, path is None)
 
     # -- reading -------------------------------------------------------------------------------
-    def version(self) -> int:
-        """Counter that every change raises; the matcher rebuilds when it moved."""
-        return lexicon.version(self.connection)
-
     def count(self) -> int:
-        """How many rows the step shows."""
-        return int(self.connection.execute(
-            f"SELECT COUNT(*) FROM lexikon WHERE {_VISIBLE}").fetchone()[0])
+        """How many entries the step shows."""
+        return len(_view(self.store).entries)
 
     def categories(self) -> list[tuple[str, int]]:
-        """Every class of the visible rows with its number of rows, the largest first."""
-        return [(k, n) for k, n in self.connection.execute(
-            f"SELECT klasse, COUNT(*) FROM lexikon WHERE {_VISIBLE} GROUP BY klasse"
-            " ORDER BY COUNT(*) DESC, klasse")]
+        """Every class of the entries with its number of entries, the largest first."""
+        counts = Counter(entry.category for entry in _view(self.store).entries)
+        return sorted(counts.items(), key=lambda kn: (-kn[1], kn[0]))
 
     def all_items(self, category: str = "") -> list[Entry]:
-        """The visible rows in alphabetical order, of one class when given."""
-        sql = f"SELECT begriff, klasse, quelle, kennung, zusatz FROM lexikon WHERE {_VISIBLE}"
-        values: list[str] = []
-        if category:
-            sql += " AND klasse = ?"
-            values.append(category)
-        return [Entry(*r) for r in self.connection.execute(
-            sql + " ORDER BY begriff COLLATE NOCASE", values)]
+        """The entries in alphabetical order, of one class when given."""
+        return [entry for entry in _view(self.store).entries
+                if not category or entry.category == category]
 
     def deleted(self) -> int:
-        """How many bundled rows the user deleted or changed (kept from coming back)."""
-        return int(self.connection.execute(
-            "SELECT COUNT(*) FROM lexikon_geloescht").fetchone()[0])
+        """How many entries the user deleted or changed that can be brought back (those
+        the overlay hides in the store's own lists)."""
+        return len({(line.code, line.value) for line in self._hides()})
 
-    def keys_for(self, term: str, category: str = "") -> list[tuple[str, str, str]]:
-        """Keys of the visible rows with this term (case-insensitive), in one class or all."""
-        sql = f"SELECT begriff, klasse, kennung FROM lexikon WHERE {_VISIBLE} AND begriff = ?"
-        values = [" ".join(term.split())]
-        if category:
-            sql += " AND klasse = ?"
-            values.append(category)
-        return [tuple(r) for r in self.connection.execute(sql, values)]
+    def _hides(self) -> list[Change]:
+        """The lines of the overlay that hide something in the store's own lists."""
+        mine = set(_urls(self.store))
+        return [line for line in self.store.overlay()
+                if line.action == "hide" and line.url in mine]
 
-    def _row(self, key: tuple[str, str, str]) -> Entry | None:
-        """The row with this key, visible or not; None when there is none."""
-        r = self.connection.execute(
-            "SELECT begriff, klasse, quelle, kennung, zusatz FROM lexikon"
-            " WHERE begriff = ? AND klasse = ? AND kennung = ?", key).fetchone()
-        return Entry(*r) if r else None
+    def keys_for(self, term: str, category: str = "") -> list[Key]:
+        """Keys of the entries with this term (case-insensitive), in one class or all."""
+        wanted = lists.key(" ".join(term.split()))
+        return [entry.key for entry in _view(self.store).entries
+                if lists.key(entry.term) == wanted and (not category
+                                                        or entry.category == category)]
+
+    def loaded(self) -> list[tuple[str, int, str]]:
+        """The lists that are neither bundled nor the user's own entries, such as the data
+        fetched on request: (list, terms, state of its data)."""
+        own = _user_urls(self.store)
+        return [(info.title, info.terms, info.version) for info in own_lists(self.store)
+                if info.url not in own and info.title != lists.TOWNS
+                and info.title not in lexicon.FEATURE_SOURCES]
+
+    def _row(self, key: Key) -> Entry | None:
+        """The entry with this key; None when there is none in force."""
+        wanted = _normal(key)
+        return next((entry for entry in _view(self.store).entries
+                     if _normal(entry.key) == wanted), None)
 
     # -- writing -------------------------------------------------------------------------------
-    def _finish(self, n: int) -> int:
-        """Commit; raise the version when ``n`` rows changed; return ``n``."""
-        if n:
-            lexicon.increment_version(self.connection)
-        self.connection.commit()
-        return n
+    def _rewrite(self, category: str, add: Iterable[Row] = (),
+                 drop: Iterable[tuple[str, str]] = ()) -> None:
+        """Write the user's own list of a class again with rows added and entries (term
+        and identifier) taken out; a list left without a term goes."""
+        name = _own_name(category)
+        url = self.store.local_url(name)
+        held = [info for info in self.store.packages() if info.url == url]
+        gone = set(drop)
+        rows = [row for row in (lists.rows_of(self.store.package(url).concepts, category)
+                                if held else []) if (row.term, row.code) not in gone]
+        rows += list(add)
+        if rows:
+            self.store.add_package(lists.package(name, rows))
+        elif held:
+            self.store.remove_package(url)
+        if category == CATEGORY_HOSPITAL:
+            self._settle_towns()
+
+    def _settle_towns(self) -> None:
+        """Keep the list of the towns that have a hospital in step with the hospitals in
+        force: lexident forms "Klinikum <town>" of them."""
+        towns = sorted({_place_from(entry.extra) for entry in _view(self.store).entries
+                        if entry.category == CATEGORY_HOSPITAL} - {""})
+        url = self.store.local_url(lists.TOWNS)
+        held = any(info.url == url for info in self.store.packages())
+        if not towns:
+            if held:
+                self.store.remove_package(url)
+        elif not held or [c.code for c in self.store.package(url).concepts] != towns:
+            self.store.add_package(lists.towns_package(towns))
 
     def add(self, terms: Iterable[str], category: str = CATEGORY_OTHER) -> int:
         """Insert the user's own identifiers; returns how many were new."""
         category = category.strip() or CATEGORY_OTHER
-        before = self.connection.total_changes
-        self.connection.executemany(
-            "INSERT OR IGNORE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-            " VALUES (?, ?, ?, ?, '', '')",
-            [(b, category, lexicon.FEATURE, lexicon.USER)
-             for b in dict.fromkeys(" ".join(str(b).split()) for b in terms)
-             if len(b) >= MIN_LENGTH and not b.startswith("#")])
-        return self._finish(self.connection.total_changes - before)
+        return self.add_rows(Row(" ".join(str(b).split()), category) for b in terms)
 
-    def _delete(self, e: Entry) -> int:
-        """Delete one row, recording the deletion of a bundled one; returns 1 or 0."""
-        if not e.own:
-            self.connection.execute(
-                "INSERT OR IGNORE INTO lexikon_geloescht (begriff, klasse, kennung)"
-                " VALUES (?, ?, ?)", e.key)
-        before = self.connection.total_changes
-        self.connection.execute(
-            "DELETE FROM lexikon WHERE begriff = ? AND klasse = ? AND kennung = ?", e.key)
-        return self.connection.total_changes - before
+    def add_rows(self, rows: Iterable[Row]) -> int:
+        """Insert rows as entries of the user's own, with the source's identifier and what
+        the source says where a row carries them (an entry that was a bundled one before
+        the user changed it); returns how many were new."""
+        places = _view(self.store).places
+        new: dict[Key, Row] = {}
+        for row in rows:
+            key = _normal((row.term, row.category, row.code))
+            if len(row.term) >= MIN_LENGTH and not row.term.startswith("#") \
+                    and key not in places:
+                new.setdefault(key, row)
+        for category in dict.fromkeys(row.category for row in new.values()):
+            self._rewrite(category, add=[row for row in new.values()
+                                         if row.category == category])
+        return len(new)
 
-    def remove(self, key: Iterable[tuple[str, str, str]]) -> int:
-        """Delete the rows with these keys; returns how many went."""
-        n = 0
-        for s in key:
-            e = self._row(s)
-            if e is not None:
-                n += self._delete(e)
-        return self._finish(n)
+    def own_rows(self) -> list[Row]:
+        """The user's own entries as rows, each with the source's identifier and what the
+        source says of it when it has them."""
+        return [row for url in sorted(_user_urls(self.store))
+                for row in lists.rows_of(self.store.package(url).concepts)]
 
-    def change(self, key: tuple[str, str, str], term: str | None = None,
-               category: str | None = None) -> Entry | None:
-        """Change term or class of one row and return it as it is now; None when the
-        result is too short or exists already."""
-        e = self._row(key)
-        if e is None:
-            return None
-        new_term = " ".join((term if term is not None else e.term).split())
-        new_category = (category if category is not None else e.category).strip() or CATEGORY_OTHER
+    def remove(self, key: Iterable[Key]) -> int:
+        """Delete the entries with these keys: one of the user's own is taken out of its
+        list, any other is hidden in the overlay.  Returns how many went."""
+        places = _view(self.store).places
+        found = list(dict.fromkeys((k, place) for k in map(_normal, key)
+                                   for place in places.get(k, [])))
+        listed = [(k, place) for k, place in found if not place.own]
+        overlay.hide(self.store, [Change(place.url, place.code, "hide", place.term,
+                                         place.language) for _k, place in listed])
+        self._drop_own([(k, place) for k, place in found if place.own])
+        if any(k[1] == CATEGORY_HOSPITAL for k, _place in listed):
+            self._settle_towns()
+        return len(found)
+
+    def _drop_own(self, found: list[tuple[Key, _Place]]) -> None:
+        """Take entries of the user's own out of their lists."""
+        own: dict[str, list[tuple[str, str]]] = {}
+        for k, place in found:
+            own.setdefault(k[1], []).append((place.term, k[2]))
+        for category, gone in own.items():
+            self._rewrite(category, drop=gone)
+
+    def _target(self, e: Entry, term: str | None, category: str | None) -> tuple[str, str] | None:
+        """Term and class an entry is to have after a change; None when the result is too
+        short, is the entry as it stands or exists already."""
+        new_term = " ".join((e.term if term is None else term).split())
+        new_category = (e.category if category is None else category).strip() or CATEGORY_OTHER
         if len(new_term) < MIN_LENGTH or (new_term, new_category) == (e.term, e.category):
             return None
         same_row = (new_term.casefold(), new_category) == (e.term.casefold(), e.category)
         if not same_row and self._row((new_term, new_category, e.code)) is not None:
             return None
-        self._delete(e)
-        self.connection.execute(
-            "INSERT OR REPLACE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (new_term, new_category, lexicon.FEATURE, lexicon.USER, e.code, e.extra))
-        self._finish(1)
-        return Entry(new_term, new_category, lexicon.USER, e.code, e.extra)
+        return new_term, new_category
+
+    def change(self, key: Key, term: str | None = None,
+               category: str | None = None) -> Entry | None:
+        """Change term or class of one entry and return it as it is now; None when the
+        result is too short or exists already.  The entry becomes the user's own and keeps
+        the source's identifier and what the source says of it."""
+        e = self._row(key)
+        target = self._target(e, term, category) if e is not None else None
+        if e is None or target is None:
+            return None
+        new_term, new_category = target
+        place = _view(self.store).places[_normal(e.key)][0]
+        addition = lists.unfold(self.store.properties(place.url, place.code), place.term)
+        self.remove([e.key])
+        self._rewrite(new_category, add=[Row(new_term, new_category, e.code, addition)])
+        shown = addition if new_category == CATEGORY_HOSPITAL else {}
+        return Entry(new_term, new_category, lexicon.USER, e.code,
+                     json.dumps(shown, ensure_ascii=False) if shown else "")
 
     def restore(self) -> int:
-        """Forget the deletions and reload the bundled identifier sources; returns how many
-        deletions were forgotten (rows fetched on request, such as the Austrian hospitals,
-        have to be fetched again)."""
-        n = self.deleted()
-        self.connection.execute("DELETE FROM lexikon_geloescht")
-        lexicon.ensure(self.connection, force=True, sources=FEATURE_SOURCES)
-        self._finish(1)
-        return n
+        """Bring back what is hidden and install the bundled lists again; returns how many
+        deletions were forgotten."""
+        lines = self._hides()
+        for line in lines:
+            self.store.undo(line)
+        self.seed(force=True)
+        return len({(line.code, line.value) for line in lines})
+
+    def install(self, source: str, rows: Iterable[Row], state: str = "",
+                note: str = "") -> int:
+        """Take a list in under the name of its source, in place of the one of that name
+        (data fetched on the user's request); returns how many terms it holds."""
+        terms = self.store.add_package(lists.package(source, rows, state, note)).terms
+        self._settle_towns()
+        return terms
+
+    # -- the lists as a whole --------------------------------------------------------------------
+    def export_lists(self, path: Path) -> int:
+        """Write the store's own lists, with what the overlay says of them, into a store of
+        their own in the file ``path`` (what a backup carries: no package of another
+        program travels); returns how many lists."""
+        with lexident.open_store(path) as copy:
+            return copy_lists(self.store, copy)
+
+    def take_lists(self, path: Path) -> int:
+        """Make the store's own lists exactly those of the store in the file ``path``
+        (written by :meth:`export_lists`); packages of other programs stay as they are.
+        Returns how many lists came."""
+        with lexident.open_store(path, readonly=True) as source:
+            return copy_lists(source, self.store)
 
     # -- CSV -------------------------------------------------------------------------------------
     def export_csv(self, path: Path, category: str = "") -> int:
@@ -732,62 +551,184 @@ class IdentifierTable:
         read_in = list_import.read_list(path, "klasse", category)
         return sum(self.add(b, k) for k, b in read_in.groups.items()), read_in.lines
 
+    # -- bundled lists ---------------------------------------------------------------------------
+    def seed(self, force: bool = False) -> dict[str, int]:
+        """Install every bundled list whose data is not the one the store holds (all of
+        them with ``force``); what the overlay hides in one stays hidden.  Returns the
+        number of terms of each list installed; nothing while the bundled lists are
+        switched off."""
+        if not lexicon.active() and not force:
+            return {}
+        held = {info.url: info.version for info in self.store.packages()}
+        loaded: dict[str, int] = {}
+        for q in lexicon.available():
+            state = lexicon.state(q)
+            if force or held.get(self.store.local_url(q.name)) != state:
+                rows = lists.visible(((b, k, code, extra)
+                                      for b, k, _r, code, extra in lexicon.rows_of(q)),
+                                     studies=q.name == "Studien")
+                loaded[q.name] = self.store.add_package(
+                    lists.package(q.name, rows, state, lexicon.note(q))).terms
+        if loaded:
+            self._settle_towns()
+        return loaded
 
-# -- the matcher used by the analysis ------------------------------------------------------------
-class _DefaultRecogniser:
-    """The matcher over the identifier rows, kept until the table's version changes;
-    ``cache_clear`` makes the next call rebuild it.  A callable object rather than a
-    function with a bolted-on attribute, so that ``cache_clear`` is typed."""
-
-    def __init__(self) -> None:
-        """Starts without a cached matcher."""
-        self._cache: tuple[Path, int, Recogniser] | None = None
-
-    def __call__(self) -> Recogniser:
-        """The matcher over the identifier rows, rebuilt only when the lexicon changed;
-        without a usable database it knows the registry-number patterns only."""
+    # -- the former tables -----------------------------------------------------------------------
+    def adopt(self, database: Path) -> int | None:
+        """Take over the identifiers of a pseudonym database that still keeps them in
+        tables: the store is made to hold exactly the tables' rows, the result is compared
+        with them (every term with its class and what its row says, the deletions, the
+        towns), then the tables are dropped.  Tables never filled are only dropped.
+        Returns how many rows moved, None when there is no table.  Whatever stops the
+        take-over is an :class:`IdentifierError`: nobody is to go on with other lists while
+        the user's own wait in the tables."""
+        former = lists.former_tables(database)
+        if former is None:
+            return None
         try:
-            with IdentifierTable() as ident:
-                version = ident.version()
-                if self._cache is not None and self._cache[0] == ident.path \
-                        and self._cache[1] == version:
-                    return self._cache[2]
-                recogniser = _recogniser_from(ident.connection)
-                path = ident.path
-        except (sqlite3.Error, OSError):
-            return Recogniser()
-        self._cache = (path, version, recogniser)
-        return recogniser
+            if former.rows:
+                self._take_over(former)
+            lists.drop_tables(database)
+        except (StoreError, sqlite3.Error, OSError) as error:
+            raise IdentifierError(say(
+                "Die Identifikatoren ließen sich nicht aus der Pseudonym-Datenbank in die"
+                f" Ablage von lexident übernehmen ({error}). Die Tabellen bleiben erhalten.",
+                "The identifiers could not be taken over from the pseudonym database into"
+                f" lexident's store ({error}). The tables stay as they are.")) from error
+        return sum(len(rows) for rows in former.rows.values())
 
-    def cache_clear(self) -> None:
-        """Forget the cached matcher (tests and the step after edits)."""
-        self._cache = None
+    def _take_over(self, former: lists.Former) -> None:
+        """Make the store's own lists hold exactly the rows of the former tables: a list
+        for every source and class (the user's own entries as lists of their own), the
+        towns of the hospitals, the deletions as hidden terms.  A list of the user's own
+        entries the tables do not have (a copy the former hand-over left) goes; whatever
+        else is in force in the store's own lists is hidden.  Packages of other programs
+        are neither compared nor touched."""
+        written: Written = {}
+        for source, rows in former.rows.items():
+            for name, part in _lists_of(source, rows).items():
+                url = self.store.add_package(lists.package(
+                    name, part, former.states.get(source, ""), _note(source))).url
+                written[url] = part
+        towns = sorted({lists.town_of(row.addition) for part in written.values()
+                        for row in part if row.category == CATEGORY_HOSPITAL} - {""})
+        mine = {*written, self.store.add_package(lists.towns_package(towns)).url}
+        self._forget(mine)
+        overlay.hide(self.store, self._hidden(former.deleted, written, mine), known=False)
+        self._check(written, towns)
+
+    def _forget(self, mine: set[str]) -> None:
+        """Before the deletions of the former tables are written: remove the lists of the
+        user's own entries that are not among those just written, and forget what the
+        overlay hides in any of them."""
+        # the hand-over named the user's entries of a single class by the source alone
+        stale = (_user_urls(self.store) | {self.store.local_url(lexicon.USER)}) - mine
+        for url in stale:
+            self.store.remove_package(url)
+        for line in self.store.overlay():
+            if line.action == "hide" and line.url in mine | stale:
+                self.store.undo(line)
+
+    def _hidden(self, deleted: list[lists.Deletion], written: Written,
+                mine: set[str]) -> list[Change]:
+        """The lines that hide what the former tables did not hold: what the user deleted,
+        in every list of its class that is not the user's own, and whatever else is in
+        force in the store's own lists."""
+        own = _user_urls(self.store)
+        lines = [Change(url, code or term, "hide", term, lists.LANGUAGE)
+                 for term, category, code in deleted for url, part in written.items()
+                 if url not in own and part[0].category == category]
+        return lines + [Change(e.system, e.code, "hide", e.term, e.language)
+                        for e in self.store.entries(_urls(self.store)) if e.system not in mine]
+
+    def _check(self, written: Written, towns: list[str]) -> None:
+        """What is in force in the store's own lists must be the rows that were to be taken
+        over: every term with its class and what its row says, and the towns of the
+        hospitals."""
+        wanted = Counter((row.term, lists.cls_of(row.category), tuple(sorted(
+            row.addition.items()))) for part in written.values() for row in part)
+        said = _said(self.store, written)
+        entries = list(self.store.entries(_urls(self.store)))
+        found = Counter(
+            (e.term, e.cls, tuple(sorted(lists.unfold(said.get((e.system, e.code), {}),
+                                                      e.term).items())))
+            for e in entries if e.cls != HOSPITAL_TOWN)
+        if found != wanted or sorted(e.term for e in entries if e.cls == HOSPITAL_TOWN) != towns:
+            raise IdentifierError(say(
+                "Die Identifikatoren in der Ablage von lexident stimmen nicht mit den Tabellen"
+                " der Pseudonym-Datenbank überein. Die Tabellen bleiben erhalten.",
+                "The identifiers in lexident's store do not agree with the tables of the"
+                " pseudonym database. The tables stay as they are."))
 
 
-standard = _DefaultRecogniser()
+def copy_lists(source: Store, target: Store) -> int:
+    """Make the own lists of ``target`` exactly those of ``source``: every list is written
+    under the URL the target gives its name, with the lines of the overlay that speak of
+    it; an own list of the target that the source lacks goes, with its lines.  Packages of
+    other programs are left alone in both stores.  Returns how many lists were copied."""
+    urls: dict[str, str] = {}
+    for info in own_lists(source):
+        package = source.package(info.url)
+        package.url = ""
+        urls[info.url] = target.add_package(package).url
+    kept = set(urls.values())
+    gone = set(_urls(target)) - kept
+    for url in gone:
+        target.remove_package(url)
+    for line in target.overlay():
+        if line.url in kept | gone:
+            target.undo(line)
+    overlay.take(target, [replace(line, url=urls[line.url]) for line in source.overlay()
+                          if line.url in urls])
+    return len(urls)
 
 
-def _recogniser_from(connection: sqlite3.Connection) -> Recogniser:
-    """The matcher over the visible rows, with short hospital names for every town that
-    has a listed hospital."""
-    recogniser = Recogniser()
-    places: set[str] = set()
-    for term, category, extra in connection.execute(
-            f"SELECT begriff, klasse, zusatz FROM lexikon WHERE {_VISIBLE}"):
-        recogniser.add(term, category)
-        if category == CATEGORY_HOSPITAL:
-            places.add(_place_from(extra))
-    for place in sorted(places - {""}):
-        recogniser.add_place(place)
-    return recogniser
+def _note(source: str) -> str:
+    """What a list says of where it comes from: the first line of a bundled file, the
+    ministry's terms for its list of hospitals."""
+    from pseudonymed.detection import extra_data
+
+    if source == extra_data.SOURCE_HOSPITALS_AT:
+        return extra_data.CLINICS_AT_NOTE
+    return next((lexicon.note(q) for q in lexicon.available((source,))), "")
 
 
-def _place_from(extra: str) -> str:
-    """The town in a hospital row's JSON addition; empty without one or when unreadable."""
-    if not extra.startswith("{"):
-        return ""
+def _lists_of(source: str, rows: list[Row]) -> dict[str, list[Row]]:
+    """The rows of one source as lists by name: one list for a source of one class, one for
+    each class of a source of several, and always one for each class of the user's own."""
+    by_class: dict[str, list[Row]] = {}
+    for row in rows:
+        by_class.setdefault(row.category, []).append(row)
+    if source == lexicon.USER:
+        return {_own_name(category): part for category, part in by_class.items()}
+    if len(by_class) == 1:
+        return {source: rows}
+    return {f"{source}: {category}": part for category, part in by_class.items()}
+
+
+_recognisers: dict[str, tuple[tuple[int, int], Recogniser]] = {}  # of the store read last
+
+
+def _recogniser(store: Store) -> Recogniser:
+    """lexident's recogniser over what is in force in the store's own lists (a package of
+    another program in the same store is not looked for), built again only when the store
+    has changed."""
+    state = _state(store)
+    built = _recognisers.get(store.key)
+    if built is None or built[0] != state:
+        _recognisers.clear()
+        built = _recognisers[store.key] = (
+            state, lexident.recogniser_of(store.entries(_urls(store))))
+    return built[1]
+
+
+def standard() -> Recogniser:
+    """lexident's recogniser over the store's own lists, built again only when the store
+    has changed; without a usable store it knows the registry numbers only.
+    Identifiers that could not be taken over from the pseudonym database are no such case:
+    that error is passed on."""
     try:
-        return str(json.loads(extra).get("ort") or "")
-    except ValueError:
-        return ""
-
+        with IdentifierTable() as table:
+            return _recogniser(table.store)
+    except (sqlite3.Error, OSError, StoreError):
+        return Recogniser()

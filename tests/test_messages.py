@@ -42,9 +42,7 @@ NOT_MESSAGES = {
         "bitte", "frei"},
     "detection/extra_data.py": {"träger"},  # a column name of the ministry's workbook
     "detection/fuzzy.py": {"März"},
-    "detection/identifiers.py": {"Beruf", "Städtisches Klinikum", "Universitätsklinik",
-                                 "Universitätsklinikum", "und", "der", "die", "das", "des",
-                                 "dem", "den", "im", "in"},
+    "detection/identifiers.py": {"Beruf"},
     "detection/lexicon.py": {"Körperteile", "ja", "Beruf"},
     "detection/ner.py": {"sjögren"},
     "detection/number_words.py": {"ein", "eine", "einer", "und"},

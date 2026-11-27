@@ -38,19 +38,20 @@ def test_statistics_lines_order() -> None:
     st = stats_mod.Statistics(
         path=Path("/x/p.sqlite"), exists=True, per_category=[("Patient", 1)], discarded=2,
         discarded_per_rule=[("ner.person", 2)], vocabulary_categories=[("Test", 1)],
-        lexicon_categories=[("Klinik", "merkmal", 5), ("Anatomie", "fach", 7)],
-        lexicon_extra=[("Kliniken AT", 3, "2026-11-12T10:00:00")], config_present=True)
+        identifier_categories=[("Klinik", 5), ("Beruf", 7)],
+        identifier_lists=[("Kliniken AT", 3, "2026-11-12 0123abcd")], config_present=True)
     assert [k for k, _ in st.lines()] == [
         "Datenbank", "Vorhanden", "Größe", "Schema", "Schlüsseldatei", "Schlüssel vorhanden",
         "Schlüssel-Kennung", "Patienten", "Verknüpfte Schreibweisen", "Zuordnungen gesamt",
         "    Patient", "Gemerkte Verwerfungen", "    ner.person", "Erster Eintrag",
         "Letzter Eintrag", "Integrität", "Seiten / frei", "Vokabular (Begriffe)", "    Test",
-        "Lexikon (Einträge)", "    Klinik (Identifikator)", "    Anatomie (Fachklasse)",
+        "Identifikatoren (Einträge)", "    Klinik", "    Beruf",
         "Zusatzdaten (selbst geladen)", "Konfiguration"]
     values = dict(st.lines())
-    assert values["Lexikon (Einträge)"] == "12" and values["Schema"] == "–"
+    assert values["Identifikatoren (Einträge)"] == "12" and values["Schema"] == "–"
     assert values["Zusatzdaten (selbst geladen)"] == "Kliniken AT: 3 Einträge, 2026-11-12"
-    assert "Lexikon (Einträge)" not in dict(stats_mod.Statistics(path=Path("/x")).lines())
+    assert "Identifikatoren (Einträge)" not in dict(
+        stats_mod.Statistics(path=Path("/x")).lines())
 
 
 def test_archive_path(tmp_path: Path) -> None:

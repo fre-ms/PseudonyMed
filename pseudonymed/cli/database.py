@@ -49,55 +49,12 @@ def database_status(store: StoreOption = None) -> None:
         typer.echo(f"{feature:<{width}}  {value}")
 
 
-@command(database_app, "auslagern", "hand-over", help=w(
-    "Die Identifikatoren als Pakete in die Ablage von lexident schreiben\n(eine Kopie:"
-    " PseudonyMeds Tabelle bleibt, wie sie ist).",
-    "Write the identifiers as packages into the store of lexident (a copy: PseudonyMed's"
-    " table stays as it is)."))
-def hand_over(
-    target: Annotated[Path | None, typer.Option(
-        *flags("--ziel"), help=w("Ordner der Ablage (Standard: der Ordner, in dem auch die"
-                                 " Ablage des Fachvokabulars liegt).",
-                                 "Folder of the store (default: the folder that holds the"
-                                 " store of the vocabulary as well)."))] = None,
-    store: StoreOption = None,
-    yes: Annotated[bool, typer.Option(*flags("--ja"), help=w("Ohne Rückfrage.",
-                                                             "Without asking for confirmation."))]
-    = False,
-) -> None:
-    """Copy the identifier rows into lexident's store, check what was written and list
-    the packages."""
-    import lexcor
-
-    from pseudonymed.detection import handover
-
-    folder = target if target is not None else environment.lex_folder()
-    if not yes and not typer.confirm(
-            w(f"Die Identifikatoren nach {folder} schreiben?",
-              f"Write the identifiers to {folder}?")):
-        raise typer.Exit(code=1)
-    try:
-        written = handover.hand_over(folder, store)
-    except (handover.HandoverError, lexcor.StoreError, OSError) as e:
-        abort(error_message(e), cause=e)
-    typer.echo(str(written.store))
-    if written.kept is not None:
-        typer.echo(w(f"  vorher gesichert als {written.kept.name}",
-                     f"  kept as it was in {written.kept.name}"))
-    for title, concepts, terms in written.packages:
-        typer.echo(f"  {terms:>7}  {title}" + ("" if terms == concepts else w(
-            f"  ({concepts} Einträge)", f"  ({concepts} entries)")))
-    typer.echo(w("Geprüft: Die Ablage enthält die Identifikatoren, die PseudonyMed hält."
-                 " PseudonyMed liest sie weiter aus seiner eigenen Tabelle.",
-                 "Checked: the store holds the identifiers that PseudonyMed holds."
-                 " PseudonyMed goes on reading them from its own table."))
-
-
 @command(database_app, "zusatzdaten", "extra-data",
     help=w("Daten laden, die PseudonyMed nicht mitliefern darf, direkt aus der Quelle in die"
-           " eigene\nDatenbank (bisher: Krankenanstalten in Österreich, BMASGPK).",
+           " eigene\nAblage der Identifikatoren (bisher: Krankenanstalten in Österreich,"
+           " BMASGPK).",
            "Load data that PseudonyMed may not ship, straight from the source into your own"
-           " database (so far: hospitals in Austria, BMASGPK)."))
+           " store of identifiers (so far: hospitals in Austria, BMASGPK)."))
 def load_extra_data(
     name: Annotated[str, typer.Argument(help=w("Welche Zusatzdaten: kliniken-at",
                                                "Which extra data: hospitals-at"))],
@@ -105,9 +62,9 @@ def load_extra_data(
         *flags("--datei"), help=w("Excel-Mappe des Ministeriums statt Abruf über das Netz",
                                   "The ministry's Excel workbook instead of fetching it over the"
                                   " network"))] = None,
-    store: StoreOption = None,
 ) -> None:
-    """Load a supplementary data set (so far only the Austrian hospitals) into the lexicon."""
+    """Load a supplementary data set (so far only the Austrian hospitals) into the store of
+    the identifiers."""
     from pseudonymed.detection import extra_data as extra_data_mod
     from pseudonymed.detection.identifiers import IdentifierTable
 
@@ -120,8 +77,8 @@ def load_extra_data(
                  " reprinting with attribution except for commercial purposes. PseudonyMed loads"
                  " the list into your local database only and does not pass it on."))
     try:
-        with IdentifierTable(store) as table:
-            report = extra_data_mod.load_clinics_at(table.connection, file=file)
+        with IdentifierTable() as table:
+            report = extra_data_mod.load_clinics_at(table, file=file)
     except (extra_data_mod.ExtraDataError, OSError, ValueError) as e:
         reason = error_message(e)
         abort(w(f"Laden fehlgeschlagen: {reason}", f"Loading failed: {reason}"), cause=e)

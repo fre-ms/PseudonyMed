@@ -1,8 +1,10 @@
 """The protected vocabulary as packages of lexterm's store.
 
 Every term the guesswork (NER, fuzzy search) must leave alone lives in the store of lexterm
-(``lexterm.sqlite``, a store of lexcor's): a category is a package of that store, known by
-its title, and a term is a concept whose code is the term itself.  On first use the bundled
+(``lexterm.sqlite``, a store of lexcor's): a category is one of the store's own lists
+(:func:`pseudonymed.detection.store_table.own_lists`; a terminology another program
+installed there under a URL of its own is none), known by its title, and a term is a concept
+whose code is the term itself.  On first use the bundled
 lists are installed as packages (Wikidata medicine, body parts, findings terms, eponyms);
 from then on the store is the truth: the vocabulary step shows, sorts, edits, adds and
 deletes terms and exchanges CSV.  What a user deletes is hidden in the store's overlay and
@@ -20,25 +22,22 @@ from __future__ import annotations
 
 import csv
 import gzip
-import json
-import os
 import sqlite3
 import string
-import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import closing
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
 import lexterm
 from lexcor import Change, Concept, Cover, Entry, Package, Store, StoreError, Term
-from lexcor.store import OVERLAY_FORMAT
 
 from pseudonymed import environment
 from pseudonymed.core.text import say
-from pseudonymed.detection import list_import
+from pseudonymed.detection import list_import, overlay
+from pseudonymed.detection.store_table import StoreTable, own_lists
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 CATEGORY_MEDICINE = "Medizin (Wikidata)"
@@ -62,7 +61,6 @@ _ORIGIN = {
 STORE_NAME = "lexterm.sqlite"
 LANGUAGE = "de"
 MIN_LENGTH = 3
-MANY = 100  # from this many terms on, hiding them is written to the overlay in one step
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 Item = tuple[str, str]  # category, term
 
@@ -194,9 +192,10 @@ def _origin(entry: Entry, only_term: bool, added: bool) -> Change:
 
 
 def _read(store: Store) -> _View:
-    """The terms in force in a store: German ones and those that name no language."""
-    titles = {info.url: info.title or info.url for info in store.packages()}
-    entries = list(store.entries())
+    """The terms in force in the store's own lists: German ones and those that name no
+    language."""
+    titles = {info.url: info.title or info.url for info in own_lists(store)}
+    entries = list(store.entries(titles))
     terms = Counter((e.system, e.code) for e in entries)
     added = {(c.url, c.code, c.value, c.language) for c in store.overlay() if c.action == "add"}
     origins: dict[Item, list[Change]] = {}
@@ -223,7 +222,7 @@ def _view(store: Store) -> _View:
     return seen
 
 
-class Vocabulary:
+class Vocabulary(StoreTable):
     """Reads and writes the protected vocabulary in lexterm's store."""
 
     def __init__(self, path: str | Path | None = None, seed: bool = True,
@@ -234,48 +233,16 @@ class Vocabulary:
         database still keeps in a table.  ``readonly`` reads a store that exists and writes
         nothing; lexcor's ``StoreError`` says that there is none."""
         self.path = Path(path) if path else default_path()
-        self.store = lexterm.open_store(self.path, readonly=readonly)
-        if readonly:
-            return
-        try:
-            os.chmod(self.path, 0o600)
-        except OSError:
-            pass
-        if seed:
-            try:
-                self._prepare(default=path is None)
-            except BaseException:
-                self.close()
-                raise
-
-    def _prepare(self, default: bool) -> None:
-        """What first use owes the store: the vocabulary a pseudonym database still keeps
-        (the default store takes it over from the default database), then the bundled
-        lists the store lacks."""
-        if default:
-            from pseudonymed.pseudonyms.store import default_path as database
-
-            self.adopt(database())
-        self.seed()
-
-    def close(self) -> None:
-        """Close the store."""
-        self.store.close()
-
-    def __enter__(self) -> Vocabulary:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
+        self._open(lexterm.open_store(self.path, readonly=readonly), seed, path is None)
 
     # -- reading -----------------------------------------------------------------------------------
-    def version(self) -> int:
-        """Counter that every change raises; the matcher rebuilds when it moved."""
-        return self.store.version()
-
     def _view(self) -> _View:
         """The terms in force."""
         return _view(self.store)
+
+    def cover(self) -> Cover:
+        """The matcher over the vocabulary: lexterm's cover over the store's own lists."""
+        return lexterm.cover(self.store, [info.url for info in own_lists(self.store)])
 
     def count(self) -> int:
         """How many terms the vocabulary holds."""
@@ -331,22 +298,7 @@ class Vocabulary:
         for line in lines:
             if line.action == "add":
                 self.store.undo(line)
-        self._hide_lines([line for line in lines if line.action == "hide"])
-
-    def _hide_lines(self, lines: list[Change]) -> None:
-        """Put hiding lines into the overlay: one by one, or from :data:`MANY` on as one
-        overlay taken in at once.  The lines are the same; but the store writes every
-        single change to the disk on its own, and a whole category would take minutes."""
-        if len(lines) < MANY:
-            for line in lines:
-                self.store.hide(line.url, line.code, line.value, line.language)
-            return
-        with tempfile.TemporaryDirectory() as folder:
-            file = Path(folder) / "overlay.json"
-            file.write_text(json.dumps({"lexcor-overlay": OVERLAY_FORMAT,
-                                        "changes": [asdict(line) for line in lines]}),
-                            encoding="utf-8")
-            self.store.import_overlay(file)
+        overlay.hide(self.store, [line for line in lines if line.action == "hide"])
 
     def _put(self, category: str, terms: list[str]) -> None:
         """Bring terms into force in the store's own list of a category: the list is
@@ -439,12 +391,11 @@ class Vocabulary:
 
     # -- bundled lists ---------------------------------------------------------------------------
     def seed(self) -> dict[str, int]:
-        """Install every bundled list the store has no package of (none of its title, and
-        none in the place of the store's own list of that name); what the overlay hides in
-        one stays hidden.  Returns the number of terms of each list installed."""
-        held = {key for info in self.store.packages() for key in (info.title, info.url)}
-        missing = [k for k in BUNDLED
-                   if k not in held and self.store.local_url(k) not in held]
+        """Install every bundled list that is not among the store's own lists; what the
+        overlay hides in one stays hidden.  Returns the number of terms of each list
+        installed."""
+        held = {info.url for info in own_lists(self.store)}
+        missing = [k for k in BUNDLED if self.store.local_url(k) not in held]
         return {k: self.store.add_package(_package(k, bundled()[k])).concepts
                 for k in missing if k in bundled()}
 
@@ -459,8 +410,9 @@ class Vocabulary:
         index over the store with the one over these terms (:class:`VocabularyError` when
         they differ).  A bundled category is its bundled list with what the list lacks
         added and what is not wanted hidden; any other category is a list of its terms;
-        whatever else is in force in the store is hidden.  Categories whose names differ
-        in case only are one list of the store, under the bundled name or the first."""
+        whatever else is in force in the store's own lists is hidden.  Categories whose
+        names differ in case only are one list of the store, under the bundled name or the
+        first.  Packages of other programs are neither compared nor touched."""
         wanted = self._by_list(groups)
         for category in dict.fromkeys([*bundled(), *wanted]):
             self._settle(category, wanted.get(category, []))
@@ -480,9 +432,10 @@ class Vocabulary:
         return wanted
 
     def _check(self, wanted: set[Item]) -> None:
-        """The matcher over the store must be the matcher over the terms wanted."""
+        """The matcher over the store's own lists must be the matcher over the terms
+        wanted."""
         expected = Cover((term for _category, term in wanted), lexterm.EPONYM_HEADS)
-        found = lexterm.cover(self.store)
+        found = self.cover()
         if found.single != expected.single or found.phrases != expected.phrases:
             raise VocabularyError(say(
                 "Das Fachvokabular in der Ablage von lexterm stimmt nicht mit dem überein, was"
@@ -500,8 +453,8 @@ class Vocabulary:
         keep = set(wanted)
         for change in (c for code in codes if code in keep for c in hides.get(code, [])):
             self.store.undo(change)
-        self._hide_lines([Change(url, code, "hide") for code in codes
-                          if code not in keep and code not in hides])
+        overlay.hide(self.store, [Change(url, code, "hide") for code in codes
+                                  if code not in keep and code not in hides])
 
     def adopt(self, database: Path) -> int | None:
         """Take over the vocabulary of a pseudonym database that still keeps it in a table:

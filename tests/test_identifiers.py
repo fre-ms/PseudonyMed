@@ -1,20 +1,26 @@
-"""Identifiers beyond the patient's data: context rules, the table, the pipeline, GUI, CLI."""
+"""Identifiers beyond the patient's data: lexident's places named by PseudonyMed's classes,
+the table over lexident's store, the pipeline, GUI, CLI.  (The rules of context are tested
+in lexident, where they live; the cases here guard the seam.  The take-over of the former
+tables is in ``test_identifiers_move.py``.)"""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
 
+import lexident
 import pymupdf
 import pytest
+from lexcor import Change
+from lexident.forms import hospital_forms
 from PySide6.QtWidgets import QApplication
 from typer.testing import CliRunner
 
 from pseudonymed.checks.report import as_text
 from pseudonymed.cli import app
 from pseudonymed.core.model import Hit, Kind, Patient
+from pseudonymed.detection import identifier_lists as lists
 from pseudonymed.detection import identifiers as ident_module
-from pseudonymed.detection import lexicon
 from pseudonymed.document.text_file import text_page
 from pseudonymed.pipeline import PipelineOptions, pseudonymise
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
@@ -26,20 +32,20 @@ from tests.test_gui import qapp  # noqa: F401
 @pytest.fixture
 def fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
-    ident_module.standard.cache_clear()
     yield tmp_path / "daten"
-    ident_module.standard.cache_clear()
 
 
 def _recogniser(*lines: tuple[str, str]) -> ident_module.Recogniser:
-    e = ident_module.Recogniser()
+    """lexident's recogniser over entries given with PseudonyMed's classes."""
+    e = lexident.Recogniser()
     for term, category in lines:
-        e.add(term, category)
+        e.add(term, lists.cls_of(category))
     return e
 
 
 def _found(e: ident_module.Recogniser, text: str) -> list[tuple[str, str]]:
-    return [(text[k.start:k.end], k.category) for k in e.candidates(text)]
+    return [(text[k.start:k.end], ident_module.category_of(k.classes))
+            for k in e.candidates(text)]
 
 
 # -- context rules --------------------------------------------------------------------------------
@@ -47,16 +53,16 @@ def test_hospitals_with_short_forms() -> None:
     e = _recogniser(("Musterklinik Nord GmbH – Psychiatrische Tagesklinik", "Klinik"),
                     ("Klinik für Geriatrische Rehabilitation", "Klinik"),
                     ("Saarland Heilstätten", "Klinik"))
-    e.add_place("Halle (Saale)")
+    e.add("Halle (Saale)", lexident.HOSPITAL_TOWN)
     text = ("Verlegung aus der Musterklinik Nord, später ins Klinikum Halle (Saale) und in die"
             " Klinik für Geriatrische Rehabilitation; das Saarland ist schön. Bericht des"
             " Klinikums Halle.")
     assert _found(e, text) == [("Musterklinik Nord", "Klinik"),
                                ("Klinikum Halle (Saale)", "Klinik"),
                                ("Klinikums Halle", "Klinik")]
-    assert ident_module.hospital_forms("Klinik für Geriatrische Rehabilitation") == set()
-    assert ident_module.hospital_forms("Caritas") == set()
-    assert "Eifelklinik" in ident_module.hospital_forms("Eifelklinik")
+    assert hospital_forms("Klinik für Geriatrische Rehabilitation") == set()
+    assert hospital_forms("Caritas") == set()
+    assert "Eifelklinik" in hospital_forms("Eifelklinik")
     assert _found(e, "Klinikum halle") == []  # proper nouns stay capitalised
 
 
@@ -111,62 +117,123 @@ def test_titles_only_next_to_people(patient: Patient) -> None:
     assert "zur" not in e.index
 
 
+# -- one class for a place -------------------------------------------------------------------------
+def test_a_place_of_several_classes_is_named_by_one() -> None:
+    """lexident gives a place every class whose rule holds there; PseudonyMed names it by
+    one: hospital, profession, study, a class of the user's own (by name), the catch-all."""
+    e = _recogniser(("Waldklinik Tannengrund", "Klinik"), ("Waldklinik Tannengrund", "Sonstiges"),
+                    ("Waldklinik Tannengrund", "Arbeitgeber"), ("Tischler", "Beruf"),
+                    ("Tischler", "Sonstiges"), ("Tischler", "Verein"), ("Tischler", "Amt"),
+                    ("CARE", "Studie"), ("CARE", "Beruf"), ("CARE", "Sonstiges"))
+    text = "Sie arbeitet als Tischler in der Waldklinik Tannengrund, Studie CARE."
+    places = e.candidates(text)
+    assert [len(k.classes) for k in places] == [4, 3, 2]  # no cue for CARE as a profession
+    assert _found(e, text) == [("Tischler", "Beruf"), ("Waldklinik Tannengrund", "Klinik"),
+                               ("CARE", "Studie")]
+    both = "Sie arbeitet als CARE, Teilnahme an der Studie."  # a cue for either class
+    assert [k.classes for k in e.candidates(both)] == [("ID", "OTHER", "PROFESSION")]
+    assert _found(e, both) == [("CARE", "Beruf")]
+    assert _found(e, "Der Tischler hat angerufen.") == [("Tischler", "Amt")]  # no cue: no Beruf
+    assert ident_module.category_of(["OTHER", "Verein"]) == "Verein"
+    assert ident_module.category_of(["OTHER"]) == "Sonstiges"
+    assert ident_module.category_of(["NAME_TITLE"]) == "Titel"
+
+
 # -- the table -------------------------------------------------------------------------------------
 def test_table_own_entries(fresh: Path, tmp_path: Path) -> None:
     with ident_module.IdentifierTable() as ident:
-        assert ident.add(["Musterwerk AG", "Musterwerk AG", "x"]) == 1
+        assert ident.path == fresh / "lexident.sqlite" == ident_module.default_path()
+        assert ident.add(["Musterwerk AG", "Musterwerk AG", "musterwerk ag", "x"]) == 1
         assert ident.add(["Tischler"], "Beruf") == 1
         assert ident.categories() == [("Beruf", 1), ("Sonstiges", 1)]
+        own = {info.title: info for info in ident.store.packages()}
+        assert set(own) == {"Nutzer: Beruf", "Nutzer: Sonstiges"}
+        assert all(info.url == ident.store.local_url(title) and not info.redistributable
+                   for title, info in own.items())
+        assert sorted((e.term, e.cls, e.language) for e in ident.store.entries()) == [
+            ("Musterwerk AG", "OTHER", "de"), ("Tischler", "PROFESSION", "de")]
         v0 = ident.version()
         e = ident.all_items("Sonstiges")[0]
-        assert e.own and e.term == "Musterwerk AG"
+        assert e.own and e.term == "Musterwerk AG" and e.code == ""
         new = ident.change(e.key, term="Musterwerk GmbH")
         assert new is not None and new.term == "Musterwerk GmbH" and ident.version() > v0
         assert ident.change(new.key, category="Klinik").category == "Klinik"
         assert ident.change(ident.all_items("Beruf")[0].key, term="ab") is None
+        assert ident.change(("gibtesnicht", "Beruf", ""), term="Flantzwerk") is None
         csv = tmp_path / "ident.csv"
         assert ident.export_csv(csv) == 2
         assert csv.read_text(encoding="utf-8").splitlines()[0] == "begriff,klasse,quelle,angaben"
         assert ident.remove(ident.keys_for("tischler")) == 1
+        assert "Nutzer: Beruf" not in {i.title for i in ident.store.packages()}  # really gone
         assert ident.import_csv(csv) == (1, 2)  # the hospital row exists already
         listing = tmp_path / "liste.txt"
         listing.write_text("# eigene\nSportverein Musterdorf\n", encoding="utf-8")
         assert ident.import_csv(listing) == (1, 1)
-        assert ident.deleted() == 0  # own rows leave no trace
-    assert ident_module.standard().per_class == {"Klinik": 1, "Beruf": 1, "Sonstiges": 1}
+        assert ident.add(["Schmiedin"], "Handwerk") == 1  # a class of the user's own stays
+        assert ident.deleted() == 0 and ident.store.overlay() == []  # own rows leave no trace
+        assert ident.loaded() == []
+    assert ident_module.standard().per_class == {
+        "LOCATION_HOSPITAL": 1, "PROFESSION": 1, "OTHER": 1, "Handwerk": 1}
 
 
-def test_deleted_bundled_entries_stay_deleted(fresh: Path) -> None:
+@pytest.fixture
+def bundled(fresh: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The bundled lists switched on (the suite runs without them)."""
+    monkeypatch.setenv("PSEUDONYMED_LEXIKON", "1")
+    return fresh
+
+
+def test_the_bundled_lists_are_packages(bundled: Path) -> None:
     with ident_module.IdentifierTable() as ident:
-        lexicon.ensure(ident.connection, force=True, sources=["Kliniken"])
+        infos = {info.title: info for info in ident.store.packages()}
+        assert set(infos) == {"Berufe", "Kliniken", "Studien", "Titel", lists.TOWNS}
+        assert infos["Kliniken"].terms > 4000 and infos["Berufe"].terms > 20000
+        assert infos["Berufe"].concepts < infos["Berufe"].terms  # a code has several names
+        assert infos["Kliniken"].copyright.startswith("Quelle:")  # what the file says of itself
+        assert not any(info.redistributable for info in infos.values())
+        assert dict(ident.categories()).keys() == {"Beruf", "Klinik", "Studie", "Titel"}
+        classes = {e.cls for e in ident.store.entries()}
+        assert classes == {"PROFESSION", "LOCATION_HOSPITAL", "ID", "NAME_TITLE", "hospital-town"}
+        # no employment status, no registry number: neither is shown or looked for
+        assert not ident.keys_for("Rentnerin") and not ident.keys_for("arbeitslos")
+        study = next(e for e in ident.all_items("Studie") if e.details)
+        assert not ident.keys_for(study.details)  # the number is the concept's code, no term
+        url = ident.store.local_url("Studien")
+        assert "teilnehmer" in ident.store.properties(url, study.code) or \
+            "laender" in ident.store.properties(url, study.code)
+        # what the rows of one occupation code say differs by term: a JSON object by term
+        professions = ident.store.package(ident.store.local_url("Berufe"))
+        concept = next(c for c in professions.concepts if len(c.terms) > 1
+                       and c.properties.get("grundform", "").startswith("{"))
+        said = lists.unfold(concept.properties, concept.terms[0].value)
+        assert set(said) <= {"grundform", "nachname"} and "grundform" in said
+        version = ident.version()
+        assert ident.seed() == {}  # the data is the one the store holds
+    with ident_module.IdentifierTable() as ident:
+        assert ident.version() == version  # and the next start leaves it alone
+
+
+def test_deleted_bundled_entries_stay_deleted(bundled: Path) -> None:
+    with ident_module.IdentifierTable() as ident:
         all_items = ident.all_items("Klinik")
         assert len(all_items) > 4000 and all(e.source == "Kliniken" for e in all_items)
         victim, renamed = all_items[0], all_items[1]
         assert victim.details.endswith(")")  # town and country
+        url = ident.store.local_url("Kliniken")
         assert ident.remove([victim.key]) == 1
+        assert ident.store.overlay() == [Change(url, victim.code, "hide", victim.term, "de")]
         own = ident.change(renamed.key, term=renamed.term + " Nord")
         assert own is not None and own.own and own.code == renamed.code
+        assert own.details == renamed.details  # the town came along
         assert ident.deleted() == 2
-        lexicon.ensure(ident.connection, force=True, sources=["Kliniken"])
+        assert ident.seed(force=True).keys() == {"Berufe", "Titel", "Kliniken", "Studien"}
         key = {e.key for e in ident.all_items("Klinik")}
         assert victim.key not in key and renamed.key not in key
         assert own.key in key
         assert ident.restore() == 2
         key = {e.key for e in ident.all_items("Klinik")}
-        assert victim.key in key and renamed.key in key
+        assert victim.key in key and renamed.key in key and own.key in key
         assert ident.deleted() == 0
-
-
-def test_employment_status_and_study_numbers_invisible(fresh: Path) -> None:
-    with ident_module.IdentifierTable() as ident:
-        ident.connection.executemany(
-            "INSERT INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-            " VALUES (?, ?, 'merkmal', ?, ?, ?)",
-            [("Rentnerin", "Erwerbsstatus", "Berufe", "", ""),
-             ("NCT01234567", "Studie", "Studien", "ClinicalTrials.gov:NCT01234567", '{"x":1}'),
-             ("ALPHA", "Studie", "Studien", "ClinicalTrials.gov:NCT01234567", "")])
-        ident.connection.commit()
-        assert [(e.term, e.details) for e in ident.all_items()] == [("ALPHA", "NCT01234567")]
 
 
 def test_details_per_category() -> None:
@@ -184,19 +251,58 @@ def test_details_per_category() -> None:
     assert e("Sonstiges", "12345", '{"ort": "x"}').details == ""
 
 
-def test_default_knows_the_places_of_the_hospitals(fresh: Path) -> None:
+def test_the_towns_follow_the_hospitals(fresh: Path) -> None:
+    """A town that has a listed hospital gives "Klinikum <town>"; the list of the towns is
+    made from the hospitals in force and follows them."""
+    rows = [lists.Row("Musterklinik Musterstadt", "Klinik", "K1",
+                      {"ort": "Musterstadt", "land": "DE"}),
+            lists.Row("Beispielklinik", "Klinik", "K2", {"ort": "Beispielhausen"}),
+            lists.Row("Fachklinik Nord", "Klinik", "K3")]
     with ident_module.IdentifierTable() as ident:
-        ident.connection.executemany(
-            "INSERT INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-            " VALUES (?, 'Klinik', 'merkmal', 'Kliniken', ?, ?)",
-            [("Musterklinik Musterstadt", "K1", '{"ort": "Musterstadt", "land": "DE"}'),
-             ("Beispielklinik", "K2", "kein JSON"), ("Fachklinik Nord", "K3", "")])
-        ident.connection.commit()
+        assert ident.install("Probekliniken", rows, "2026-11-01 abc") == 3
+        assert ident.loaded() == [("Probekliniken", 3, "2026-11-01 abc")]
+        towns = ident.store.local_url(lists.TOWNS)
+        assert [c.code for c in ident.store.package(towns).concepts] == [
+            "Beispielhausen", "Musterstadt"]
+        assert ident.count() == 3  # the towns are no identifiers of their own
     e = ident_module.standard()
-    assert e.per_class == {"Klinik": 3}
+    assert e.per_class == {"LOCATION_HOSPITAL": 3}
     text = "Verlegt ins Krankenhaus Musterstadt, danach in die Musterklinik Musterstadt."
     assert _found(e, text) == [("Krankenhaus Musterstadt", "Klinik"),
                                ("Musterklinik Musterstadt", "Klinik")]
+    with ident_module.IdentifierTable() as ident:
+        assert ident.remove(ident.keys_for("Musterklinik Musterstadt")) == 1
+        assert [c.code for c in ident.store.package(towns).concepts] == ["Beispielhausen"]
+        moved = ident.change(ident.keys_for("Beispielklinik")[0], term="Beispielklinik Süd")
+        assert moved is not None and moved.own and moved.details == "Beispielhausen"
+        assert [c.code for c in ident.store.package(towns).concepts] == ["Beispielhausen"]
+        assert ident.remove([moved.key]) == 1  # the last hospital of the town: the town goes
+        assert towns not in {info.url for info in ident.store.packages()}
+    assert _found(ident_module.standard(), text) == []
+
+
+def test_a_list_another_program_made_is_shown_and_can_be_hidden(fresh: Path) -> None:
+    """lexident's store is shared.  A list another program put there without a URL of its
+    own is one of the store's own lists: it is looked for, is shown under its title and
+    class, and is never written over.  (What brings a URL of its own is another matter:
+    ``test_foreign_packages.py``.)"""
+    from lexcor import Concept, Package, Term
+
+    with ident_module.IdentifierTable() as ident:
+        url = ident.store.add_package(Package(
+            url="", version="1", name="Vereinsliste", title="Vereinsliste", language="de",
+            concepts=[Concept("V1", "Schützenverein Flantzdorf", "Verein", "", [
+                Term("Schützenverein Flantzdorf", "de"), Term("SV Flantzdorf", "de")])])).url
+        assert [(e.term, e.category, e.source, e.code, e.own) for e in ident.all_items()] == [
+            ("Schützenverein Flantzdorf", "Verein", "Vereinsliste", "V1", False),
+            ("SV Flantzdorf", "Verein", "Vereinsliste", "V1", False)]
+        assert ident.loaded() == [("Vereinsliste", 2, "1")]
+        assert ident.remove(ident.keys_for("sv flantzdorf")) == 1
+        assert ident.store.overlay(url) == [Change(url, "V1", "hide", "SV Flantzdorf", "de")]
+        assert ident.store.info(url).terms == 2 and ident.count() == 1
+    found = _found(ident_module.standard(),
+                   "Mitglied im Schützenverein Flantzdorf (SV Flantzdorf).")
+    assert found == [("Schützenverein Flantzdorf", "Verein")]
 
 
 # -- the pipeline ----------------------------------------------------------------------------------
@@ -301,3 +407,5 @@ def test_command_line(fresh: Path) -> None:
     assert r.exit_code == 0 and "Beruf: Tischler" in r.output and "Studie: NCT01234567" in r.output
     r = runner.invoke(app, ["identifikatoren", "entfernen", "tischler"])
     assert r.exit_code == 0 and "1 Identifikatoren gelöscht" in r.output, r.output
+    r = runner.invoke(app, ["identifikatoren", "status"])
+    assert "lexident.sqlite" in r.output and "0 Identifikatoren" in r.output, r.output

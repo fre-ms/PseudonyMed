@@ -41,6 +41,7 @@ hiddenimports += collect_submodules("pseudonymed")
 hiddenimports += collect_submodules("optdoc")  # loading, clean-up, OCR: the document layer
 hiddenimports += collect_submodules("lexcor")  # packages of terms, their store, the matcher
 hiddenimports += collect_submodules("lexterm")  # the store of the vocabulary, the eponym heads
+hiddenimports += collect_submodules("lexident")  # the store of the identifiers, their recogniser
 hiddenimports += ["pillow_heif", "zxingcpp", "PIL.Image", "PIL.ImageFilter", "PIL.ImageOps",
                   "shapely", "cv2", "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]
 

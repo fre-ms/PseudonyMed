@@ -1,7 +1,7 @@
 """Step 2: identifiers beyond the patient's data as a sortable, editable table.
 
-Professions, hospitals, study acronyms, titles and the user's own identifiers from the
-lexicon of the pseudonym database.  Like the patient's data they are redacted by default;
+Professions, hospitals, study acronyms, titles and the user's own identifiers from
+lexident's store.  Like the patient's data they are redacted by default;
 each class has a context rule (see :mod:`pseudonymed.detection.identifiers`), and the
 visual review may discard every hit.  Search, sort by any column, edit a cell, add and
 delete rows, exchange CSV; deleted bundled rows can be brought back."""
@@ -28,7 +28,7 @@ from pseudonymed.gui.translation import shown_error
 
 class IdentifiersModel(ListModel):
     """Rows of the identifier list: term, class, details and source, the first two
-    editable; an edit goes through the page to the database."""
+    editable; an edit goes through the page to the store."""
 
     def __init__(self, page: IdentifiersPage) -> None:
         super().__init__(page)
@@ -53,7 +53,7 @@ class IdentifiersModel(ListModel):
                 self.tr("eigene") if e.own else e.source)[column]
 
     def _apply_edit(self, line: int, column: int, value: str) -> bool:
-        """Hand the edit to the page and, when it took, show the row as the database now
+        """Hand the edit to the page and, when it took, show the row as the store now
         holds it (a changed bundled row becomes the user's own, so every column may move)."""
         new = self.page.change(self.entries[line], column, value)
         if new is None:
@@ -140,11 +140,6 @@ class IdentifiersPage(ListPage):
         """A fresh handle on the identifier table, opened per operation."""
         return ident_module.IdentifierTable()
 
-    def _clear_cache(self) -> None:
-        """Forget the cached matcher so the next analysis is built from the edited rows.
-        ``standard`` attaches ``cache_clear`` at run time, unseen by the type checker."""
-        ident_module.standard.cache_clear()
-
     def refresh(self, force: bool = False) -> int:
         """Reload rows when the table changed (or when asked); returns the row count."""
         with self._identifiers() as ident:
@@ -184,9 +179,8 @@ class IdentifiersPage(ListPage):
         return [self.model.entries[r] for r in self._selected_rows()]
 
     def _changed(self) -> None:
-        """After an in-place edit: drop the matcher cache and take over the table's new
-        version and count without reloading the rows."""
-        self._clear_cache()
+        """After an in-place edit: take over the table's new version and count without
+        reloading the rows (the matcher follows the store's version by itself)."""
         with self._identifiers() as ident:
             self._version = ident.version()
             self._total = ident.count()
@@ -216,7 +210,6 @@ class IdentifiersPage(ListPage):
             return 0
         with self._identifiers() as ident:
             new = ident.add([term], category or ident_module.CATEGORY_OTHER)
-        self._clear_cache()
         self.status.setText(self.tr("Hinzugefügt: {begriff}").format(begriff=term) if new
                             else self.tr("Schon vorhanden: {begriff}").format(begriff=term))
         self.new_term.clear()
@@ -238,7 +231,6 @@ class IdentifiersPage(ListPage):
             return 0
         with self._identifiers() as ident:
             n = ident.remove(e.key for e in entries)
-        self._clear_cache()
         self.status.setText(self.tr("{n} Identifikator(en) gelöscht.").format(n=n))
         self.refresh(True)
         return n
@@ -247,7 +239,6 @@ class IdentifiersPage(ListPage):
         """Bring every deleted bundled row back; returns how many."""
         with self._identifiers() as ident:
             n = ident.restore()
-        self._clear_cache()
         self.status.setText(self.tr("{n} gelöschte Einträge wiederhergestellt.").format(n=n))
         self.refresh(True)
         return n
@@ -288,7 +279,6 @@ class IdentifiersPage(ListPage):
         except OSError as e:
             self._notify(self.tr("Identifikatoren"), shown_error(e))
             return 0
-        self._clear_cache()
         self.status.setText(self.tr(
             "{neu} neue von {gelesen} Identifikatoren aus {name} übernommen.").format(
                 neu=new, gelesen=read_in, name=path.name))

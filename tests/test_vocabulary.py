@@ -11,6 +11,7 @@ from lexcor import Change, Concept, Package, Term
 from PySide6.QtWidgets import QApplication
 
 from pseudonymed.detection import medical_terms as terms_module
+from pseudonymed.detection import overlay
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.pseudonyms import statistics as stats_mod
 from pseudonymed.pseudonyms.store import PseudonymStore
@@ -117,7 +118,7 @@ def test_many_terms_are_hidden_in_one_step(fresh: Path) -> None:
     deleted one by one would, written together."""
     with vocab_mod.Vocabulary() as v:
         eponyms, url = vocab_mod.bundled()[EPONYMS], v.store.local_url(EPONYMS)
-        assert len(eponyms) >= vocab_mod.MANY
+        assert len(eponyms) >= overlay.MANY
         version = v.version()
         assert v.remove(eponyms) == len(eponyms) and v.version() == version + 1
         assert v.store.overlay(url) == [Change(url, e, "hide") for e in sorted(eponyms)]
@@ -166,17 +167,19 @@ def test_what_is_added_goes_into_the_list_of_its_category(fresh: Path) -> None:
         assert _terms(v, vocab_mod.CATEGORY_USER) == ["Flantzom"]
 
 
-def test_a_package_of_another_program_is_a_category_too(fresh: Path) -> None:
-    """lexterm's store is shared: what another program put there protects as well, is shown
-    and can be deleted, and is never written over."""
-    url = "https://example.org/flantz"
+def test_a_list_another_program_made_is_a_category_too(fresh: Path) -> None:
+    """lexterm's store is shared.  A list another program put there without a URL of its
+    own is one of the store's own lists, however that program named and coded it: it
+    protects, is shown and can be deleted, and is never written over.  (What brings a URL
+    of its own is another matter: ``test_foreign_packages.py``.)"""
     with vocab_mod.Vocabulary() as v:
-        v.store.add_package(Package(
-            url=url, version="1", name="Flantz", title="Flantzliste", language="de",
+        url = v.store.add_package(Package(
+            url="", version="1", name="Flantzliste", title="Flantzliste", language="de",
             concepts=[Concept("F1", "Flantzfieber", "", "", [
                 Term("Flantzfieber", "de"), Term("Flantz fever", "en"),
                 Term("Morbus Flantz", "de")]),
-                Concept("Flantzgrippe", "", "", "", [Term("Flantzgrippe", "de")])]))
+                Concept("Flantzgrippe", "", "", "", [Term("Flantzgrippe", "de")])])).url
+        assert url == v.store.local_url("flantzliste")
         assert _terms(v, "Flantzliste") == ["Flantzfieber", "Flantzgrippe", "Morbus Flantz"]
         assert not v.contains("Flantz fever")  # German text is searched for German terms
         assert v.remove(["Morbus Flantz", "Flantzgrippe"]) == 2
@@ -184,8 +187,7 @@ def test_a_package_of_another_program_is_a_category_too(fresh: Path) -> None:
                                         Change(url, "Flantzgrippe", "hide")]
         assert _terms(v, "Flantzliste") == ["Flantzfieber"]  # the concept's other name stays
         assert v.add(["Flantzhusten"], "Flantzliste") == 1
-        assert v.store.info(url).concepts == 2  # the package is as it came
-        assert _concepts(v, "Flantzliste") == {"Flantzhusten"}
+        assert _concepts(v, "Flantzliste") == {"F1", "Flantzgrippe", "Flantzhusten"}
         assert _terms(v, "Flantzliste") == ["Flantzfieber", "Flantzhusten"]
         # a name that program's user gave a concept in the overlay goes by being taken back
         v.store.add_term(url, "F1", Term("Flantzleiden", "de"))

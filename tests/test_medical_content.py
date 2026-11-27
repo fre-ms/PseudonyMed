@@ -16,7 +16,6 @@ from pseudonymed.core.model import Kind, Patient
 from pseudonymed.detection import lexicon
 from pseudonymed.detection import medical_content as medical_module
 from pseudonymed.detection import medical_terms as terms_module
-from pseudonymed.detection.identifiers import IdentifierTable
 from pseudonymed.detection.medical_content import Selection
 from pseudonymed.detection.vocabulary import Vocabulary
 from pseudonymed.pipeline import PipelineOptions, finalise, prepare, pseudonymise
@@ -50,12 +49,8 @@ def _clear_caches() -> None:
 def small_lexicon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
     _clear_caches()
-    with IdentifierTable() as table:
-        table.connection.executemany(
-            "INSERT INTO lexikon (begriff, klasse, rolle, quelle) VALUES (?, ?, 'fach', ?)",
-            LINES)
-        lexicon.increment_version(table.connection)
-        table.connection.commit()
+    monkeypatch.setattr(lexicon, "medical_rows", lambda: list(LINES))  # a small bundled list
+    monkeypatch.setattr(lexicon, "medical_state", lambda: (("Probe", "1"),))
     with Vocabulary() as v:
         v.add(["Marcumar"], "Medikament")  # a trade name of the user's own
         v.add(["Levetiracetam"], "Nutzervokabular")
@@ -82,7 +77,9 @@ def test_lists(small_lexicon: Path) -> None:
     search = medical_module.standard(ALL)
     assert search is not None
     assert search.recogniser.per_class == {"Medikament": 6, "Laborwert": 6}  # no ASS, Sauerstoff
-    assert search.both == {"kalium"} and search.missing_lists() == []
+    assert search.missing_lists() == []
+    both = search.recogniser.candidates("Kalium und Kaliums, TSH")
+    assert [k.classes for k in both] == [("Laborwert", "Medikament")] * 2 + [("Laborwert",)]
     assert _spans("ASS 100 mg, Sauerstoff 2 l/min, Zuname 12 mg/l, Marcumar nach INR.") == [
         ("Marcumar", "Medikament")]
 

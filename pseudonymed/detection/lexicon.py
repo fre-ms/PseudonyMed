@@ -1,32 +1,33 @@
-"""Semantic lexicon: what a term *is*, from bundled reference data.
+"""Bundled reference data: what a term *is*.
 
 The protected vocabulary (:mod:`pseudonymed.detection.vocabulary`) only says that a word must
-not be redacted by the guesswork.  The lexicon adds the class of a term and its role:
+not be redacted by the guesswork.  The bundled lists read here add the class of a term and
+its role:
 
-* role ``terms`` - medical terms by class (Anatomie, Medikament, Erkrankung, Symptom,
+* role ``fach`` - medical terms by class (Anatomie, Medikament, Erkrankung, Symptom,
   Substanz, Verfahren, Psyche, Physiologie, Organismus, Laborwert, Befund, Eponym);
-* role ``feature`` - quasi-identifying attributes (Beruf, Erwerbsstatus, Titel, Klinik,
-  Studie) that a residual-risk estimate should weigh and that must never be protected.
+* role ``merkmal`` - quasi-identifying attributes (Beruf, Erwerbsstatus, Titel, Klinik,
+  Studie) that must never be protected.
 
-The table ``lexicon`` lives in the pseudonym database (the vocabulary does not: it is in
-lexterm's store).  Bundled sources
-are (re)loaded whenever their file changes (a hash per source in ``lexikon_meta``); rows of
-the source ``Nutzer`` are left alone, and bundled rows the user deleted stay deleted
-(``lexikon_geloescht``).  The ``feature`` rows are the identifiers of the identifiers step
-(:mod:`pseudonymed.detection.identifiers`), which redacts them by default; the ``terms``
-rows and the control step do not use the lexicon yet.  ``PSEUDONYMED_LEXIKON=0`` switches the
-loading off (the test suite does so, except in the lexicon tests).
+Neither lives in the pseudonym database any more.  The ``merkmal`` rows are the bundled
+identifiers: :mod:`pseudonymed.detection.identifiers` installs them as packages of lexident's
+store, where the identifiers step shows them and the analysis redacts them by default.  The
+``fach`` rows nobody edits and one reader needs: they are read from the bundled files when a
+medical option of the analysis asks for drug or lab names (:func:`medical_rows`).  They are
+kept out of lexterm's store on purpose: every list PseudonyMed keeps there is protected
+vocabulary, and these rows hold words that must not be ("Zuname" is a lab term of Wikidata).
+``PSEUDONYMED_LEXIKON=0`` switches the bundled lists off (the test suite does so, except in
+the tests that need them).
 """
 
 from __future__ import annotations
 
 import csv
-import datetime as dt
 import gzip
 import hashlib
 import json
-import sqlite3
-from collections.abc import Callable, Iterable, Iterator
+import string
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -37,34 +38,9 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 MEDICAL = "fach"
 FEATURE = "merkmal"
 USER = "Nutzer"
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS lexikon (
-    begriff TEXT NOT NULL COLLATE NOCASE,
-    klasse  TEXT NOT NULL,
-    rolle   TEXT NOT NULL,
-    quelle  TEXT NOT NULL,
-    kennung TEXT NOT NULL DEFAULT '',
-    zusatz  TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (begriff, klasse, kennung)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS lexikon_meta (
-    quelle  TEXT PRIMARY KEY,
-    stand   TEXT NOT NULL,
-    anzahl  INTEGER NOT NULL,
-    geladen TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS lexikon_geloescht (
-    begriff TEXT NOT NULL COLLATE NOCASE,
-    klasse  TEXT NOT NULL,
-    kennung TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (begriff, klasse, kennung)
-) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS lexikon_version (
-    id      INTEGER PRIMARY KEY CHECK (id = 1),
-    version INTEGER NOT NULL
-);
-"""
+FEATURE_SOURCES = ("Berufe", "Titel", "Kliniken", "Studien")  # the bundled identifier lists
 MIN_LENGTH = 2
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 # Correspondence with the GeMTeX type system for identifying information (annotation
 # guideline, 2nd version, 7 September 2025, doi:10.5281/zenodo.15747389).  Studies are IDs
@@ -187,8 +163,9 @@ def _eponyms() -> Iterator[Row]:
 
 @dataclass(frozen=True)
 class Source:
-    """A bundled source: its name in ``lexikon_meta``, its file (None for a source computed
-    in code) and the reader that yields its rows."""
+    """A bundled source: its name (a list of identifiers is installed under it in lexident's
+    store), its file (None for a source computed in code) and the reader that yields its
+    rows."""
 
     name: str
     file: Path | None
@@ -208,27 +185,44 @@ SOURCES: tuple[Source, ...] = (
 )
 
 
-def _state(q: Source) -> str:
+
+_states: dict[tuple[Path, int, int], str] = {}  # a file's hash while the file is the same
+
+
+def state(q: Source) -> str:
     """Short hash of a source's current content: its file bytes, or the rows it computes."""
     if q.file is None:
         lines = "\n".join("\t".join(z) for z in q.reader())
         return hashlib.sha256(lines.encode("utf-8")).hexdigest()[:16]
-    return hashlib.sha256(q.file.read_bytes()).hexdigest()[:16]
+    stat = q.file.stat()
+    known = (q.file, stat.st_mtime_ns, stat.st_size)
+    if known not in _states:
+        _states[known] = hashlib.sha256(q.file.read_bytes()).hexdigest()[:16]
+    return _states[known]
+
+
+def note(q: Source) -> str:
+    """What a bundled file says of itself in its first line: source, licence and date."""
+    if q.file is None:
+        return ""
+    with _open_text(q.file) as f:
+        first = f.readline().strip()
+    return first.lstrip("# ") if first.startswith("#") else ""
 
 
 def active() -> bool:
-    """Is loading switched on (``PSEUDONYMED_LEXIKON`` is not ``0``)?"""
+    """Are the bundled lists switched on (``PSEUDONYMED_LEXIKON`` is not ``0``)?"""
     return environment.variable("LEXIKON", "1") != "0"
 
 
-def _should_load(q: Source, names: set[str] | None) -> bool:
-    """Is a bundled source present on disk and, when names were given, among them?"""
-    if q.file is not None and not q.file.exists():
-        return False
-    return not names or q.name in names
+def available(names: tuple[str, ...] | None = None) -> list[Source]:
+    """The bundled sources that are present on disk: the identifier lists, or with
+    ``names`` those of these names."""
+    wanted = FEATURE_SOURCES if names is None else names
+    return [q for q in SOURCES if q.name in wanted and (q.file is None or q.file.exists())]
 
 
-def _rows_of(q: Source) -> Iterator[Row]:
+def rows_of(q: Source) -> Iterator[Row]:
     """The rows of a source with inner whitespace collapsed; terms shorter than
     ``MIN_LENGTH`` are left out."""
     args = () if q.file is None else (q.file,)
@@ -237,80 +231,45 @@ def _rows_of(q: Source) -> Iterator[Row]:
             yield " ".join(b.split()), k, r, code, extra
 
 
-def _load_source(connection: sqlite3.Connection, q: Source, state: str) -> int:
-    """Replaces the rows of one source and records ``state`` in ``lexikon_meta``; returns
-    the number of rows inserted."""
-    connection.execute("DELETE FROM lexikon WHERE quelle = ?", (q.name,))
-    before = connection.total_changes
-    connection.executemany(
-        "INSERT OR IGNORE INTO lexikon (begriff, klasse, rolle, quelle, kennung, zusatz)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        ((b, k, r, q.name, code, extra) for b, k, r, code, extra in _rows_of(q)))
-    n = connection.total_changes - before
-    connection.execute(
-        "INSERT OR REPLACE INTO lexikon_meta (quelle, stand, anzahl, geladen)"
-        " VALUES (?, ?, ?, ?)",
-        (q.name, state, n, dt.datetime.now().isoformat(timespec="seconds")))
-    return n
+# -- the medical classes ---------------------------------------------------------------------------
+_medical: dict[tuple[tuple[str, str], ...], list[tuple[str, str, str]]] = {}
 
 
-def _remove_deleted(connection: sqlite3.Connection) -> None:
-    """Removes bundled rows the user deleted earlier (``lexikon_geloescht``) after a reload
-    brought them back; rows of the source ``Nutzer`` stay."""
-    connection.execute(
-        "DELETE FROM lexikon WHERE quelle != ? AND EXISTS (SELECT 1 FROM lexikon_geloescht g"
-        " WHERE g.begriff = lexikon.begriff AND g.klasse = lexikon.klasse"
-        " AND g.kennung = lexikon.kennung)", (USER,))
+def key(term: str) -> str:
+    """What makes two spellings one term of a list: the letters A to Z without their case,
+    as the table compared them that the rows were kept in."""
+    return term.translate(_ASCII_LOWER)
 
 
-def ensure(connection: sqlite3.Connection, force: bool = False,
-           sources: Iterable[str] | None = None) -> dict[str, int]:
-    """Create the tables and (re)load every bundled source whose data changed (only the
-    sources named in ``sources``, when given).  Returns the number of rows loaded per
-    reloaded source (empty when all is current)."""
-    if not active() and not force:
-        return {}
-    connection.executescript(SCHEMA)
-    old = dict(connection.execute("SELECT quelle, stand FROM lexikon_meta"))
-    names = set(sources) if sources is not None else None
-    loaded: dict[str, int] = {}
-    for q in SOURCES:
-        if not _should_load(q, names):
-            continue
-        state = _state(q)
-        if force or old.get(q.name) != state:
-            loaded[q.name] = _load_source(connection, q, state)
-    if loaded:
-        _remove_deleted(connection)
-        increment_version(connection)
-    connection.commit()
-    return loaded
+def _medical_sources() -> list[Source]:
+    """The bundled sources of medical classes that are present on disk; none when the
+    bundled lists are switched off."""
+    return [q for q in SOURCES if active() and q.name not in FEATURE_SOURCES
+            and (q.file is None or q.file.exists())]
 
 
-def version(connection: sqlite3.Connection) -> int:
-    """Counter that changes with every change of the lexicon (for cached matchers)."""
-    try:
-        r = connection.execute("SELECT version FROM lexikon_version WHERE id = 1").fetchone()
-    except sqlite3.OperationalError:
-        return 0
-    return int(r[0]) if r else 0
+def medical_state() -> tuple[tuple[str, str], ...]:
+    """The state of the bundled medical lists: every source with the hash of its data."""
+    return tuple((q.name, state(q)) for q in _medical_sources())
 
 
-def increment_version(connection: sqlite3.Connection) -> None:
-    """Increments the lexicon's version counter (creating it at 1); not committed here."""
-    connection.execute(
-        "INSERT INTO lexikon_version (id, version) VALUES (1, 1)"
-        " ON CONFLICT(id) DO UPDATE SET version = version + 1")
-
-
-def per_class(connection: sqlite3.Connection) -> list[tuple[str, str, int]]:
-    """(class, role, rows), merkmal classes first; empty when the table does not exist."""
-    try:
-        return [tuple(r) for r in connection.execute(
-            "SELECT klasse, rolle, COUNT(*) FROM lexikon GROUP BY klasse, rolle"
-            " ORDER BY rolle DESC, COUNT(*) DESC, klasse")]
-    except sqlite3.OperationalError:
-        return []
+def medical_rows() -> list[tuple[str, str, str]]:
+    """Term, medical class and source of every row of the bundled medical lists, read once
+    for the state the files are in; none when the bundled lists are switched off.  A term
+    stands once per class and identifier (:func:`key`), in its first spelling, as the table
+    held it that these rows were kept in."""
+    held = medical_state()
+    if held not in _medical:
+        seen: set[tuple[str, str, str]] = set()
+        rows: list[tuple[str, str, str]] = []
+        for q in _medical_sources():
+            for term, category, _role, code, _extra in rows_of(q):
+                if (key(term), category, code) not in seen:
+                    seen.add((key(term), category, code))
+                    rows.append((term, category, q.name))
+        _medical.clear()
+        _medical[held] = rows
+    return _medical[held]
 
 
 def gemtex_type(category: str, extra: str = "") -> str:
@@ -322,10 +281,3 @@ def gemtex_type(category: str, extra: str = "") -> str:
             kind = ""
         return GEMTEX["Titel"] if kind in ("", "akademisch") else ""
     return GEMTEX.get(category, "")
-
-
-def categories_of(connection: sqlite3.Connection, term: str) -> list[tuple[str, str]]:
-    """All (class, role) pairs of a term, case-insensitively."""
-    return [tuple(r) for r in connection.execute(
-        "SELECT DISTINCT klasse, rolle FROM lexikon WHERE begriff = ? ORDER BY rolle, klasse",
-        (" ".join(term.split()),))]

@@ -15,6 +15,7 @@ from lexcor import StoreError
 
 from pseudonymed.config import config_path
 from pseudonymed.core.text import say
+from pseudonymed.detection.identifiers import IdentifierTable
 from pseudonymed.detection.vocabulary import Vocabulary
 from pseudonymed.pseudonyms.store import default_key_path, default_path, key_path_for
 
@@ -76,8 +77,8 @@ class Statistics:
     free_pages: int = 0
     vocabulary_terms: int = 0
     vocabulary_categories: list[tuple[str, int]] = field(default_factory=list)
-    lexicon_categories: list[tuple[str, str, int]] = field(default_factory=list)
-    lexicon_extra: list[tuple[str, int, str]] = field(default_factory=list)
+    identifier_categories: list[tuple[str, int]] = field(default_factory=list)
+    identifier_lists: list[tuple[str, int, str]] = field(default_factory=list)
     config_present: bool = False
 
     def lines(self) -> list[tuple[str, str]]:
@@ -88,7 +89,7 @@ class Statistics:
                 + _indented(self.discarded_per_rule)
                 + self._status_lines()
                 + _indented(self.vocabulary_categories)
-                + self._lexicon_lines()
+                + self._identifier_lines()
                 + [(say("Konfiguration", "Configuration"),
                     say("vorhanden", "present") if self.config_present else say("keine", "none"))])
 
@@ -118,20 +119,17 @@ class Statistics:
             (say("Vokabular (Begriffe)", "Vocabulary (terms)"), str(self.vocabulary_terms)),
         ]
 
-    def _lexicon_lines(self) -> list[tuple[str, str]]:
-        """The bundled lexicon per class (only when it is loaded) and the data sets the
-        user fetched themselves."""
+    def _identifier_lines(self) -> list[tuple[str, str]]:
+        """The identifiers per class (only when there are any) and the lists the user
+        fetched themselves, with the state of their data."""
         out: list[tuple[str, str]] = []
-        if self.lexicon_categories:
-            out.append((say("Lexikon (Einträge)", "Lexicon (entries)"),
-                        str(sum(n for _k, _r, n in self.lexicon_categories))))
-            out += [(say(f"    {k} ({'Identifikator' if r == 'merkmal' else 'Fachklasse'})",
-                         f"    {k} ({'identifier' if r == 'merkmal' else 'medical class'})"),
-                     str(n))
-                    for k, r, n in self.lexicon_categories]
+        if self.identifier_categories:
+            out.append((say("Identifikatoren (Einträge)", "Identifiers (entries)"),
+                        str(sum(n for _k, n in self.identifier_categories))))
+            out += _indented(self.identifier_categories)
         out += [(say("Zusatzdaten (selbst geladen)", "Extra data (fetched yourself)"),
                  say(f"{q}: {n} Einträge, {g[:10]}", f"{q}: {n} entries, {g[:10]}"))
-                for q, n, g in self.lexicon_extra]
+                for q, n, g in self.identifier_lists]
         return out
 
 
@@ -159,9 +157,9 @@ def store_paths(store_path: Path | None) -> tuple[Path, Path]:
 
 
 def statistics(store_path: Path | None = None) -> Statistics:
-    """Describe the pseudonym store at ``store_path`` (default: the configured one) and
-    the vocabulary in lexterm's store without changing either; a database that cannot be
-    read reports the error as integrity."""
+    """Describe the pseudonym store at ``store_path`` (default: the configured one), the
+    vocabulary in lexterm's store and the identifiers in lexident's without changing any of
+    them; a database that cannot be read reports the error as integrity."""
     db, key = store_paths(store_path)
     st = Statistics(path=db, key_path=key, exists=db.exists(),
                     config_present=config_path().exists())
@@ -169,6 +167,7 @@ def statistics(store_path: Path | None = None) -> Statistics:
         st.key_present = True
         st.key_id = _key_file_code(key)
     _count_vocabulary(st)
+    _count_identifiers(st)
     if not db.exists():
         return st
     st.size = db.stat().st_size
@@ -201,6 +200,17 @@ def _count_vocabulary(st: Statistics) -> None:
         pass
 
 
+def _count_identifiers(st: Statistics) -> None:
+    """The identifiers per class and the lists fetched on request, as the store holds them
+    now; a store that is not there yet or cannot be read counts as empty."""
+    try:
+        with IdentifierTable(readonly=True) as table:
+            st.identifier_categories = table.categories()
+            st.identifier_lists = table.loaded()
+    except (StoreError, sqlite3.Error, OSError):
+        pass
+
+
 def _one(v: sqlite3.Connection, sql: str, default: Any = 0) -> Any:
     """One value; a table that does not exist yet counts as empty."""
     try:
@@ -218,7 +228,7 @@ def _all_rows(v: sqlite3.Connection, sql: str) -> list[tuple[Any, ...]]:
 
 
 def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
-    """Fill counts, categories, time span, integrity and lexicon figures from an open connection."""
+    """Fill counts, categories, time span and integrity from an open connection."""
     st.patients = _one(v, "SELECT COUNT(*) FROM patienten")
     st.aliases = _one(v, "SELECT COUNT(*) FROM aliasse")
     st.mappings = _one(v, "SELECT COUNT(*) FROM zuordnungen")
@@ -232,11 +242,6 @@ def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
     st.integrity = str(_one(v, "PRAGMA integrity_check", "?"))
     st.pages = _one(v, "PRAGMA page_count")
     st.free_pages = _one(v, "PRAGMA freelist_count")
-    from pseudonymed.detection.extra_data import loaded_sources
-    from pseudonymed.detection.lexicon import per_class
-
-    st.lexicon_categories = per_class(v)
-    st.lexicon_extra = loaded_sources(v)
 
 
 def _per_category(v: sqlite3.Connection) -> list[tuple[str, int]]:

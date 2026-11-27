@@ -131,7 +131,7 @@ def test_a_failed_check_keeps_the_table(database: Path, monkeypatch: pytest.Monk
     rows = edited_rows()
     with monkeypatch.context() as patch:
         patch.setattr(lexterm, "cover",
-                      lambda store: Cover(["Flantzirrtum"], lexterm.EPONYM_HEADS))
+                      lambda store, packages: Cover(["Flantzirrtum"], lexterm.EPONYM_HEADS))
         with pytest.raises(vocab_mod.VocabularyError) as refused:
             vocab_mod.Vocabulary()
         assert "stimmt nicht" in str(refused.value)

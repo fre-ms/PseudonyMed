@@ -257,9 +257,8 @@ class DatabasePage(QWidget):
                 return None
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            with IdentifierTable(self.session.store_path) as table:
-                report = extra_data_mod.load_clinics_at(table.connection, file=file,
-                                                        fetcher=self.fetcher)
+            with IdentifierTable() as table:
+                report = extra_data_mod.load_clinics_at(table, file=file, fetcher=self.fetcher)
         except (extra_data_mod.ExtraDataError, OSError, ValueError, KeyError, zipfile.BadZipFile,
                 ET.ParseError) as e:
             self._failed(self.extra_status,

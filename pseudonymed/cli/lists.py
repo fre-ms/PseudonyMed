@@ -227,7 +227,7 @@ def add_identifiers(
                                    "Klinik, Beruf, Studie, Titel or Sonstiges (own classes such as"
                                    " Sonstiges: redacted everywhere)."))] = "Sonstiges",
 ) -> None:
-    """Add identifiers of one class to the identifier table."""
+    """Add identifiers of one class to the user's own."""
     from pseudonymed.detection import identifiers as ident_module
 
     with ident_module.IdentifierTable() as ident:
@@ -315,4 +315,4 @@ def check_identifiers(
             t = Path(t).read_text(encoding="utf-8", errors="replace")
         matches = recogniser.candidates(t)
         typer.echo(w(f"{len(matches)} Treffer", f"{len(matches)} hit(s)") + "".join(
-            f"\n  {k.category}: {t[k.start:k.end]}" for k in matches))
+            f"\n  {ident_module.category_of(k.classes)}: {t[k.start:k.end]}" for k in matches))
