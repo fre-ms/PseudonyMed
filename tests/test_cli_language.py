@@ -22,7 +22,10 @@ from pseudonymed.core.model import Patient
 
 def _run(arguments: list[str], tmp_path: Path, spoken: str | None,
          columns: int = 100) -> subprocess.CompletedProcess:
-    env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
+    # GITHUB_ACTIONS, FORCE_COLOR and PY_COLORS make Typer force a terminal of 80 columns,
+    # whatever COLUMNS says; the help is to be read as a person's terminal shows it
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")
+           and k not in ("GITHUB_ACTIONS", "FORCE_COLOR", "PY_COLORS")}
     env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_LEXIKON="0",
                COLUMNS=str(columns), NO_COLOR="1", TERM="dumb", LANG="C.UTF-8",
                PYTHONIOENCODING="utf-8")  # Windows writes a pipe in cp1252 otherwise
