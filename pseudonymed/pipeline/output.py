@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from identicalc import Estimate
+
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import save_report
 from pseudonymed.core.model import Hit
@@ -65,7 +67,7 @@ def write_capsule(v: PreparationBase, result: Result, notes: list[str]) -> None:
         " language model."))
 
 
-def residual_risk(v: PreparationBase, text: str) -> risk_module.ResidualRisk:
+def residual_risk(v: PreparationBase, text: str) -> Estimate:
     """The k-map estimate of the pseudonymised text (see
     :mod:`pseudonymed.checks.residual_risk`)."""
     terms = terms_module.standard() if v.opt.medical_terms else None

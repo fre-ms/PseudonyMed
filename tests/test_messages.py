@@ -246,7 +246,8 @@ def test_a_run_speaks_both_languages(tmp_path: Path, report_pdf: Path, patient: 
         for source in (report_pdf, transcript):
             opt = PipelineOptions(target_folder=tmp_path / source.stem, language="en")
             res = pseudonymise(source, patient, opt, store=sp)  # type: ignore[arg-type]
-            plain = [m for m in _messages(res) if not isinstance(m, Text)]
+            # a Text of PseudonyMed's or a Wording of identicalc: both carry the English form
+            plain = [m for m in _messages(res) if not isinstance(getattr(m, "en", None), str)]
             assert plain == [], plain
             text = as_text(res.report, "en")
             for word in ("Prüfbericht", "Gegenprobe", "Hinweise", "Warnungen", "Restrisiko"):

@@ -44,11 +44,13 @@ def english(language: str) -> bool:
 
 def in_language(text: object, language: str) -> str:
     """The text in the interface language: German as it is; English from the attached
-    form, else from the read-back table, else unchanged."""
+    form (a :class:`Text`, or identicalc's ``Wording``), else from the read-back table, else
+    unchanged."""
     if not english(language):
         return str(text)
-    if isinstance(text, Text):
-        return text.en
+    en = getattr(text, "en", None)  # a Text, or a Wording of identicalc
+    if isinstance(en, str):
+        return en
     return read_back(str(text))
 
 

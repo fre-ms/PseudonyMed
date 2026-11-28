@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
+from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.recheck import (
     checked_from,
     in_pseudonym,
@@ -241,7 +242,7 @@ def finalise_text(v: TextPreparation, final: bool = True) -> Result:
     else:
         warnings.append(say("Nicht freigegeben: keine Ausgabe geschrieben.",
                             "Not released: no output written."))
-    log = RunLog(opt.as_dict(), warnings, notes, result.residual_risk.as_dict())
+    log = RunLog(opt.as_dict(), warnings, notes, risk_module.stored(result.residual_risk))
     result.report = create_report(source, result.target_txt, 1, True, hits,
                                   recheck, log)
     write_report(result, opt)

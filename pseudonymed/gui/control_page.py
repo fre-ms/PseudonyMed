@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from functools import partial
 
+import identicalc
+from identicalc import Estimate
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -258,16 +260,16 @@ class ControlPage(QWidget):
             self._set_traffic_light(self.risk_traffic_light, "grau")
             self.risk_text.setText(self.tr("Noch kein geprüftes Dokument."))
             return
-        self._set_traffic_light(self.risk_traffic_light, total.traffic_light)
+        self._set_traffic_light(self.risk_traffic_light, risk_module.light_colour(total))
         self.risk_text.setText(self._risk_sentence(total, earlier))
 
-    def _risk_sentence(self, total: risk_module.ResidualRisk, earlier: int) -> str:
+    def _risk_sentence(self, total: Estimate, earlier: int) -> str:
         """The summary sentence of the joint estimate: figures and threshold, the largest
         contribution if there is one, the number of earlier released documents if any."""
         dominant = total.dominant
         sentence = self.tr("Alle Dokumente dieses Patienten zusammen: {kurz}; {schwelle}.").format(
             kurz=total.short(interface_language()),
-            schwelle=risk_module.traffic_light_text(total.traffic_light, interface_language()))
+            schwelle=identicalc.light_text(total.light, interface_language()))
         if dominant:
             sentence += self.tr(" Größter Beitrag: {merkmal} ({bits:.1f} Bit).").format(
                 merkmal=shown(dominant.description), bits=dominant.bits)
@@ -299,8 +301,8 @@ class ControlPage(QWidget):
         contribution = (f"{shown(r.dominant.description)} ({r.dominant.bits:.1f} Bit)"
                         if r.dominant else "–")
         language = interface_language()
-        return [d.path.name, verdict, risk_module._number(r.lam, language), f"{r.kappa:.2f}",
-                risk_module.light_name(r.traffic_light, language).upper(), contribution]
+        return [d.path.name, verdict, identicalc.number(r.lam, language), f"{r.kappa:.2f}",
+                identicalc.light_name(r.light, language).upper(), contribution]
 
     def _show_details(self) -> None:
         """Details of the selected row: the counted features with their evidence and the
@@ -327,7 +329,7 @@ class ControlPage(QWidget):
         code = entry.data(Qt.ItemDataRole.UserRole)
         return next((d for d in self.session.documents if id(d) == code), None)
 
-    def _feature_rows(self, r: risk_module.ResidualRisk | None) -> list[tuple[str, str, str]]:
+    def _feature_rows(self, r: Estimate | None) -> list[tuple[str, str, str]]:
         """Rows of the feature table: counted features first, each by bits, then the ones
         only listed, then the markers prefixed with "!"; nothing without an estimate."""
         if r is None:

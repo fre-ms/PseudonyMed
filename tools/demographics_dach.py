@@ -18,7 +18,7 @@ national total also contains Germans living abroad on official duty.  Persons re
 "divers" or "unbekannt" were redistributed to male and female by the census offices.
 Hanau became a kreisfreie Stadt (independent city) on 1 January 2026 (Kreis 06415): its
 row is taken from the municipality figures and subtracted from the Main-Kinzig-Kreis
-(06435), so the districts match the current directory ``pseudonymed/daten/gemeinden_de.csv.gz``.
+(06435), so the districts match the current directory, identicalc's ``municipalities_de.csv.gz``.
 
 Austria (AT): Statistik Austria, open data set ``OGD_bevstandjbab2002_BevStand_2026``
 "Bevölkerungsstand zu Jahresbeginn 2026" (municipalities, Vienna by district, single years
@@ -63,8 +63,10 @@ from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 
+import identicalc.data
+
 TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "demografie_dach.csv.gz"
-MUNICIPALITIES_DE = TARGET.parent / "gemeinden_de.csv.gz"
+MUNICIPALITIES_DE = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
 HEADER = ["land", "ebene", "kennung", "name", "geschlecht", "alter_von", "alter_bis", "anzahl",
           "stichtag"]
 AGENT = {"User-Agent": "PseudonyMed build script (https://github.com/fre-ms/PseudonyMed)"}
@@ -394,9 +396,10 @@ def match_municipalities_de(lines: list[Row]) -> None:
         return
     with gzip.open(MUNICIPALITIES_DE, "rt", encoding="utf-8") as f:
         next(f)
-        districts = {r["ars"][:5] for r in csv.DictReader(f) if int(r["einwohner"] or 0) > 0}
+        districts = {r["ars"][:5] for r in csv.DictReader(f) if int(r["population"] or 0) > 0}
     existing = {z[2] for z in lines if z[0] == "DE" and z[1] == "kreis"}
-    print(f"  Abgleich mit gemeinden_de.csv.gz: {len(districts & existing)} von {len(districts)}"
+    print(f"  Abgleich mit municipalities_de.csv.gz: {len(districts & existing)} von"
+          f" {len(districts)}"
           f" Kreisen gefunden; fehlend: {sorted(districts - existing) or 'keine'};"
           f" überzählig: {sorted(existing - districts) or 'keine'}")
 

@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from identicalc import Estimate, Feature, Marker, number
 from PySide6.QtWidgets import QApplication
 
-from pseudonymed.checks import residual_risk as rr
 from pseudonymed.core.model import Report
 from pseudonymed.gui.control_page import ControlPage
 from pseudonymed.gui.reidentify_page import ReidentifyPage
@@ -18,7 +18,7 @@ from pseudonymed.pseudonyms.capsule import Capsule
 from tests.test_gui import qapp  # noqa: F401
 
 
-def _result(residual_risk: rr.ResidualRisk | None, released: bool = True) -> Result:
+def _result(residual_risk: Estimate | None, released: bool = True) -> Result:
     """A re-check result with or without an estimate, released or not."""
     report = Report(source="befund.pdf", target="befund_pseudonym.pdf", pages=1,
                     timestamp="", tool="")
@@ -27,15 +27,15 @@ def _result(residual_risk: rr.ResidualRisk | None, released: bool = True) -> Res
                   residual_risk=residual_risk)
 
 
-def _residual_risk() -> rr.ResidualRisk:
+def _residual_risk() -> Estimate:
     """Two counted features, one only listed, one marker; λ ≈ 5.9 against 1000 people."""
-    return rr.ResidualRisk(
+    return Estimate(
         features=[
-            rr.Feature("geschlecht", "Geschlecht", "Geschlecht", 1.0, "Patientin"),
-            rr.Feature("geburtsjahr", "Geburtsdatum", "Geburtsjahr", 6.4, "[geb. 1959]"),
-            rr.Feature("ort:2", "Ort", "Ort (zweiter)", 12.0, "Kleinstadt", counted=False),
+            Feature("sex", "sex", "Geschlecht", 1.0, "Patientin"),
+            Feature("birth:year", "birth", "Geburtsjahr", 6.4, "[geb. 1959]"),
+            Feature("place:2", "place", "Ort (zweiter)", 12.0, "Kleinstadt", counted=False),
         ],
-        markers=[rr.Marker("alter90", "Alter ab 90", "91-jährig")],
+        markers=[Marker("age_90", "Alter ab 90", "91-jährig")],
         reference=1000)
 
 
@@ -48,9 +48,9 @@ def test_table_line(qapp: QApplication, tmp_path: Path) -> None:  # noqa: F811
         "befund.pdf", "NICHT bestanden", "–", "–", "–", "–"]
     r = _residual_risk()
     line = page._table_row(d, _result(r))
-    assert line == ["befund.pdf", "bestanden", rr._number(r.lam), f"{r.kappa:.2f}",
+    assert line == ["befund.pdf", "bestanden", number(r.lam), f"{r.kappa:.2f}",
                     "GELB", "Geburtsjahr (6.4 Bit)"]
-    assert page._table_row(d, _result(rr.ResidualRisk(reference=1000)))[5] == "–"
+    assert page._table_row(d, _result(Estimate(reference=1000)))[5] == "–"
 
 
 def test_feature_lines(qapp: QApplication, tmp_path: Path) -> None:  # noqa: F811
@@ -76,7 +76,7 @@ def test_risk_sentence(qapp: QApplication, tmp_path: Path) -> None:  # noqa: F81
     assert " Größter Beitrag: Geburtsjahr (6.4 Bit)." in sentence and "früher" not in sentence
     assert page._risk_sentence(r, 2).endswith(
         " Einschließlich 2 früher freigegebener Dokument(e).")
-    assert "Größter Beitrag" not in page._risk_sentence(rr.ResidualRisk(reference=1000), 0)
+    assert "Größter Beitrag" not in page._risk_sentence(Estimate(reference=1000), 0)
 
 
 def test_mapping_source(qapp: QApplication, tmp_path: Path) -> None:  # noqa: F811

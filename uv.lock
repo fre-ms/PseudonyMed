@@ -755,6 +755,11 @@ wheels = [
 ]
 
 [[package]]
+name = "identicalc"
+version = "0.1.0"
+source = { git = "https://github.com/fre-ms/identicalc?tag=v0.1.0#0eaf10911b94345481b320d73e1d9afa201e3aa6" }
+
+[[package]]
 name = "idna"
 version = "3.20"
 source = { registry = "https://pypi.org/simple" }
@@ -1884,6 +1889,7 @@ source = { editable = "." }
 dependencies = [
     { name = "doccor" },
     { name = "docrepro" },
+    { name = "identicalc" },
     { name = "lexcor" },
     { name = "lexident" },
     { name = "lexterm" },
@@ -1940,6 +1946,7 @@ requires-dist = [
     { name = "doccor", git = "https://github.com/fre-ms/docrepro?subdirectory=packages%2Fdoccor&tag=v0.11.0" },
     { name = "doccor", extras = ["gui"], marker = "extra == 'gui'", git = "https://github.com/fre-ms/docrepro?subdirectory=packages%2Fdoccor&tag=v0.11.0" },
     { name = "docrepro", git = "https://github.com/fre-ms/docrepro?tag=v0.11.0" },
+    { name = "identicalc", git = "https://github.com/fre-ms/identicalc?tag=v0.1.0" },
     { name = "keyring", marker = "extra == 'carddav'", specifier = ">=25" },
     { name = "lexcor", git = "https://github.com/fre-ms/lexcor?tag=v0.2.7" },
     { name = "lexident", git = "https://github.com/fre-ms/lexident?tag=v0.2.4" },

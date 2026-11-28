@@ -68,9 +68,11 @@ from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
+import identicalc.data
+
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = ROOT / "pseudonymed" / "data" / "studien_dach.csv.gz"
-MUNICIPALITIES = ROOT / "pseudonymed" / "data" / "gemeinden_de.csv.gz"
+MUNICIPALITIES = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
 AGENT = "PseudonyMed-studienregister/1.0 (+https://github.com/fre-ms/PseudonyMed)"
 
 CTG_STUDIES = "https://clinicaltrials.gov/api/v2/studies"

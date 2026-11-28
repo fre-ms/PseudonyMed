@@ -100,11 +100,13 @@ def test_section_omitted_without_entries() -> None:
 
 
 def test_residual_risk_only_when_computed() -> None:
-    from pseudonymed.checks.residual_risk import ResidualRisk
+    from identicalc import Estimate
+
+    from pseudonymed.checks.residual_risk import stored
 
     assert rep._residual_risk_lines(_report(residual_risk=None), "de") == []
     assert rep._residual_risk_lines(_report(residual_risk={}), "de") == []
-    lines = rep._residual_risk_lines(_report(residual_risk=ResidualRisk().as_dict()), "de")
+    lines = rep._residual_risk_lines(_report(residual_risk=stored(Estimate())), "de")
     assert lines and lines[0].startswith("Restrisiko (Schätzung")
 
 

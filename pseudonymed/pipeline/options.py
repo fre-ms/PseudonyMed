@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
+import identicalc
 from ocrdoc import ocr as ocr_module
 
-from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Hit, Report
 from pseudonymed.redaction.pdf import RedactionOptions
 
@@ -59,7 +59,7 @@ class PipelineOptions:
     structured: bool = True  # OCR text as Markdown: paragraphs joined, headings, lists, tables
     recipient: str = ""  # armoured public key of a recipient: one-time pseudonyms + capsule
     recipient_fingerprint: str = ""
-    reference_population: int = risk_module.REFERENCE_GERMANY  # people the attacker chooses from
+    reference_population: int = identicalc.REFERENCE_GERMANY  # people the attacker chooses from
     own_places: str = ""  # places of the sender (practice, clinic), comma-separated, not counted
     redaction: RedactionOptions = field(default_factory=RedactionOptions)
     language: str = "de"  # of the report and the vocabulary file ("en" from the English desktop)
@@ -107,7 +107,7 @@ class Result:
     target_report: Path | None = None
     target_vocabulary: Path | None = None  # discarded guesses, one term per line
     target_capsule: Path | None = None  # the mapping, encrypted to the recipient
-    residual_risk: risk_module.ResidualRisk | None = None  # what the text still reveals
+    residual_risk: identicalc.Estimate | None = None  # what the text still reveals
     preview: list[Path] = field(default_factory=list)
     text: str = ""
     is_text: bool = False  # the source was a text file; ``target_txt`` is the output itself

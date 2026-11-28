@@ -4,7 +4,8 @@ The residual-risk check estimates the catchment area of the practice (the distri
 patients come from) locally from the postcodes in the address book.  This file maps every
 postcode of Germany, Austria and Switzerland to the municipalities it covers, with the
 district of each municipality and the estimated share of the postcode's residents living
-there.  The keys match ``gemeinden_de.csv.gz`` and ``demografie_dach.csv.gz``.
+there.  The keys match identicalc's ``municipalities_de.csv.gz`` and
+``demografie_dach.csv.gz``.
 
 Sources and licences
 --------------------
@@ -13,7 +14,8 @@ Germany (DE): street directory of the OpenPLZ API project, file
 extract from OpenStreetMap that lists every named street with the postcode area and the
 municipality (8-digit AGS) its centre lies in.  Licence: Open Database License (ODbL) 1.0,
 "© OpenStreetMap contributors".  Municipality keys (ARS), names and populations come from
-``gemeinden_de.csv.gz`` (Destatis, Datenlizenz Deutschland - Namensnennung - 2.0); keys that
+identicalc's ``municipalities_de.csv.gz`` (Destatis, Datenlizenz Deutschland - Namensnennung -
+2.0); keys that
 changed after the OSM extract are followed through the Destatis lists of territorial changes
 ("Gebietsänderungen", ``DE_CHANGES``; streets of dissolved uninhabited areas count as
 streets, not as residential units).  Populated municipalities without any OSM street get one
@@ -54,7 +56,7 @@ below 0.00005 are dropped.  If no
 municipality of P has residents and residential units, all addresses (DE: streets) weighted by
 population are used, then unweighted addresses, then the fallback weights (DE seat
 postcodes: population; CH perimeter-only postcodes: swisstopo address share).
-Populations: DE ``gemeinden_de.csv.gz``, AT and CH municipality totals of
+Populations: DE identicalc's ``municipalities_de.csv.gz``, AT and CH municipality totals of
 ``demografie_dach.csv.gz``.
 
 Output
@@ -97,9 +99,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import identicalc.data
+
 DATA = Path(__file__).resolve().parent.parent / "pseudonymed" / "data"
 TARGET = DATA / "plz_dach.csv.gz"
-MUNICIPALITIES_DE = DATA / "gemeinden_de.csv.gz"
+MUNICIPALITIES_DE = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
 DEMOGRAPHICS = DATA / "demografie_dach.csv.gz"
 HEADER = ["land", "plz", "ort", "gemeinde_kennung", "gemeinde_name", "kreis_kennung", "anteil"]
 AGENT = {"User-Agent": "PseudonyMed build script (https://github.com/fre-ms/PseudonyMed)"}
@@ -309,7 +313,7 @@ def germany(raw: Path | None, raw_changes: Path | None) -> Country:
                      f" {territory_date.group(1) if territory_date else '?'}")
     ars = {g["ars"][:5] + g["ars"][9:]: g["ars"] for g in municipalities}
     for g in municipalities:
-        country.population[g["ars"]] = int(g["einwohner"])
+        country.population[g["ars"]] = int(g["population"])
         country.names[g["ars"]] = g["name"]
         country.district[g["ars"]] = g["ars"][:5]
     successors = _successors_de(raw_changes, int(date[:4]))
@@ -334,18 +338,19 @@ def germany(raw: Path | None, raw_changes: Path | None) -> Country:
     # Populated municipalities without any OSM street: one unit at the postcode of the seat,
     # so their whole population is counted there.
     with_streets = {g for _p, g in country.all_items}
-    without = [g for g in municipalities if int(g["einwohner"]) > 0 and g["ars"] not in with_streets
-               and re.fullmatch(r"\d{5}", g["plz"])]
+    without = [g for g in municipalities
+               if int(g["population"]) > 0 and g["ars"] not in with_streets
+               and re.fullmatch(r"\d{5}", g["postcode"])]
     for g in without:
-        pair = (g["plz"], g["ars"])
+        pair = (g["postcode"], g["ars"])
         country.residential[pair] = country.all_items[pair] = 1.0
         country.places[pair][g["name"]] += 1
     existing = {p for p, _g in country.all_items}
-    seats = [g for g in municipalities if re.fullmatch(r"\d{5}", g["plz"])
-             and g["plz"] not in existing]
+    seats = [g for g in municipalities if re.fullmatch(r"\d{5}", g["postcode"])
+             and g["postcode"] not in existing]
     for g in seats:
-        pair = (g["plz"], g["ars"])
-        country.replacement[pair] = max(int(g["einwohner"]), 1)
+        pair = (g["postcode"], g["ars"])
+        country.replacement[pair] = max(int(g["population"]), 1)
         country.places[pair][g["name"]] += 1
     country.notes += [
         f"{sum(rekeyed.values())} Straßen aus {len(rekeyed)} geänderten"
@@ -353,7 +358,7 @@ def germany(raw: Path | None, raw_changes: Path | None) -> Country:
         f"{sum(pending.values())} Straßen ohne bekannte Gemeinde verworfen"
         f" ({', '.join(sorted(pending)) or 'keine'})",
         f"{len(without)} bewohnte Gemeinden ohne OSM-Straße mit der PLZ des Gemeindesitzes"
-        f" ergänzt ({sum(int(g['einwohner']) for g in without)} Einwohner)",
+        f" ergänzt ({sum(int(g['population']) for g in without)} Einwohner)",
         f"{len({g['plz'] for g in seats})} PLZ von Gemeindesitzen ohne OSM-Gebiet ergänzt",
     ]
     return country

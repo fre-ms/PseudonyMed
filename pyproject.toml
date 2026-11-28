@@ -36,6 +36,8 @@ dependencies = [
   "lexterm>=0.2.9",
   # identifying information beyond the patient's own: lexident's store and its recogniser
   "lexident>=0.2.4",
+  # the residual-risk estimate: its model, its weights and the population data behind them
+  "identicalc>=0.1.0",
   "platformdirs>=4",
   "typer>=0.12",
   # the address books of the Mac's Contacts app, read through Apple's Contacts framework
@@ -91,6 +93,7 @@ ocrdoc = { git = "https://github.com/fre-ms/docrepro", tag = "v0.11.0", subdirec
 lexcor = { git = "https://github.com/fre-ms/lexcor", tag = "v0.2.7" }
 lexterm = { git = "https://github.com/fre-ms/lexterm", tag = "v0.2.9" }
 lexident = { git = "https://github.com/fre-ms/lexident", tag = "v0.2.4" }
+identicalc = { git = "https://github.com/fre-ms/identicalc", tag = "v0.1.0" }
 
 [build-system]
 requires = ["hatchling"]

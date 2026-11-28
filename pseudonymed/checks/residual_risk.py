@@ -1,67 +1,46 @@
-"""Residual-risk estimate of a pseudonymised text: how many people share what is left.
+"""Residual-risk estimate of a pseudonymised text: what remains, found in the text and weighed
+by identicalc.
 
 The re-check proves that the patient's own identifiers are gone.  This module asks the
 next question: do the details that remain, taken together, still single the patient out?
-It follows the k-map idea of disclosure-risk assessment (El Emam; EMA Policy 0070;
-Health Canada): every remaining quasi-identifier has a population frequency f, the
-expected number of people in the reference population N who share all of them is
-λ = N · Π f, and the probability that a match is the right person is
-κ = (1 − e^(−λ)) / λ (Rocher, Hendrickx & de Montjoye 2019), which for large groups is
-El Emam's 1/k.  Bits (−log₂ f) make the contributions comparable: about 26.3 bits single
-one person out of Germany.
+The model, the weights and the population data are identicalc's (a k-map estimate after
+El Emam, EMA Policy 0070 and Rocher et al.; a synthesis, not a standard).  What is
+PseudonyMed's own is finding the quasi-identifiers in a German letter:
 
-What counts, and with which weight:
+* the sex, from the patient's record or the prose ("Patientin");
+* the year of birth or an age (``[geb. 1959]`` as PseudonyMed writes it, "66-jährig"), and
+  whether both stand next to exact dates;
+* the places named, by the municipality names of identicalc's data, leaving out words
+  that are ordinary German far more often than places, the sender's own places and medical
+  terms;
+* the rare diseases named, by the Orphanet names and synonyms of identicalc's data;
+* flags the model cannot weigh: dated reportable events, occupations or employers, family
+  constellations.
 
-* sex (1 bit), always, because German prose shows it;
-* the year of birth or age (≈ 6.4 bits for one of ~85 cohorts, as PseudonyMed writes
-  ``[geb. 1959]``), more when an age next to an exact letter date narrows the window;
-* the smallest place named in the text, by the population of that municipality
-  (Destatis GV-ISys): a village of 500 is 17.4 bits, a city of 500,000 is 7.4;
-* the rarest named rare disease, by its Orphanet prevalence (1/100,000 ≈ 16.6 bits).
-
-Only the strongest place and the strongest diagnosis are counted, because several of
-them are usually correlated; the others are listed.  Independence between the counted
-attributes is assumed, which is optimistic for atypical combinations, so the result is a
-band, not a probability: the published thresholds give the light, λ ≥ 11 (κ ≤ 0.09, the
-EMA/Health Canada level) green, 5 ≤ λ < 11 (the k = 5 of German practice guides)
-yellow, λ < 5 red.  Rule flags name what the model cannot weigh: ages from 90, exact
-dates of reportable events, occupations, employers, family details.
-
-This score is a synthesis of published parts, not a published standard; the report
-says so wherever it is shown.
+PseudonyMed's files and its database keep German keys and values (``merkmale``, ``Ort``,
+``gruen``); :func:`stored` and :func:`from_stored` translate at that boundary, as
+:mod:`pseudonymed.core.stored` does for every file PseudonyMed writes.
 """
 
 from __future__ import annotations
 
-import csv
 import datetime as dt
-import gzip
-import math
 import re
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from dataclasses import dataclass
+from functools import cache
+from typing import TYPE_CHECKING, Any
 
-from pseudonymed.core.stored import as_stored, field_values
+import identicalc
+from identicalc import Disease, Estimate, Feature, Marker, Municipality, features
+
 from pseudonymed.core.text import english, in_language, say
 
 if TYPE_CHECKING:
     from pseudonymed.detection.medical_terms import MedicalTerms
 
-DATA = Path(__file__).resolve().parent.parent / "data"
-MUNICIPALITIES = DATA / "gemeinden_de.csv.gz"
-PREVALENCES = DATA / "orphanet_praevalenz_de.csv.gz"
-
-REFERENCE_GERMANY = 83_600_000  # Destatis, 31.12.2024
-COHORTS = 85  # birth years with a noticeable share of the population
-BITS_YEAR = math.log2(COHORTS)  # ≈ 6.41
-BITS_AGE_AND_DATE = 2.6  # age next to an exact letter date: a window of ~59 of 365 days
-LAMBDA_RED = 5.0  # below: red (κ > 0.2)
-LAMBDA_GREEN = 11.0  # from here: green (κ ≤ 0.09)
-SMALL_MUNICIPALITY = 20_000  # Safe-Harbor analogue: smaller places should not stand in clear
-RARE = 5 / 10_000  # EU definition of a rare disease
 MIN_PLACE_LENGTH = 4
+MIN_REFERENCE = 100  # a practice's patients at the least
 
 _WORD = re.compile(r"[^\W\d_][\w\-]*", re.UNICODE)
 _MONTHS = "Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember"
@@ -80,7 +59,6 @@ _OCCUPATION = re.compile(r"\b(?:(?:tätig|arbeitet|arbeitete|berufstätig|besch�
                          r"|Abgeordnete(?:r)?)", re.IGNORECASE)
 _FAMILY = re.compile(r"\b(?:\d+|ein|zwei|drei|vier|fünf|sechs|sieben) Kinder(?:n)?\b|"
                      r"\bZwilling|\bDrilling|\balleinerziehend|\bverwitwet seit", re.IGNORECASE)
-_TRANS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
 
 # Municipality names that are ordinary German words far more often than places.
 PLACE_STOPLIST = {
@@ -104,7 +82,7 @@ PLACE_STOPLIST = {
 
 
 def _norm(word: str) -> str:
-    return word.casefold().translate(_TRANS)
+    return features.norm(word)
 
 
 def _forms(term: str) -> set[str]:
@@ -151,283 +129,38 @@ class TermIndex:
         return list(found.values())
 
 
-# -- data ------------------------------------------------------------------------------------------
-@dataclass
-class Municipality:
-    """One municipality of the Destatis register with the population that sets its weight."""
-
-    name: str
-    population: int
-    postcode: str
-    country: str
-    namesakes: int = 1  # how many municipalities carry the name
-
-
-@dataclass
-class Disease:
-    """One rare disease of the Orphanet table: prevalence ``p`` as a fraction, its class as text."""
-
-    orpha: str
-    name: str
-    p: float
-    category: str
-    source: str
+# -- the names to look for, from identicalc's data -------------------------------------------------
+@cache
+def municipality_index() -> TermIndex:
+    """Index of municipality names → the largest municipality of that name."""
+    index = TermIndex(max_words=5)
+    per_name: dict[str, list[Municipality]] = {}
+    for m in identicalc.municipalities():
+        per_name.setdefault(m.name, []).append(m)
+    for name, group in per_name.items():
+        if len(name) < MIN_PLACE_LENGTH or _norm(name) in PLACE_STOPLIST:
+            continue
+        index.add(name, max(group, key=lambda m: m.population))
+    return index
 
 
-_municipalities: tuple[TermIndex, str] | None = None
-_diseases: tuple[TermIndex, str] | None = None
-
-
-def _read(path: Path) -> tuple[str, list[dict[str, str]]]:
-    with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
-        header = f.readline().lstrip("# ").strip()
-        return header, list(csv.DictReader(f))
-
-
-def municipality_index() -> tuple[TermIndex, str]:
-    """Index of municipality names → Gemeinde (largest one for an ambiguous name)."""
-    global _municipalities
-    if _municipalities is None:
-        index = TermIndex(max_words=5)
-        source = ""
-        if MUNICIPALITIES.exists():
-            source, lines = _read(MUNICIPALITIES)
-            per_name: dict[str, list[dict[str, str]]] = {}
-            for z in lines:
-                per_name.setdefault(z["name"], []).append(z)
-            for name, group in per_name.items():
-                if len(name) < MIN_PLACE_LENGTH or _norm(name) in PLACE_STOPLIST:
-                    continue
-                largest = max(group, key=lambda z: int(z["einwohner"]))
-                index.add(name, Municipality(name, int(largest["einwohner"]),
-                                             largest["plz"], largest["land"], len(group)))
-        _municipalities = (index, source)
-    return _municipalities
-
-
-_municipality_names: frozenset[str] | None = None
-
-
+@cache
 def municipality_names() -> frozenset[str]:
     """Every name of a German municipality, in lower case, common words among them ("Essen",
     "Haar"): for a word that context already marks as a place ("in Essen")."""
-    global _municipality_names
-    if _municipality_names is None:
-        _municipality_names = frozenset(
-            line["name"].split(",")[0].strip().lower() for line in _read(MUNICIPALITIES)[1]
-        ) if MUNICIPALITIES.exists() else frozenset()
-    return _municipality_names
+    return frozenset(m.name.split(",")[0].strip().lower() for m in identicalc.municipalities())
 
 
-def disease_index() -> tuple[TermIndex, str]:
-    """Index of rare-disease names and synonyms → Erkrankung, read once from the Orphanet table."""
-    global _diseases
-    if _diseases is None:
-        index = TermIndex(max_words=6)
-        source = ""
-        if PREVALENCES.exists():
-            source, lines = _read(PREVALENCES)
-            for z in lines:
-                index.add(z["begriff"], Disease(z["orpha"], z["begriff"], float(z["p"]),
-                                                z["klasse"], z["quelle"]))
-        _diseases = (index, source)
-    return _diseases
+@cache
+def disease_index() -> TermIndex:
+    """Index of rare-disease names and synonyms → the disease under that name."""
+    index = TermIndex(max_words=6)
+    for d in identicalc.diseases():
+        index.add(d.name, d)
+    return index
 
 
-# -- result ----------------------------------------------------------------------------------------
-@dataclass
-class Feature:
-    """One quasi-identifier that remains in the text, with its weight in bits."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "key": "schluessel", "category": "kategorie", "description": "beschreibung",
-        "evidence": "beleg", "source": "quelle", "counted": "gezaehlt"}
-
-    key: str  # stable key for the union across documents
-    category: str  # Geschlecht, Geburtsdatum, Ort, Diagnose, Datum
-    description: str
-    bits: float
-    evidence: str = ""  # the text that triggered it (from the pseudonymised output)
-    source: str = ""
-    counted: bool = True  # False: listed, but not in the sum (weaker place/diagnosis)
-
-
-@dataclass
-class Marker:
-    """A rule flag without a weight: something the model cannot weigh but a reader must see."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {"key": "schluessel", "evidence": "beleg"}
-
-    key: str
-    text: str
-    evidence: str = ""
-
-
-@dataclass
-class ResidualRisk:
-    """The estimate for one text or one patient: features, flags and the reference population;
-    λ, κ and the light are derived from them."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "features": "merkmale", "markers": "markierungen", "reference": "referenz",
-        "earlier": "fruehere", "date_mentions": "datumsangaben"}
-
-    features: list[Feature] = field(default_factory=list)
-    markers: list[Marker] = field(default_factory=list)
-    reference: int = REFERENCE_GERMANY
-    earlier: int = 0  # earlier documents of the same patient merged in
-    date_mentions: int = 0
-
-    @property
-    def bits(self) -> float:
-        """Sum of the counted features' bits."""
-        return sum(m.bits for m in self.features if m.counted)
-
-    @property
-    def reference_bits(self) -> float:
-        """log₂ of the reference population: the bits that single one person out of it."""
-        return math.log2(max(self.reference, 2))
-
-    @property
-    def lam(self) -> float:
-        """λ, the expected number of people in the reference population who share all counted
-        features."""
-        return 2.0 ** (self.reference_bits - self.bits)
-
-    @property
-    def kappa(self) -> float:
-        """κ, the probability that a match is the right person (Rocher 2019); 1/λ for large
-        groups, where the exact form only costs precision."""
-        lam = self.lam
-        if lam <= 0:
-            return 1.0
-        if lam > 50:
-            return 1.0 / lam
-        return (1.0 - math.exp(-lam)) / lam
-
-    @property
-    def traffic_light(self) -> str:
-        """The light: red below λ = 5, yellow below 11, green from there."""
-        lam = self.lam
-        if lam < LAMBDA_RED:
-            return "rot"
-        if lam < LAMBDA_GREEN:
-            return "gelb"
-        return "gruen"
-
-    @property
-    def dominant(self) -> Feature | None:
-        """The counted feature with the most bits, None when nothing is counted."""
-        counted = [m for m in self.features if m.counted]
-        return max(counted, key=lambda m: m.bits) if counted else None
-
-    def as_dict(self, language: str = "de") -> dict[str, Any]:
-        """JSON-ready form with the derived figures and the model's name added; with an
-        English ``language`` the wording (descriptions, flags, sources) is English."""
-        d = as_stored(self)
-        if english(language):
-            for m, stored in zip(self.features, d["merkmale"], strict=True):
-                stored.update({"beschreibung": in_language(m.description, language),
-                               "quelle": in_language(m.source, language)})
-            for mk, stored in zip(self.markers, d["markierungen"], strict=True):
-                stored["text"] = in_language(mk.text, language)
-        d.update({"bits": round(self.bits, 2), "referenz_bits": round(self.reference_bits, 2),
-                  "lambda": round(self.lam, 3), "kappa": round(self.kappa, 4),
-                  "ampel": self.traffic_light,
-                  "modell": in_language(MODEL_NAME, language)})
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> ResidualRisk:
-        """The inverse of ``as_dict``; the derived figures are recomputed, not read."""
-        return cls(features=[Feature(**field_values(Feature, m)) for m in d.get("merkmale", [])],
-                   markers=[Marker(**field_values(Marker, m)) for m in d.get("markierungen", [])],
-                   reference=int(d.get("referenz", REFERENCE_GERMANY)),
-                   earlier=int(d.get("fruehere", 0)),
-                   date_mentions=int(d.get("datumsangaben", 0)))
-
-    def short(self, language: str = "de") -> str:
-        """One line with λ, κ and the light, for the report heading and the GUI."""
-        light = light_name(self.traffic_light, language).upper()
-        people = "similar people" if english(language) else "gleichartige Personen"
-        return f"λ ≈ {_number(self.lam, language)} {people}, κ ≈ {self.kappa:.2f} → {light}"
-
-    def as_lines(self, language: str = "de") -> list[str]:
-        """Lines for the report: the estimate, the contributions, the flags."""
-        return [*self._head_lines(language), *self._weight_lines(language)]
-
-    def _head_lines(self, language: str) -> list[str]:
-        """The estimate with its figures, the reference and the earlier documents."""
-        if english(language):
-            earlier = (f"; with {self.earlier} earlier document(s) of this patient"
-                       if self.earlier else "")
-            return ["Residual risk (estimate, synthesis after El Emam/EMA/Rocher, not a"
-                    " standard): " + self.short(language),
-                    f"  Reference {_thousands(self.reference, 'en')} people ="
-                    f" {self.reference_bits:.1f} bits; remaining features {self.bits:.1f} bits"
-                    + earlier]
-        earlier = (f"; mit {self.earlier} früheren Dokument(en) dieses Patienten"
-                   if self.earlier else "")
-        return ["Restrisiko (Schätzung, Synthese nach El Emam/EMA/Rocher, kein Standard): "
-                + self.short(language),
-                f"  Referenz {_thousands(self.reference)} Personen = {self.reference_bits:.1f} Bit;"
-                f" verbliebene Merkmale {self.bits:.1f} Bit" + earlier]
-
-    def _weight_lines(self, language: str) -> list[str]:
-        """One line per feature (counted first, heaviest first), the flags, the dates."""
-        en = english(language)
-        unit, not_counted = (" bits", " (not counted)") if en else (" Bit", " (nicht gezählt)")
-        lines = [f"  {'•' if m.counted else '◦'} {in_language(m.description, language)}:"
-                 f" {m.bits:.1f}{unit}" + ("" if m.counted else not_counted)
-                 for m in sorted(self.features, key=lambda m: (-m.counted, -m.bits))]
-        lines += [f"  ! {in_language(mk.text, language)}"
-                  + (f" [{mk.evidence}]" if mk.evidence else "") for mk in self.markers]
-        if self.date_mentions:
-            lines.append(f"  {self.date_mentions} exact date(s) in the text (they count only"
-                         " once the attacker knows the patient)" if en else
-                         f"  {self.date_mentions} exakte Datumsangabe(n) im Text (zählen erst,"
-                         " wenn der Angreifer den Patienten kennt)")
-        return lines
-
-
-def _thousands(n: int, language: str = "de") -> str:
-    """A whole number with thousands separators: dots in German, commas in English."""
-    return f"{n:,}" if english(language) else f"{n:,}".replace(",", ".")
-
-
-def _number(x: float, language: str = "de") -> str:
-    """λ for display: whole numbers from 10 on (with separators from 100), else one or three
-    decimals."""
-    if x >= 100:
-        return _thousands(round(x), language)
-    if x >= 10:
-        return f"{x:.0f}"
-    return f"{x:.1f}" if x >= 0.1 else f"{x:.3f}"
-
-
-def traffic_light_text(traffic_light: str, language: str = "de") -> str:
-    """The threshold a light stands for, in the words of the report."""
-    if english(language):
-        return {"gruen": f"λ ≥ {LAMBDA_GREEN:.0f} (κ ≤ 0.09, EMA level)",
-                "gelb": f"{LAMBDA_RED:.0f} ≤ λ < {LAMBDA_GREEN:.0f} (k = 5 of the practice guides)",
-                "rot": f"λ < {LAMBDA_RED:.0f} (κ > 0.2)"}[traffic_light]
-    return {"gruen": f"λ ≥ {LAMBDA_GREEN:.0f} (κ ≤ 0,09, EMA-Niveau)",
-            "gelb": f"{LAMBDA_RED:.0f} ≤ λ < {LAMBDA_GREEN:.0f} (k = 5 der Praxisleitfäden)",
-            "rot": f"λ < {LAMBDA_RED:.0f} (κ > 0,2)"}[traffic_light]
-
-
-MODEL_NAME = say("k-map-Schätzung (Synthese, kein Standard)",
-                 "k-map estimate (synthesis, not a standard)")
-_LIGHT_NAMES = {"gruen": say("gruen", "green"), "gelb": say("gelb", "yellow"),
-                "rot": say("rot", "red"), "grau": say("grau", "grey")}
-
-
-def light_name(traffic_light: str, language: str = "de") -> str:
-    """The name of a light ("gruen", "gelb", "rot", "grau") in the language."""
-    return in_language(_LIGHT_NAMES.get(traffic_light, traffic_light), language)
-
-
-# -- estimate --------------------------------------------------------------------------------------
+# -- finding them in a text ------------------------------------------------------------------------
 @dataclass(frozen=True)
 class PartialResult:
     """What one family of quasi-identifiers contributes: weighted features and unweighted flags.
@@ -443,9 +176,7 @@ def _sex(text: str, sex: str) -> PartialResult:
     """One bit for the sex when it is known or the prose gives it away ("Patientin")."""
     if sex not in ("m", "w") and not re.search(r"\bPatientin\b|\bPatient\b", text):
         return PartialResult()
-    return PartialResult((Feature("geschlecht", "Geschlecht",
-                                  say("Geschlecht (Anrede, Pseudonym)",
-                                      "Sex (salutation, pseudonym)"), 1.0),))
+    return PartialResult((features.sex(),))
 
 
 def _ages_in_text(text: str) -> list[str]:
@@ -467,31 +198,14 @@ def _birth(text: str, year: int, data: list[str]) -> PartialResult:
     age = _ages_in_text(text)
     if not (born or age):
         return PartialResult()
-    evidence = f"[geb. {born[0]}]" if born else f"Alter {age[0]}"
-    features = [Feature("geburt:jahr", "Geburtsdatum",
-                        say("Geburtsjahr bzw. Alter", "Year of birth or age"), BITS_YEAR,
-                        evidence,
-                        say("Annahme: 1 von 85 Jahrgängen", "Assumption: 1 of 85 birth years"))]
+    found = [features.birth_year(f"[geb. {born[0]}]" if born else f"Alter {age[0]}")]
     markers: list[Marker] = []
     if born and age and data:
-        features.append(Feature("geburt:fenster", "Geburtsdatum",
-                                say("Geburtsjahr und Alter neben exakten Daten engen den"
-                                    " Geburtstag ein",
-                                    "Year of birth and age next to exact dates narrow down the"
-                                    " birthday"), BITS_AGE_AND_DATE,
-                                f"[geb. {born[0]}] + {age[0]} + {data[0]}"))
-        markers.append(Marker("alter_und_datum",
-                              say("Geburtsjahr und Alter zusammen mit exakten Daten"
-                                  " im Text: eines davon genügt",
-                                  "Year of birth and age together with exact dates in the"
-                                  " text: one of them is enough"),
-                              f"[geb. {born[0]}], Alter {age[0]}, {data[0]}"))
+        found.append(features.birth_window(f"[geb. {born[0]}] + {age[0]} + {data[0]}"))
+        markers.append(features.age_and_date(f"[geb. {born[0]}], Alter {age[0]}, {data[0]}"))
     if _aged_90_plus(age, born, year):
-        markers.append(Marker("alter_90", say("Alter ab 90: kleine Kohorte, wie bei"
-                                              " HIPAA Safe Harbor zusammenfassen (90+)",
-                                              "Age 90 or over: a small cohort, combine it as"
-                                              " HIPAA Safe Harbor does (90+)")))
-    return PartialResult(tuple(features), tuple(markers))
+        markers.append(features.aged_90_plus())
+    return PartialResult(tuple(found), tuple(markers))
 
 
 def _is_patient_place(evidence: str, municipality: Municipality, own: set[str],
@@ -503,81 +217,38 @@ def _is_patient_place(evidence: str, municipality: Municipality, own: set[str],
     return medical_terms is None or not medical_terms.is_medical_term(municipality.name)
 
 
-def _place_feature(evidence: str, g: Municipality, reference: int, source: str,
-                   counted: bool) -> Feature:
-    """The weight of one place: log₂ of the reference population over the municipality's."""
-    bits = max(0.0, math.log2(reference / max(g.population, 1)))
-    people = _thousands(g.population)
-    if g.namesakes > 1:
-        description = say(f"Ort {g.name} ({people} Einwohner, {g.namesakes} gleichnamige,"
-                          " größte gezählt)",
-                          f"Place {g.name} ({_thousands(g.population, 'en')} inhabitants,"
-                          f" {g.namesakes} of that name,"
-                          " the largest counted)")
-    else:
-        description = say(f"Ort {g.name} ({people} Einwohner)",
-                          f"Place {g.name} ({_thousands(g.population, 'en')} inhabitants)")
-    return Feature(f"ort:{_norm(g.name)}", "Ort", description, bits, evidence, source,
-                   counted=counted)
-
-
-def _small_place(evidence: str, g: Municipality) -> Marker:
-    """The flag for a municipality below the Safe-Harbor-like threshold standing in clear."""
-    limit = _thousands(SMALL_MUNICIPALITY)
-    return Marker(f"kleiner_ort:{_norm(g.name)}",
-                  say(f"Ortsname einer Gemeinde unter {limit} Einwohnern im Klartext: {g.name}",
-                      f"Name of a municipality under {_thousands(SMALL_MUNICIPALITY, 'en')}"
-                      f" inhabitants in clear: {g.name}"),
-                  evidence)
-
-
 def _places(text: str, reference: int, own_places: Iterable[str],
             medical_terms: MedicalTerms | None) -> PartialResult:
     """Every municipality named in the text, smallest first.  Only the smallest is counted,
-    because several places in one letter are usually correlated; every one under
-    ``SMALL_MUNICIPALITY`` inhabitants is flagged."""
-    index, source = municipality_index()
+    because several places in one letter are usually correlated; every small one is flagged."""
     own = {_norm(o.strip()) for o in own_places if o.strip()}
-    places = sorted((t for t in index.find(text) if _is_patient_place(*t, own, medical_terms)),
+    places = sorted((t for t in municipality_index().find(text)
+                     if _is_patient_place(*t, own, medical_terms)),
                     key=lambda o: o[1].population)
-    features = tuple(_place_feature(evidence, g, reference, source, counted=i == 0)
-                     for i, (evidence, g) in enumerate(places))
-    markers = tuple(_small_place(evidence, g) for evidence, g in places
-                    if g.population < SMALL_MUNICIPALITY)
-    return PartialResult(features, markers)
+    found = tuple(features.place(g, reference, evidence, counted=i == 0)
+                  for i, (evidence, g) in enumerate(places))
+    markers = tuple(mk for evidence, g in places
+                    if (mk := features.small_place(g, evidence)) is not None)
+    return PartialResult(found, markers)
 
 
 def _first_per_orpha(matches: list[tuple[str, Disease]]) -> list[tuple[str, Disease]]:
     """Keeps the first match per disease, so that a name and its synonym count once."""
     per_orpha: dict[str, tuple[str, Disease]] = {}
-    for evidence, e in matches:
-        per_orpha.setdefault(e.orpha, (evidence, e))
+    for evidence, d in matches:
+        per_orpha.setdefault(d.orpha, (evidence, d))
     return list(per_orpha.values())
-
-
-def _diagnosis_feature(evidence: str, e: Disease, source: str, counted: bool) -> Feature:
-    """The weight of one rare disease: −log₂ of its Orphanet prevalence."""
-    bits = -math.log2(max(e.p, 1e-9))
-    category = e.category or f"{e.p:g}"
-    return Feature(f"diagnose:{e.orpha}", "Diagnose",
-                   say(f"Seltene Erkrankung {e.name} (ORPHA:{e.orpha}, Prävalenz"
-                       f" {category}, {e.source})",
-                       f"Rare disease {e.name} (ORPHA:{e.orpha}, prevalence {category},"
-                       f" {e.source})"), bits, evidence, source, counted=counted)
 
 
 def _rare_diseases(text: str) -> PartialResult:
     """Every rare disease named in the text, rarest first.  Only the rarest is counted; those
     at or below the EU threshold of a rare disease are flagged."""
-    index, source = disease_index()
-    diseases = _first_per_orpha(sorted(index.find(text), key=lambda k: k[1].p))
-    features = tuple(_diagnosis_feature(evidence, e, source, counted=i == 0)
-                     for i, (evidence, e) in enumerate(diseases))
-    markers = tuple(Marker(f"selten:{e.orpha}",
-                           say(f"Benannte seltene Erkrankung: {e.name}",
-                               f"Named rare disease: {e.name}"), evidence)
-                    for evidence, e in diseases if e.p <= RARE)
-    return PartialResult(features, markers)
+    found = _first_per_orpha(sorted(disease_index().find(text), key=lambda k: k[1].prevalence))
+    weighed = tuple(features.rare_disease(d, evidence, counted=i == 0)
+                    for i, (evidence, d) in enumerate(found))
+    markers = tuple(mk for evidence, d in found
+                    if (mk := features.rare_disease_flag(d, evidence)) is not None)
+    return PartialResult(weighed, markers)
 
 
 def _excerpt(text: str, start: int, end: int, length: int) -> str:
@@ -591,7 +262,7 @@ def _dated_event(text: str) -> Marker | None:
     for m in _EVENT.finditer(text):
         start, end = max(0, m.start() - 80), m.end() + 80
         if _DATE.search(text[start:end]):
-            return Marker("ereignis_datiert",
+            return Marker("dated_event",
                           say("Datiertes, öffentlich berichtbares Ereignis",
                               "Dated, publicly reportable event"),
                           _excerpt(text, start, end, 120))
@@ -604,13 +275,13 @@ class _NotePattern:
 
     key: str
     note: str
-    muster: re.Pattern[str]
+    pattern: re.Pattern[str]
     trailing: int  # characters kept after the match
     length: int  # length of the excerpt
 
     def find(self, text: str) -> Marker | None:
         """The flag for the first match, None when the pattern does not occur."""
-        m = self.muster.search(text)
+        m = self.pattern.search(text)
         if m is None:
             return None
         return Marker(self.key, self.note,
@@ -618,9 +289,10 @@ class _NotePattern:
 
 
 _NOTE_PATTERNS = (
-    _NotePattern("beruf", say("Beruf, Arbeitgeber oder Institution genannt",
-                              "Occupation, employer or institution named"), _OCCUPATION, 60, 100),
-    _NotePattern("familie", say("Familienkonstellation genannt", "Family constellation named"),
+    _NotePattern("occupation", say("Beruf, Arbeitgeber oder Institution genannt",
+                                   "Occupation, employer or institution named"), _OCCUPATION,
+                 60, 100),
+    _NotePattern("family", say("Familienkonstellation genannt", "Family constellation named"),
                  _FAMILY, 40, 80),
 )
 
@@ -632,58 +304,103 @@ def _notes(text: str) -> PartialResult:
     return PartialResult(markers=tuple(mk for mk in found if mk is not None))
 
 
-def estimate(text: str, sex: str = "", reference: int = REFERENCE_GERMANY,
+def estimate(text: str, sex: str = "", reference: int = identicalc.REFERENCE_GERMANY,
              own_places: Iterable[str] = (), medical_terms: MedicalTerms | None = None,
-             current_year: int | None = None) -> ResidualRisk:
+             current_year: int | None = None) -> Estimate:
     """Estimate for one pseudonymised text.  ``sex`` is the patient's sex ("m", "w",
     "") when known; ``own_places`` names places of the sender that are not the patient's
     (practice, clinic); ``medical_terms`` (a MedicalTerms matcher) keeps medical terms from
     being taken for place names.  One detector per family of quasi-identifiers; their
     findings are concatenated in a fixed order."""
-    ref = max(int(reference), 100)  # a practice's patients at the least
+    ref = max(int(reference), MIN_REFERENCE)
     year = current_year or dt.date.today().year
     data = _DATE.findall(text)
     parts = (_sex(text, sex), _birth(text, year, data),
              _places(text, ref, own_places, medical_terms), _rare_diseases(text),
              _notes(text))
-    return ResidualRisk(features=[m for t in parts for m in t.features],
-                        markers=[mk for t in parts for mk in t.markers],
-                        reference=ref, date_mentions=len(data))
+    return Estimate(features=[m for t in parts for m in t.features],
+                    markers=[mk for t in parts for mk in t.markers],
+                    reference=ref, date_mentions=len(data))
 
 
-def _adopt_strongest(target: dict[str, Feature], features: Iterable[Feature]) -> None:
-    """Merges features into ``target`` by key, keeping the highest weight and counting every one
-    again; which place or diagnosis counts is decided afterwards over the whole set."""
-    for m in features:
-        old = target.get(m.key)
-        if old is None or m.bits > old.bits:
-            target[m.key] = Feature(**{**asdict(m), "counted": True})
+# -- PseudonyMed's stored form ---------------------------------------------------------------------
+_CATEGORIES = {identicalc.SEX: "Geschlecht", identicalc.BIRTH: "Geburtsdatum",
+               identicalc.PLACE: "Ort", identicalc.DIAGNOSIS: "Diagnose"}
+# keys as identicalc and PseudonyMed's own detectors make them → as PseudonyMed stores them;
+# an entry ending in ":" is a prefix
+_KEYS = (("sex", "geschlecht"), ("birth:year", "geburt:jahr"),
+         ("birth:window", "geburt:fenster"), ("place:", "ort:"), ("diagnosis:", "diagnose:"),
+         ("small_place:", "kleiner_ort:"), ("rare:", "selten:"),
+         ("age_and_date", "alter_und_datum"), ("age_90", "alter_90"),
+         ("dated_event", "ereignis_datiert"), ("occupation", "beruf"), ("family", "familie"))
+_LIGHTS = {identicalc.GREEN: "gruen", identicalc.YELLOW: "gelb", identicalc.RED: "rot"}
 
 
-def _count_only_strongest(features: list[Feature]) -> None:
-    """Leaves only the strongest place and the strongest diagnosis counted, because correlated
-    attributes must not be multiplied."""
-    for category in ("Ort", "Diagnose"):
-        group = sorted((m for m in features if m.category == category), key=lambda m: -m.bits)
-        for m in group[1:]:
-            m.counted = False
+def _translated_key(key: str, pairs: Iterable[tuple[str, str]]) -> str:
+    """A key with its name or prefix replaced by the pair's other side."""
+    for old, new in pairs:
+        if key == old or (old.endswith(":") and key.startswith(old)):
+            return new + key[len(old):]
+    return key
 
 
-def merge(risks: Iterable[ResidualRisk], earlier: Iterable[Feature] = (),
-          earlier_count: int = 0) -> ResidualRisk:
-    """All documents of one patient together: every key once with its highest weight,
-    then again only the strongest place and the strongest diagnosis counted."""
-    features: dict[str, Feature] = {}
-    markers: dict[str, Marker] = {}
-    reference = REFERENCE_GERMANY
-    data = 0
-    for r in list(risks):
-        reference = min(reference, r.reference)
-        data += r.date_mentions
-        _adopt_strongest(features, r.features)
-        for mk in r.markers:
-            markers.setdefault(mk.key, mk)
-    _adopt_strongest(features, earlier)
-    _count_only_strongest(list(features.values()))
-    return ResidualRisk(features=list(features.values()), markers=list(markers.values()),
-                        reference=reference, earlier=earlier_count, date_mentions=data)
+def _stored_key(key: str) -> str:
+    return _translated_key(key, _KEYS)
+
+
+def _key_from_stored(key: str) -> str:
+    return _translated_key(key, ((de, en) for en, de in _KEYS))
+
+
+def light_colour(e: Estimate) -> str:
+    """The light of an estimate in PseudonyMed's words for its lights ("gruen", "gelb",
+    "rot")."""
+    return _LIGHTS[e.light]
+
+
+def stored_feature(m: Feature, language: str = "de") -> dict[str, Any]:
+    """A feature as PseudonyMed's reports and database keep it."""
+    en = english(language)
+    return {"schluessel": _stored_key(m.key), "kategorie": _CATEGORIES.get(m.category, m.category),
+            "beschreibung": in_language(m.description, language) if en else m.description,
+            "bits": m.bits, "beleg": m.evidence,
+            "quelle": in_language(m.source, language) if en else m.source,
+            "gezaehlt": m.counted}
+
+
+def feature_from_stored(d: dict[str, Any]) -> Feature:
+    """The inverse of :func:`stored_feature`; what the database leaves out takes the
+    defaults."""
+    categories = {de: en for en, de in _CATEGORIES.items()}
+    return Feature(_key_from_stored(str(d.get("schluessel", ""))),
+                   categories.get(d.get("kategorie", ""), d.get("kategorie", "")),
+                   d.get("beschreibung", ""), float(d.get("bits", 0.0)), d.get("beleg", ""),
+                   d.get("quelle", ""), bool(d.get("gezaehlt", True)))
+
+
+def stored(e: Estimate, language: str = "de") -> dict[str, Any]:
+    """An estimate as PseudonyMed's reports keep it: German keys and values, the derived
+    figures, the model and the identicalc that computed it; with an English ``language`` the
+    wording (descriptions, flags, sources) is English."""
+    en = english(language)
+    return {
+        "merkmale": [stored_feature(m, language) for m in e.features],
+        "markierungen": [{"schluessel": _stored_key(mk.key),
+                          "text": in_language(mk.text, language) if en else mk.text,
+                          "beleg": mk.evidence} for mk in e.markers],
+        "referenz": e.reference, "fruehere": e.earlier, "datumsangaben": e.date_mentions,
+        "bits": round(e.bits, 2), "referenz_bits": round(e.reference_bits, 2),
+        "lambda": round(e.lam, 3), "kappa": round(e.kappa, 4), "ampel": light_colour(e),
+        "modell": in_language(identicalc.MODEL, language),
+        "identicalc": identicalc.__version__}
+
+
+def from_stored(d: dict[str, Any]) -> Estimate:
+    """The inverse of :func:`stored`; the derived figures are computed again, not read."""
+    return Estimate(features=[feature_from_stored(m) for m in d.get("merkmale", [])],
+                    markers=[Marker(_key_from_stored(str(mk.get("schluessel", ""))),
+                                    mk.get("text", ""), mk.get("beleg", ""))
+                             for mk in d.get("markierungen", [])],
+                    reference=int(d.get("referenz", identicalc.REFERENCE_GERMANY)),
+                    earlier=int(d.get("fruehere", 0)),
+                    date_mentions=int(d.get("datumsangaben", 0)))

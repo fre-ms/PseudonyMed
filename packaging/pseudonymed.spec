@@ -71,6 +71,8 @@ if found is not None and found.origin is not None:
 hiddenimports += collect_submodules("lexcor")  # packages of terms, their store, the matcher
 hiddenimports += collect_submodules("lexterm")  # the store of the vocabulary, the eponym heads
 hiddenimports += collect_submodules("lexident")  # the store of the identifiers, their recogniser
+hiddenimports += collect_submodules("identicalc")  # the residual-risk model
+datas += collect_data_files("identicalc")  # and the population data it weighs by
 hiddenimports += ["pillow_heif", "zxingcpp", "PIL.Image", "PIL.ImageFilter", "PIL.ImageOps",
                   "shapely", "cv2", "pyclipper", "omegaconf", "colorlog", "yaml",
                   "PySide6.QtWidgets", "PySide6.QtGui", "PySide6.QtCore"]

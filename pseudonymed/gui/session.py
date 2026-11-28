@@ -8,12 +8,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import identicalc
 from doccor.pictures import SUFFIXES as PICTURE_SUFFIXES
+from identicalc import Estimate
 
 from pseudonymed import working_state as state_mod
 from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Patient
-from pseudonymed.core.stored import field_values
 from pseudonymed.core.text import Text, say
 from pseudonymed.document.chain import DocumentChain
 from pseudonymed.document.text_file import TEXT_EXTENSIONS, is_text_file
@@ -516,7 +517,7 @@ class Session:
             return "gruen", say("Exportiert.", "Exported.")
         return "grau", say("Keine analysierten Dokumente.", "No analysed documents.")
 
-    def control(self) -> tuple[risk_module.ResidualRisk | None, int]:
+    def control(self) -> tuple[Estimate | None, int]:
         """All checked documents of the session together with what earlier released
         documents of the same patient revealed; (None, 0) before any check."""
         risks = [d.precheck.residual_risk for d in self.documents
@@ -529,11 +530,10 @@ class Session:
             try:
                 with self.store() as sp:
                     stored, count = sp.earlier_residual_risks(self.patient)
-                earlier = [risk_module.Feature(**field_values(risk_module.Feature, m))
-                           for m in stored]
+                earlier = [risk_module.feature_from_stored(m) for m in stored]
             except Exception:  # noqa: BLE001
                 earlier, count = [], 0
-        return risk_module.merge(risks, earlier, count), count
+        return identicalc.merge(risks, earlier, count), count
 
     def _remember_residual_risk(self, d: Document) -> None:
         """After a release: remember categories and weights for the patient (never clear
@@ -546,9 +546,8 @@ class Session:
         try:
             with self.store() as sp:
                 sp.remember_residual_risk(self.patient, d.path.name,
-                                          [{"schluessel": m.key, "kategorie": m.category,
-                                      "beschreibung": m.description, "bits": m.bits}
-                                     for m in r.features], r.bits, r.lam)
+                                          [risk_module.stored_feature(m) for m in r.features],
+                                          r.bits, r.lam)
         except Exception:  # noqa: BLE001
             pass
 

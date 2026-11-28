@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import as_text
 from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.session import Document, Session
@@ -176,7 +177,7 @@ class ExportPage(QWidget):
         """Colour the residual-risk light from the control step's estimate; the confirming
         tick box appears only for red and is cleared otherwise."""
         total, earlier = self.session.control()
-        self.risk_colour = total.traffic_light if total is not None else "grau"
+        self.risk_colour = risk_module.light_colour(total) if total is not None else "grau"
         self.risk_traffic_light.setStyleSheet(
             f"background: {TRAFFIC_LIGHT_COLOURS[self.risk_colour]}; border-radius: 14px;"
             " border: 1px solid #555;")

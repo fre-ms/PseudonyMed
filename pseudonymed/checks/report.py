@@ -154,9 +154,9 @@ def _residual_risk_lines(b: Report, language: str) -> list[str]:
     depend on it at import time."""
     if not b.residual_risk:
         return []
-    from pseudonymed.checks.residual_risk import ResidualRisk
+    from pseudonymed.checks.residual_risk import from_stored
 
-    return ResidualRisk.from_dict(b.residual_risk).as_lines(language)
+    return from_stored(b.residual_risk).as_lines(language)
 
 
 def _section(title: str, entries: list[str], w: _Words) -> list[str]:
@@ -187,7 +187,7 @@ def as_dict(b: Report, language: str = "de") -> dict[str, Any]:
         d["gegenprobe"]["anmerkungen"] = [in_language(x, language) for x in b.recheck.remarks]
         d["gegenprobe"]["geprueft"] = [in_language(x, language) for x in b.recheck.checked]
     if b.residual_risk:
-        from pseudonymed.checks.residual_risk import ResidualRisk
+        from pseudonymed.checks.residual_risk import from_stored, stored
 
-        d["restrisiko"] = ResidualRisk.from_dict(b.residual_risk).as_dict(language)
+        d["restrisiko"] = stored(from_stored(b.residual_risk), language)
     return d

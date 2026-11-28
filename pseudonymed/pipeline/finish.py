@@ -11,6 +11,7 @@ import pymupdf
 from ocrdoc.alignment import text_layer_from_correction
 from ocrdoc.pagetext import PageText
 
+from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.preview import write_preview
 from pseudonymed.checks.recheck import (
     check,
@@ -237,7 +238,7 @@ def _finalise_pdf(v: Preparation, final: bool) -> Result:
         warnings.append(say("Nicht freigegeben: Ausgabe verworfen.",
                             "Not released: output discarded."))
     log = RunLog(_report_options(v), warnings, notes,
-                 result.residual_risk.as_dict())
+                 risk_module.stored(result.residual_risk))
     result.report = create_report(source, result.target_pdf, page_count,
                                   not v.ocr_pages and not v.without_text, hits,
                                   recheck, log)
