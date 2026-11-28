@@ -31,8 +31,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.core import names
 from pseudonymed.gui.lists_panel import Lists, ListsPanel
 from pseudonymed.gui.session import Session
+from pseudonymed.gui.translation import interface_language
 
 CellIndex = QModelIndex | QPersistentModelIndex
 
@@ -207,8 +209,8 @@ class ListPage(QWidget):
         combo.blockSignals(True)
         combo.clear()
         combo.addItem(self.tr("alle"), "")
-        for k, n in categories:
-            combo.addItem(f"{k} ({n})", k)
+        for k, n in categories:  # the label in the interface language, the stored name as data
+            combo.addItem(f"{names.label(k, interface_language())} ({n})", k)
         combo.setCurrentIndex(max(0, combo.findData(selected)))
         combo.blockSignals(False)
 

@@ -32,9 +32,9 @@ def pytest_configure(config: pytest.Config) -> None:
     _SAVED["LEXCOR_DATA"] = os.environ.pop("LEXCOR_DATA", None)
     lexcor.store.data_folder = lambda: Path(  # type: ignore[assignment]
         os.environ.get("LEXCOR_DATA") or Path(folder) / "lexcor")
-    values = {"PSEUDONYMED_DATENORDNER": folder,
-              "PSEUDONYMED_LEXIKON": "0",  # the lexicon tests switch it on for themselves
-              "PSEUDONYMED_SPRACHE": "de"}  # German, whatever the machine's locale says
+    values = {"PSEUDONYMED_DATA_FOLDER": folder,
+              "PSEUDONYMED_LEXICON": "0",  # the lexicon tests switch it on for themselves
+              "PSEUDONYMED_LANGUAGE": "de"}  # German, whatever the machine's locale says
     for name, value in values.items():
         _SAVED[name] = os.environ.get(name)
         os.environ[name] = value
@@ -45,7 +45,7 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_unconfigure(config: pytest.Config) -> None:
     import shutil
 
-    folder = os.environ.get("PSEUDONYMED_DATENORDNER", "")
+    folder = os.environ.get("PSEUDONYMED_DATA_FOLDER", "")
     if Path(folder).name.startswith("pseudonymed-daten-"):
         shutil.rmtree(folder, ignore_errors=True)
     lexcor.store.data_folder = _LEX_FOLDER
@@ -67,7 +67,7 @@ def no_real_contacts(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(scope="session")
 def isolated_data_folder() -> Path:
-    return Path(os.environ["PSEUDONYMED_DATENORDNER"])
+    return Path(os.environ["PSEUDONYMED_DATA_FOLDER"])
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def patient() -> Patient:
 
 @pytest.fixture
 def female_patient() -> Patient:
-    return synthetic_patient(11, "w")
+    return synthetic_patient(11, "f")
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def store() -> Iterator[PseudonymStore]:
 
 @pytest.fixture
 def letter_store() -> Iterator[PseudonymStore]:
-    with PseudonymStore(":memory:", schema="buchstabe") as s:
+    with PseudonymStore(":memory:", schema="letter") as s:
         yield s
 
 
@@ -120,7 +120,7 @@ def fake_carddav(patient: Patient, female_patient: Patient) -> Iterator[FakeCard
 def carddav_environment(fake_carddav: FakeCardDAV, monkeypatch: pytest.MonkeyPatch) -> FakeCardDAV:
     """Point the CLI at the fake server through environment variables."""
     monkeypatch.setenv("PSEUDONYMED_CARDDAV_URL", fake_carddav.url)
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_BENUTZER", fake_carddav.user)
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_ADRESSBUCH", "medifed-patients")
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORT", fake_carddav.password)
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_USER", fake_carddav.user)
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_ADDRESS_BOOK", "medifed-patients")
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORD", fake_carddav.password)
     return fake_carddav

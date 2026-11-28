@@ -32,7 +32,7 @@ def vocabulary_from(discarded: Iterable[Hit]) -> list[str]:
     their text is one of the patient's own identifiers and must not land in a side file."""
     seen: dict[str, str] = {}
     for f in discarded:
-        if not (f.rule.startswith(("ner.", "unscharf.")) or f.source == "unscharf"):
+        if not (f.rule.startswith(("ner.", "fuzzy.")) or f.source == "fuzzy"):
             continue
         term = " ".join(f.text.split())
         if len(term) < 3 or not any(c.isalpha() for c in term):
@@ -82,7 +82,7 @@ def write_vocabulary(v: PreparationBase, result: Result, notes: list[str]) -> No
     terms = vocabulary_from(v.discarded)
     if not terms:
         return
-    target = target_path(v.source, v.opt, ".vokabular.txt")
+    target = target_path(v.source, v.opt, ".vocabulary.txt")
     target.parent.mkdir(parents=True, exist_ok=True)
     header = in_language(VOCABULARY_HEADER, v.opt.language)
     target.write_text(header + "\n".join(terms) + "\n", encoding="utf-8")
@@ -107,7 +107,7 @@ def write_report(result: Result, opt: PipelineOptions) -> None:
     """The report as JSON next to the output, when asked for."""
     if not opt.report:
         return
-    target = target_path(result.source, opt, ".bericht.json")
+    target = target_path(result.source, opt, ".report.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     save_report(result.report, target, opt.language)
     result.target_report = target

@@ -43,18 +43,18 @@ PREVIEW_DPI = 100
 def colour(f: Hit) -> QColor:
     """The traffic-light colour of a hit: yellow for a line blanked as unreadable, red for
     everything that will be redacted."""
-    return YELLOW if f.rule == "ocr.unlesbar" else RED
+    return YELLOW if f.rule == "ocr.unreadable" else RED
 
 
 def is_guess(f: Hit) -> bool:
     """A hit from a heuristic rather than a rule or the user."""
-    return f.rule.startswith(("ner.", "unscharf.", "identifikator."))
+    return f.rule.startswith(("ner.", "fuzzy.", "identifier."))
 
 
 def _match_colour(f: Hit, selected: bool) -> tuple[QColor, int]:
     """Colour and fill opacity of a hit: a mask is solid black, every other hit wears its
     traffic-light colour, more opaque when it is the selected one."""
-    if f.rule == "maske":
+    if f.rule == "mask":
         return BLACK, 160
     return colour(f), 90 if selected else 45
 

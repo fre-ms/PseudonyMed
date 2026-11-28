@@ -24,18 +24,18 @@ from pseudonymed.pseudonyms.store import PseudonymStore
 from tests.test_cli import _patient_file
 from tests.test_gui import qapp  # noqa: F401
 
-LINES = [  # begriff, klasse, quelle
-    ("Levetiracetam", "Medikament", "Wikidata"),
-    ("Lamotrigin", "Medikament", "Wikidata"),
-    ("Ibuprofen", "Medikament", "Wikidata"),
-    ("Paracetamol", "Medikament", "Wikidata"),
-    ("Sauerstoff", "Medikament", "Wikidata"),
-    ("ASS", "Medikament", "Wikidata"), ("ASS", "Erkrankung", "Wikidata"),  # also autism
-    ("Kalium", "Medikament", "Wikidata"), ("Kalium", "Laborwert", "Laborwerte"),  # both
-    ("TSH", "Laborwert", "Laborwerte"),
-    ("Hb", "Laborwert", "Laborwerte"), ("HbA1c", "Laborwert", "Laborwerte"),
-    ("Kreatinin", "Laborwert", "Laborwerte"), ("Ferritin", "Laborwert", "Laborwerte"),
-    ("Zuname", "Laborwert", "Wikidata"),  # the noisy Wikidata lab rows stay unused
+LINES = [  # term, class, source
+    ("Levetiracetam", "drug", "wikidata"),
+    ("Lamotrigin", "drug", "wikidata"),
+    ("Ibuprofen", "drug", "wikidata"),
+    ("Paracetamol", "drug", "wikidata"),
+    ("Sauerstoff", "drug", "wikidata"),
+    ("ASS", "drug", "wikidata"), ("ASS", "disease", "wikidata"),  # also autism
+    ("Kalium", "drug", "wikidata"), ("Kalium", "lab_test", "lab tests"),  # both
+    ("TSH", "lab_test", "lab tests"),
+    ("Hb", "lab_test", "lab tests"), ("HbA1c", "lab_test", "lab tests"),
+    ("Kreatinin", "lab_test", "lab tests"), ("Ferritin", "lab_test", "lab tests"),
+    ("Zuname", "lab_test", "wikidata"),  # the noisy Wikidata lab rows stay unused
 ]
 ALL = Selection(True, True, True, True)
 
@@ -47,13 +47,13 @@ def _clear_caches() -> None:
 
 @pytest.fixture
 def small_lexicon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     _clear_caches()
     monkeypatch.setattr(lexicon, "medical_rows", lambda: list(LINES))  # a small bundled list
-    monkeypatch.setattr(lexicon, "medical_state", lambda: (("Probe", "1"),))
+    monkeypatch.setattr(lexicon, "medical_state", lambda: (("sample", "1"),))
     with Vocabulary() as v:
-        v.add(["Marcumar"], "Medikament")  # a trade name of the user's own
-        v.add(["Levetiracetam"], "Nutzervokabular")
+        v.add(["Marcumar"], "drugs")  # a trade name of the user's own
+        v.add(["Levetiracetam"], "user vocabulary")
     yield tmp_path / "daten"
     _clear_caches()
 
@@ -76,12 +76,23 @@ def test_selection() -> None:
 def test_lists(small_lexicon: Path) -> None:
     search = medical_module.standard(ALL)
     assert search is not None
-    assert search.recogniser.per_class == {"Medikament": 6, "Laborwert": 6}  # no ASS, Sauerstoff
+    assert search.recogniser.per_class == {"drug": 6, "lab_test": 6}  # no ASS, Sauerstoff
     assert search.missing_lists() == []
     both = search.recogniser.candidates("Kalium und Kaliums, TSH")
-    assert [k.classes for k in both] == [("Laborwert", "Medikament")] * 2 + [("Laborwert",)]
+    assert [k.classes for k in both] == [("drug", "lab_test")] * 2 + [("lab_test",)]
     assert _spans("ASS 100 mg, Sauerstoff 2 l/min, Zuname 12 mg/l, Marcumar nach INR.") == [
-        ("Marcumar", "Medikament")]
+        ("Marcumar", "drug")]
+
+
+def test_a_category_named_in_german_counts_too(small_lexicon: Path) -> None:
+    """A category of the user's own may be named in German: its terms are drugs or lab
+    tests all the same."""
+    with Vocabulary() as v:
+        v.add(["Falithrom"], "Medikamente")
+        v.add(["Flantzin"], "Laborwerte")
+    assert _spans("Falithrom 3 mg, Flantzin 4,1 mmol/l") == [
+        ("Falithrom", "drug"), ("3 mg", "dose"), ("Flantzin", "lab_test"),
+        ("4,1 mmol/l", "measurement")]
 
 
 # -- medications: substance and dose as separate levels -------------------------------------------
@@ -89,11 +100,11 @@ def test_drugs_two_levels(small_lexicon: Path) -> None:
     text = ("Levetiracetam 500 mg 1-0-1, Lamotrigin 50 mg abends, 2 Tbl. Ibuprofen 400 mg bei"
             " Bedarf, Paracetamol. Donepezil 10 mg zur Nacht, p. o. Keppra seit 3 Jahren.")
     assert _spans(text, Selection(drugs=True)) == [
-        ("Levetiracetam", "Medikament"), ("Lamotrigin", "Medikament"), ("Ibuprofen", "Medikament"),
-        ("Paracetamol", "Medikament")]
+        ("Levetiracetam", "drug"), ("Lamotrigin", "drug"), ("Ibuprofen", "drug"),
+        ("Paracetamol", "drug")]
     assert _spans(text, Selection(doses=True)) == [
-        ("500 mg 1-0-1", "Dosierung"), ("50 mg abends", "Dosierung"), ("2 Tbl.", "Dosierung"),
-        ("400 mg bei Bedarf", "Dosierung")]
+        ("500 mg 1-0-1", "dose"), ("50 mg abends", "dose"), ("2 Tbl.", "dose"),
+        ("400 mg bei Bedarf", "dose")]
     assert len(_spans(text, Selection(drugs=True, doses=True))) == 8
 
 
@@ -120,19 +131,19 @@ def test_lab_tests_two_levels(small_lexicon: Path) -> None:
     assert [t for t, _a in _spans(text, Selection(lab_tests=True))] == [
         "TSH", "Hb", "HbA1c", "Kreatinin", "TSH", "TSH", "Ferritin"]
     assert _spans(text, Selection(measurements=True)) == [
-        ("2,3 mU/l", "Messwert"), ("12,4 g/dl", "Messwert"), ("6,2 %", "Messwert"),
-        ("< 1,1 mg/dl", "Messwert")]
+        ("2,3 mU/l", "measurement"), ("12,4 g/dl", "measurement"), ("6,2 %", "measurement"),
+        ("< 1,1 mg/dl", "measurement")]
     assert len(_spans(text, Selection(lab_tests=True, measurements=True))) == 11
 
 
 def test_term_on_both_lists(small_lexicon: Path) -> None:
     text = "Kalium 4,1 mmol/l; Kalium 40 mmol 1-0-1; Kalium substituiert."
     assert _spans(text) == [
-        ("Kalium", "Laborwert"), ("4,1 mmol/l", "Messwert"),
-        ("Kalium", "Medikament"), ("40 mmol 1-0-1", "Dosierung"),
-        ("Kalium", "Laborwert")]
-    assert _spans(text, Selection(drugs=True)) == [("Kalium", "Medikament")] * 2
-    assert _spans(text, Selection(measurements=True)) == [("4,1 mmol/l", "Messwert")]
+        ("Kalium", "lab_test"), ("4,1 mmol/l", "measurement"),
+        ("Kalium", "drug"), ("40 mmol 1-0-1", "dose"),
+        ("Kalium", "lab_test")]
+    assert _spans(text, Selection(drugs=True)) == [("Kalium", "drug")] * 2
+    assert _spans(text, Selection(measurements=True)) == [("4,1 mmol/l", "measurement")]
 
 
 # -- the pipeline ---------------------------------------------------------------------------------
@@ -144,8 +155,8 @@ def test_everything_stays_by_default(small_lexicon: Path, tmp_path: Path, patien
     res = pseudonymise(source, patient, PipelineOptions(), store=store)
     text = res.target_txt.read_text(encoding="utf-8")
     assert res.released and "Levetiracetam 500 mg 1-0-1" in text and "TSH 2,3 mU/l" in text
-    for name in ("medikamente", "dosierungen", "laborwerte", "messwerte"):
-        assert res.report.options[name + "_schwaerzen"] is False
+    for name in ("drugs", "doses", "lab_tests", "measurements"):
+        assert res.report.options["redact_" + name] is False
 
 
 def test_text_file_every_level(small_lexicon: Path, tmp_path: Path, patient: Patient,
@@ -198,7 +209,7 @@ def test_pdf_without_green_mark_under_the_match(small_lexicon: Path, tmp_path: P
     opt = PipelineOptions(redact_drugs=True)
     v = prepare(pdf, patient, opt, store=store)
     matches = [f for f in v.hits if f.kind == Kind.MEDICAL]
-    assert [f.rule for f in matches] == ["medizin.medikament"] * 2
+    assert [f.rule for f in matches] == ["medical.drug"] * 2
     assert all(f.rects for f in matches)
 
     def under_matches() -> int:
@@ -218,7 +229,7 @@ def test_pdf_without_green_mark_under_the_match(small_lexicon: Path, tmp_path: P
 
 def test_warning_on_empty_list(tmp_path: Path, patient: Patient, store: PseudonymStore,
                                monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "leer"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "leer"))
     _clear_caches()
     source = tmp_path / "notiz.txt"
     source.write_text("Levetiracetam 500 mg\n", encoding="utf-8")

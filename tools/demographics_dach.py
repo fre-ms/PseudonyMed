@@ -1,6 +1,6 @@
-"""Build ``pseudonymed/daten/demografie_dach.csv.gz``: population by sex and single year of age.
+"""Build ``pseudonymed/data/demographics_dach.csv.gz``: population by sex and single year of age.
 
-Germany, Austria and Switzerland, at national, state (Country, Bundesland, Kanton) and district
+Germany, Austria and Switzerland, at national, state (Land, Bundesland, Kanton) and district
 level (Kreis, politischer Bezirk, Bezirk); Austria and Switzerland also by municipality.  The
 residual-risk check uses the counts as cohort sizes (k-map: lambda = population x share).
 
@@ -37,11 +37,12 @@ attribution compulsory (https://www.bfs.admin.ch/asset/de/px-x-0102010000_101).
 
 Output
 ------
-A comment line ``# Quelle: ...; Lizenz: ...; Stand: ...`` and the columns
-``land,ebene,kennung,name,geschlecht,alter_von,alter_bis,anzahl,stichtag``.  ``code`` is
-the official key (DE: AGS prefix, AT: Gemeinde-/Bezirkskennziffer, CH: BFS number; the
-country code for ``layer`` staat).  Ages 0-99 are single years, 100 is the open class
-(``alter_bis`` empty).  Rows with a count of zero are omitted.
+A comment line ``# Source: ...; Licence: ...; As of: ...`` and the columns
+``country,level,code,name,sex,age_from,age_to,count,reference_date``.  ``level`` is
+country, state, district or municipality; ``sex`` is m or f.  ``code`` is the official key
+(DE: AGS prefix, AT: Gemeinde-/Bezirkskennziffer, CH: BFS number; the country code for the
+level country).  Ages 0-99 are single years, 100 is the open class (``age_to`` empty).  Rows
+with a count of zero are omitted.
 
 Usage: python -I tools/demographics_dach.py [--raw FOLDER] [--target FILE]
 
@@ -65,10 +66,11 @@ from pathlib import Path
 
 import identicalc.data
 
-TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "demografie_dach.csv.gz"
+TARGET = (Path(__file__).resolve().parent.parent / "pseudonymed" / "data"
+          / "demographics_dach.csv.gz")
 MUNICIPALITIES_DE = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
-HEADER = ["land", "ebene", "kennung", "name", "geschlecht", "alter_von", "alter_bis", "anzahl",
-          "stichtag"]
+HEADER = ["country", "level", "code", "name", "sex", "age_from", "age_to", "count",
+          "reference_date"]
 AGENT = {"User-Agent": "PseudonyMed build script (https://github.com/fre-ms/PseudonyMed)"}
 OPEN_AGE = 100  # first age of the open-ended class in all three sources
 
@@ -78,7 +80,7 @@ CENSUS_DATE = "2022-05-15"
 NEW_DISTRICTS_DE = {"06415": ("06435", ["064350014014"])}  # Hanau, kreisfrei since 1.1.2026
 
 AT_YEAR = 2026
-AT_DATA = "https://data.statistik.gv.at/data/OGD_bevstandjbab2002_BevStand_{jahr}{teil}.csv"
+AT_DATA = "https://data.statistik.gv.at/data/OGD_bevstandjbab2002_BevStand_{year}{part}.csv"
 AT_DISTRICTS = "https://www.statistik.at/verzeichnis/reglisten/polbezirke.csv"
 
 CH_TABLE = ("https://www.pxweb.bfs.admin.ch/api/v1/de/px-x-0102010000_101/"
@@ -92,6 +94,11 @@ EXPECTED = {"DE": (80_000_000, 86_000_000), "AT": (8_800_000, 9_600_000),
             "CH": (8_700_000, 9_500_000)}
 TOLERANCE = {"DE": 0.002, "AT": 0.0, "CH": 0.0}  # relative deviation child sums vs. parent
 
+# Order of the rows in the file.
+COUNTRY_ORDER = {"DE": 0, "AT": 1, "CH": 2}
+LEVEL_ORDER = {"country": 0, "state": 1, "district": 2, "municipality": 3}
+SEX_ORDER = {"m": 0, "f": 1}
+
 Row = tuple[str, str, str, str, str, int, int | None, int, str]
 
 
@@ -99,7 +106,7 @@ Row = tuple[str, str, str, str, str, int, int | None, int, str]
 
 def _fetch(url: str, raw: Path | None, file: str, data: bytes | None = None,
            attempts: int = 3, timeout: int = 600) -> bytes:
-    """Return the body of ``url`` (POST if ``data``), cached as ``roh/datei`` if given."""
+    """Return the body of ``url`` (POST if ``data``), cached as ``raw/file`` if given."""
     path = raw / file if raw else None
     if path and path.exists():
         return path.read_bytes()
@@ -115,7 +122,7 @@ def _fetch(url: str, raw: Path | None, file: str, data: bytes | None = None,
         except OSError as error:
             if attempt == attempts:
                 raise
-            print(f"  {url}: {error}; neuer Versuch in {20 * attempt} s", file=sys.stderr)
+            print(f"  {url}: {error}; next attempt in {20 * attempt} s", file=sys.stderr)
             time.sleep(20 * attempt)
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +157,7 @@ def _census_age(code: str) -> tuple[int, int | None] | None:
 
 
 def germany(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
-    """Rows for Germany (state, Länder, Kreise) and the parent of each Land and Kreis."""
+    """Rows for Germany (country, Länder, Kreise) and the parent of each Land and Kreis."""
     structure = json.loads(_fetch(f"{CENSUS}/structure?language=de", raw, "structure.json"))
     names = {k: v["label"]["de"] for k, v in structure["variableValues"].items()}
     names["DG"] = "Deutschland"
@@ -160,7 +167,7 @@ def germany(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
     for block, region in queries:
         state = json.loads(json.dumps(structure["initialState"]))
         if state["variableBlocks"][block]["mainVariable"] != region:
-            raise SystemExit(f"Zensus: Block {block} ist nicht {region}, Tabelle geändert?")
+            raise SystemExit(f"census: block {block} is not {region}, has the table changed?")
         state["tableStructure"]["colTitle"][1]["blockCode"] = block
         raw_json = _fetch(f"{CENSUS}/data?language=de", raw, f"data_{region}.json",
                           json.dumps(state).encode())
@@ -173,7 +180,7 @@ def germany(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
                     continue  # municipalities only for the territorial changes below
                 content = cell["content"].split("$")
                 age = _census_age(cell["ALTER1"])
-                g = {"GESM": "m", "GESW": "w"}.get(cell["GESCH1"])
+                g = {"GESM": "m", "GESW": "f"}.get(cell["GESCH1"])
                 if len(content) < 2 or not content[1].startswith("ID") or not age or not g:
                     continue
                 count = 0 if status == "-" or value is None else round(value)
@@ -191,7 +198,7 @@ def germany(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
         names[new] = names[municipalities[0]] if len(municipalities) == 1 else new
     lines: list[Row] = []
     parents: dict[tuple[str, str], str] = {}
-    levels = {"GEODL1": "staat", "GEOBL1": "land", "GEOLK4": "kreis"}
+    levels = {"GEODL1": "country", "GEOBL1": "state", "GEOLK4": "district"}
     for (layer, k, g, a, b), n in values.items():
         if layer not in levels:
             continue
@@ -199,9 +206,9 @@ def germany(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
         lines.append(("DE", levels[layer], region_id, names.get(k, k), g, a, b, n,
                       CENSUS_DATE))
         if layer == "GEOBL1":
-            parents[("land", k)] = "DE"
+            parents[("state", k)] = "DE"
         elif layer == "GEOLK4":
-            parents[("kreis", k)] = k[:2]
+            parents[("district", k)] = k[:2]
     return lines, parents
 
 
@@ -212,10 +219,10 @@ def _csv_at(content: bytes) -> list[list[str]]:
 
 
 def austria(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
-    """Rows for Austria: municipalities summed up to districts, Bundesländer and state."""
+    """Rows for Austria: municipalities summed up to districts, Bundesländer and country."""
     def part(t: str) -> bytes:
         name = f"BevStand_{AT_YEAR}{t}.csv"
-        return _fetch(AT_DATA.format(jahr=AT_YEAR, teil=t), raw, name)
+        return _fetch(AT_DATA.format(year=AT_YEAR, part=t), raw, name)
 
     municipality_names = {r[0].removeprefix("GRGEMAKT-"): re.sub(r"\s*<\d+>$", "", r[1])
                           for r in _csv_at(part("_C-GRGEMAKT-0"))[1:] if r}
@@ -225,12 +232,12 @@ def austria(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
         if m:
             a = int(m.group(1))
             age[r[0]] = (a, None) if "älter" in r[1] or "mehr" in r[1] else (a, a)
-    sex = {"C11-1": "m", "C11-2": "w"}
+    sex = {"C11-1": "m", "C11-2": "f"}
     districts: dict[str, str] = {}
-    countries: dict[str, str] = {}
+    states: dict[str, str] = {}
     for r in _csv_at(_fetch(AT_DISTRICTS, raw, "polbezirke.csv")):
         if len(r) >= 5 and r[0].isdigit() and r[4].isdigit():
-            countries[r[0]] = r[1]
+            states[r[0]] = r[1]
             if r[4] != "900":  # Vienna as a whole is the Bundesland
                 districts[r[4]] = re.sub(r"\s+", " ", r[3]).strip()
     sums: dict[tuple[str, str, str, int, int | None], int] = defaultdict(int)
@@ -244,23 +251,23 @@ def austria(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
         g = sex[r[column["C-C11-0"]]]
         a, b = age[r[column["C-GALTEJ112-0"]]]
         n = int(r[column["F-ISIS-1"]])
-        for layer, k in (("gemeinde", mun), ("kreis", mun[:3]), ("land", mun[0]),
-                         ("staat", "AT")):
+        for layer, k in (("municipality", mun), ("district", mun[:3]), ("state", mun[0]),
+                         ("country", "AT")):
             sums[(layer, k, g, a, b)] += n
-    unknown = {k for (e, k, *_r) in sums if e == "kreis" and k not in districts}
+    unknown = {k for (e, k, *_r) in sums if e == "district" and k not in districts}
     if unknown:
-        raise SystemExit(f"AT: Bezirke ohne Namen in polbezirke.csv: {sorted(unknown)}")
-    names = {"gemeinde": municipality_names, "kreis": districts, "land": countries,
-             "staat": {"AT": "Österreich"}}
+        raise SystemExit(f"AT: districts without a name in polbezirke.csv: {sorted(unknown)}")
+    names = {"municipality": municipality_names, "district": districts, "state": states,
+             "country": {"AT": "Österreich"}}
     lines = [("AT", e, k, names[e].get(k, k), g, a, b, n, reference_date)
              for (e, k, g, a, b), n in sums.items()]
     parents = {}
     for e, k, *_r in sums:
-        if e == "gemeinde":
+        if e == "municipality":
             parents[(e, k)] = k[:3]
-        elif e == "kreis":
+        elif e == "district":
             parents[(e, k)] = k[0]
-        elif e == "land":
+        elif e == "state":
             parents[(e, k)] = "AT"
     return lines, parents
 
@@ -268,32 +275,32 @@ def austria(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
 # --------------------------------------------------------------------------- Switzerland
 
 def switzerland(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]]:
-    """Rows for Switzerland: state, cantons, districts and municipalities from STATPOP."""
-    meta = json.loads(_fetch(CH_TABLE, raw, "metadaten.json"))
+    """Rows for Switzerland: country, cantons, districts and municipalities from STATPOP."""
+    meta = json.loads(_fetch(CH_TABLE, raw, "metadata.json"))
     var = {v["code"]: v for v in meta["variables"]}
     region = next(c for c in var if c.startswith("Kanton"))
     year = max(var["Jahr"]["values"])
     reference_date = f"{year}-12-31"
     # Classify the regions by their label prefix and remember the hierarchy.
-    units: dict[str, tuple[str, str, str]] = {}  # code -> (ebene, kennung, name)
+    units: dict[str, tuple[str, str, str]] = {}  # code -> (level, code, name)
     parents: dict[tuple[str, str], str] = {}
     canton = district = ""
     for code, text in zip(var[region]["values"], var[region]["valueTexts"], strict=True):
         if text.startswith(">>"):
             district = str(int(code))
-            units[code] = ("kreis", district, text[2:].strip())
-            parents[("kreis", district)] = canton
+            units[code] = ("district", district, text[2:].strip())
+            parents[("district", district)] = canton
         elif text.startswith("......"):
             number, _, name = text.lstrip(".").partition(" ")
             region_id = str(int(number))
-            units[code] = ("gemeinde", region_id, name.strip())
-            parents[("gemeinde", region_id)] = district
+            units[code] = ("municipality", region_id, name.strip())
+            parents[("municipality", region_id)] = district
         elif code == "8100":
-            units[code] = ("staat", "CH", text.strip())
+            units[code] = ("country", "CH", text.strip())
         elif code in CH_CANTONS:
             canton = str(CH_CANTONS.index(code) + 1)
-            units[code] = ("land", canton, text.lstrip("- ").strip())
-            parents[("land", canton)] = "CH"
+            units[code] = ("state", canton, text.lstrip("- ").strip())
+            parents[("state", canton)] = "CH"
         else:
             units[code] = ("", code, text)  # "Ohne Angabe": checked, not written
     age_codes = [a for a in var["Alter"]["values"] if a.lstrip("-").isdigit() and
@@ -314,8 +321,8 @@ def switzerland(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]
             {"code": "Geschlecht", "selection": {"filter": "item", "values": ["1", "2"]}},
             {"code": "Alter", "selection": {"filter": "item", "values": age_codes}},
         ], "response": {"format": "json-stat2"}}
-        print(f"  BFS-Abfrage {num}: {len(part)} Regionen", file=sys.stderr)
-        ds = json.loads(_fetch(CH_TABLE, raw, f"daten_{year}_{num:02d}.json",
+        print(f"  BFS query {num}: {len(part)} regions", file=sys.stderr)
+        ds = json.loads(_fetch(CH_TABLE, raw, f"data_{year}_{num:02d}.json",
                                json.dumps(query).encode()))
         for cell, value, _status in _jsonstat(ds):
             layer, region_id, name = units[cell[region]]
@@ -325,19 +332,18 @@ def switzerland(raw: Path | None) -> tuple[list[Row], dict[tuple[str, str], str]
                 continue
             a = int(cell["Alter"])
             b = None if cell["Alter"] in pending else a
-            g = {"1": "m", "2": "w"}[cell["Geschlecht"]]
+            g = {"1": "m", "2": "f"}[cell["Geschlecht"]]
             lines.append(("CH", layer, region_id, name, g, a, b, n, reference_date))
     if unspecified:
-        print(f"  CH: {unspecified} Personen ohne Regionsangabe nicht übernommen",
-              file=sys.stderr)
+        print(f"  CH: {unspecified} persons without a region left out", file=sys.stderr)
     return lines, parents
 
 
 # --------------------------------------------------------------------------- checks
 
 def _number(n: int) -> str:
-    """German thousands separator."""
-    return f"{n:,}".replace(",", ".")
+    """With thousands separators."""
+    return f"{n:,}"
 
 
 def check(lines: list[Row], parents: dict[tuple[str, str, str], str]) -> list[str]:
@@ -346,24 +352,24 @@ def check(lines: list[Row], parents: dict[tuple[str, str, str], str]) -> list[st
     sum_total: dict[tuple[str, str, str, str], int] = defaultdict(int)
     for country, layer, region_id, _n, g, _a, _b, n, _s in lines:
         sum_total[(country, layer, region_id, g)] += n
-    parent_levels = {"land": "staat", "kreis": "land", "gemeinde": "kreis"}
+    parent_levels = {"state": "country", "district": "state", "municipality": "district"}
     for country in ("DE", "AT", "CH"):
         total = sum(v for (ctry, e, _k, _g),
-                    v in sum_total.items() if ctry == country and e == "staat")
+                    v in sum_total.items() if ctry == country and e == "country")
         lo, hi = EXPECTED[country]
         count = {e: len({k for (ctry, ee, k, _g) in sum_total if ctry == country and ee == e})
-                 for e in ("land", "kreis", "gemeinde")}
-        print(f"{country}: {_number(total)} Personen; {count['land']} Länder,"
-              f" {count['kreis']} Kreise, {count['gemeinde']} Gemeinden")
+                 for e in ("state", "district", "municipality")}
+        print(f"{country}: {_number(total)} persons; {count['state']} states,"
+              f" {count['district']} districts, {count['municipality']} municipalities")
         if not lo <= total <= hi:
-            problems.append(f"{country}: Summe {total} außerhalb {lo}-{hi}")
+            problems.append(f"{country}: total {total} outside {lo}-{hi}")
         for layer, parent_level in parent_levels.items():
             children: dict[tuple[str, str], int] = defaultdict(int)
             for (ctry, e, k, g), v in sum_total.items():
                 if ctry == country and e == layer:
                     parent = parents.get((country, layer, k))
                     if parent is None:
-                        problems.append(f"{country} {layer} {k}: keine übergeordnete Einheit")
+                        problems.append(f"{country} {layer} {k}: no parent unit")
                         continue
                     children[(parent, g)] += v
             if not children:
@@ -371,12 +377,12 @@ def check(lines: list[Row], parents: dict[tuple[str, str, str], str]) -> list[st
             for (parent, g), v in sorted(children.items()):
                 expected = sum_total.get((country, parent_level, parent, g))
                 if expected is None:
-                    problems.append(f"{country} {parent_level} {parent} fehlt")
+                    problems.append(f"{country} {parent_level} {parent} missing")
                     continue
                 dev = (v - expected) / expected if expected else 0.0
                 if abs(dev) > TOLERANCE[country]:
                     problems.append(f"{country} {layer}->{parent_level} {parent} {g}: "
-                                    f"{v} statt {expected} ({dev:+.4%})")
+                                    f"{v} instead of {expected} ({dev:+.4%})")
             actual = sum(children.values())
             expected = sum(v for (ctry, e, _k, _g), v in sum_total.items()
                            if ctry == country and e == parent_level)
@@ -384,52 +390,58 @@ def check(lines: list[Row], parents: dict[tuple[str, str, str], str]) -> list[st
                           / sum_total[(country, parent_level, parent, g)]
                           for (parent, g), v in children.items()
                           if sum_total.get((country, parent_level, parent, g)))
-            print(f"  Summe {layer} = {_number(actual)} gegen {parent_level} = {_number(expected)}"
-                  f" ({(actual - expected) / expected:+.4%}; größte Abweichung je Einheit und"
-                  f" Geschlecht {largest:.4%})")
+            print(f"  sum {layer} = {_number(actual)} against {parent_level} ="
+                  f" {_number(expected)} ({(actual - expected) / expected:+.4%}; largest"
+                  f" deviation per unit and sex {largest:.4%})")
     return problems
 
 
 def match_municipalities_de(lines: list[Row]) -> None:
-    """Report districts of the bundled municipality directory missing from the data."""
+    """Report districts of identicalc's municipality directory missing from the data."""
     if not MUNICIPALITIES_DE.exists():
         return
     with gzip.open(MUNICIPALITIES_DE, "rt", encoding="utf-8") as f:
         next(f)
         districts = {r["ars"][:5] for r in csv.DictReader(f) if int(r["population"] or 0) > 0}
-    existing = {z[2] for z in lines if z[0] == "DE" and z[1] == "kreis"}
-    print(f"  Abgleich mit municipalities_de.csv.gz: {len(districts & existing)} von"
-          f" {len(districts)}"
-          f" Kreisen gefunden; fehlend: {sorted(districts - existing) or 'keine'};"
-          f" überzählig: {sorted(existing - districts) or 'keine'}")
+    existing = {z[2] for z in lines if z[0] == "DE" and z[1] == "district"}
+    print(f"  matched with municipalities_de.csv.gz: {len(districts & existing)} of"
+          f" {len(districts)} districts found; missing:"
+          f" {sorted(districts - existing) or 'none'};"
+          f" surplus: {sorted(existing - districts) or 'none'}")
 
 
 # --------------------------------------------------------------------------- output
 
 def header_line(reference_dates: dict[str, str]) -> str:
+    """The provenance line at the top of the file: sources, licences and reference dates."""
     return (
-        "# Quelle: DE: Statistische Ämter des Bundes und der Länder, Zensus 2022,"
-        " Zensusdatenbank Tabelle 1000A-2027 (Gebietsstand 15.05.2022, Hanau als kreisfreie"
-        " Stadt nachgeführt) | AT: Statistik Austria - data.statistik.gv.at,"
-        f" OGD_bevstandjbab2002_BevStand_{AT_YEAR} und polbezirke.csv | CH: Bundesamt für"
-        " Statistik (BFS), STATPOP, Ständige Wohnbevölkerung, STAT-TAB px-x-0102010000_101,"
-        " https://www.bfs.admin.ch/asset/de/px-x-0102010000_101 | ausgewählt, umgeformt und"
-        " für AT summiert von PseudonyMed, Zeilen mit 0 Personen ausgelassen;"
-        " Lizenz: DE: Datenlizenz Deutschland - Namensnennung - Version 2.0"
+        "# Source: DE: Statistische Ämter des Bundes und der Länder (statistical offices of the"
+        " Federation and the Länder), Zensus 2022 (census 2022), Zensusdatenbank table"
+        " 1000A-2027 (territory as of 2022-05-15, Hanau brought up to date as an independent"
+        " city) | AT: Statistik Austria - data.statistik.gv.at,"
+        f" OGD_bevstandjbab2002_BevStand_{AT_YEAR} and polbezirke.csv | CH: Bundesamt für"
+        " Statistik (BFS, Federal Statistical Office), STATPOP, Ständige Wohnbevölkerung"
+        " (permanent resident population), STAT-TAB px-x-0102010000_101,"
+        " https://www.bfs.admin.ch/asset/de/px-x-0102010000_101 | selected, reshaped and"
+        " summed for AT by PseudonyMed, rows with 0 persons left out;"
+        " Licence: DE: Datenlizenz Deutschland - Namensnennung - Version 2.0"
         " (https://www.govdata.de/dl-de/by-2-0) | AT: CC BY 4.0"
-        " (https://creativecommons.org/licenses/by/4.0/) | CH: OPEN BY, Quellenangabe Pflicht"
+        " (https://creativecommons.org/licenses/by/4.0/) | CH: OPEN BY, attribution compulsory"
         " (https://statistik.admin.ch/de/nutzungsbedingungen);"
-        f" Stand: DE {reference_dates['DE']}, AT {reference_dates['AT']},"
+        f" As of: DE {reference_dates['DE']}, AT {reference_dates['AT']},"
         f" CH {reference_dates['CH']}\n"
     )
 
 
+def ordered(lines: list[Row]) -> list[Row]:
+    """The rows of the file: those with persons, by country, level, code, sex and age."""
+    return sorted((z for z in lines if z[7] > 0),
+                  key=lambda z: (COUNTRY_ORDER[z[0]], LEVEL_ORDER[z[1]], z[2].zfill(12),
+                                 SEX_ORDER[z[4]], z[5]))
+
+
 def write(lines: list[Row], target: Path) -> None:
-    country_order = {"DE": 0, "AT": 1, "CH": 2}
-    level_order = {"staat": 0, "land": 1, "kreis": 2, "gemeinde": 3}
-    lines = sorted((z for z in lines if z[7] > 0),
-                   key=lambda z: (country_order[z[0]], level_order[z[1]], z[2].zfill(12), z[4],
-                                  z[5]))
+    lines = ordered(lines)
     reference_dates = {z[0]: z[8] for z in lines}
     buffer = io.StringIO()
     buffer.write(header_line(reference_dates))
@@ -438,9 +450,11 @@ def write(lines: list[Row], target: Path) -> None:
     for z in lines:
         w.writerow([*z[:6], "" if z[6] is None else z[6], *z[7:]])
     target.parent.mkdir(parents=True, exist_ok=True)
+    # no time stamp in the gzip header (the file name is the target's), the text compressed
+    # in one piece: reproducible bytes
     with open(target, "wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as gz:
         gz.write(buffer.getvalue().encode("utf-8"))
-    print(f"{len(lines)} Zeilen nach {target} geschrieben ({target.stat().st_size / 1e6:.2f} MB)")
+    print(f"{len(lines)} rows written to {target} ({target.stat().st_size / 1e6:.2f} MB)")
 
 
 def main(argv: list[str]) -> int:
@@ -457,14 +471,14 @@ def main(argv: list[str]) -> int:
     for country, function, source in (("DE", germany, "zensus2022_1000A-2027"),
                                       ("AT", austria, "statistik_austria_ogd"),
                                       ("CH", switzerland, "bfs_pxweb")):
-        print(f"{country}: lade {source}", file=sys.stderr)
+        print(f"{country}: loading {source}", file=sys.stderr)
         z, e = function(folder(source))
         lines += z
         parents.update({(country, layer, k): v for (layer, k), v in e.items()})
     problems = check(lines, parents)
     match_municipalities_de(lines)
     if problems:
-        print(f"{len(problems)} Probleme, nichts geschrieben:", *problems[:30], sep="\n  ")
+        print(f"{len(problems)} problems, nothing written:", *problems[:30], sep="\n  ")
         return 1
     write(lines, args.target)
     return 0

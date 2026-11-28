@@ -4,7 +4,7 @@ docrepro's steps open, bind, prepare and read the pages (typdoc, optdoc, ocrdoc,
 docrepro's chain, :mod:`pseudonymed.document.chain`); their names are English, their
 messages come in English and German (doccor's kinds of error).  The user sees docrepro's
 part in the language of the interface: its wording of a preparation and its messages in
-German or English, its engine "none" as "aus".  PseudonyMed makes its own hits of the lines
+German or English, its engine "none" as "off".  PseudonyMed makes its own hits of the lines
 OCR could not read, and hands ocrdoc its settings (which engine "auto" means, where
 Tesseract lives) on import of this module.
 """
@@ -29,7 +29,7 @@ __all__ = ["UNREADABLE", "DocError", "OCRError", "backend", "chain_settings", "d
            "message", "reader", "unreadable_matches"]
 
 # PseudonyMed's names for the engines, where they differ from ocrdoc's
-_ENGINES = {"aus": "none"}
+_ENGINES = {"off": "none"}
 
 
 class _Settings:
@@ -38,7 +38,7 @@ class _Settings:
 
     @property
     def ocr_backend(self) -> str:
-        """The engine "auto" stands for, in ocrdoc's spelling ("aus" becomes "none")."""
+        """The engine "auto" stands for, in ocrdoc's spelling ("off" becomes "none")."""
         from pseudonymed.config import load_settings
 
         return reader(load_settings().ocr_backend)
@@ -63,15 +63,15 @@ set_settings(_Settings())
 
 def reader(name: str | None) -> str:
     """ocrdoc's name of an engine PseudonyMed names ("auto", "rapidocr", "tesseract",
-    "aus"): "aus" is "none"."""
+    "off"): "off" is "none"."""
     key = (name or "auto").lower()
     return _ENGINES.get(key, key)
 
 
 def backend(name: str = "auto", languages: str | None = None,
             tables: bool = True) -> ocr.OCRBackend | None:
-    """The OCR engine for PseudonyMed's name of it ("auto", "rapidocr", "tesseract", "aus");
-    None for "aus" and for "auto" without an engine.  Unknown and missing engines end in an
+    """The OCR engine for PseudonyMed's name of it ("auto", "rapidocr", "tesseract", "off");
+    None for "off" and for "auto" without an engine.  Unknown and missing engines end in an
     :class:`OCRError`."""
     return ocr.backend(reader(name), languages, tables=tables)
 
@@ -105,6 +105,6 @@ def unreadable_matches(page: PageText) -> list[Hit]:
     """The lines OCR could not read on a page, as hits that blank them with "[unlesbar]".
     What cannot be read cannot be checked: such a line may hold a name or handwriting."""
     return [Hit(page=z.page_number, start=z.start, end=z.end, text=z.text,
-                kind=Kind.MANUAL, rule="ocr.unlesbar", pseudonym=UNREADABLE,
+                kind=Kind.MANUAL, rule="ocr.unreadable", pseudonym=UNREADABLE,
                 rects=list(z.rects), font_size=z.font_size, source="ocr")
             for z in ocr.unreadable_lines(page)]

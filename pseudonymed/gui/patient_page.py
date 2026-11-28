@@ -28,7 +28,7 @@ from pseudonymed.detection.variants import street_and_number
 from pseudonymed.document.text_file import read_text_file
 from pseudonymed.gui.address_book_dialog import AddressBookDialog
 from pseudonymed.gui.session import Session
-from pseudonymed.gui.translation import shown, shown_error
+from pseudonymed.gui.translation import interface_language, shown, shown_error
 from pseudonymed.sources import address_book
 from pseudonymed.sources.manual import load_patient, template
 from pseudonymed.sources.vcf import patients_from_vcf
@@ -173,20 +173,20 @@ class PatientPage(QWidget):
                            self.tr("Frau")])
         form.addRow(self.tr("Anrede"), self.sex)
         self.f: dict[str, QLineEdit] = {}
-        for name, title in (("titel", self.tr("Titel")), ("vorname", self.tr("Vorname(n)")),
-                            ("nachname", self.tr("Nachname")),
-                            ("geburtsname", self.tr("Geburtsname")),
-                            ("geburtsdatum", self.tr("Geburtsdatum (TT.MM.JJJJ)")),
-                            ("strasse", self.tr("Straße")), ("hausnummer", self.tr("Hausnummer")),
-                            ("plz", self.tr("PLZ")), ("ort", self.tr("Ort")),
+        for name, title in (("title", self.tr("Titel")), ("first_name", self.tr("Vorname(n)")),
+                            ("surname", self.tr("Nachname")),
+                            ("birth_name", self.tr("Geburtsname")),
+                            ("birth_date", self.tr("Geburtsdatum (TT.MM.JJJJ)")),
+                            ("street", self.tr("Straße")), ("house_number", self.tr("Hausnummer")),
+                            ("postcode", self.tr("PLZ")), ("place", self.tr("Ort")),
                             ("emails", self.tr("E-Mail (mehrere mit ;)")),
-                            ("telefone", self.tr("Telefon (mehrere mit ;)")),
-                            ("versichertennummer", self.tr("Versichertennummer")),
-                            ("patienten_id", self.tr("Patienten-ID")),
-                            ("aktenzeichen", self.tr("Aktenzeichen (mehrere mit ;)"))):
+                            ("phones", self.tr("Telefon (mehrere mit ;)")),
+                            ("insurance_number", self.tr("Versichertennummer")),
+                            ("patient_id", self.tr("Patienten-ID")),
+                            ("case_numbers", self.tr("Aktenzeichen (mehrere mit ;)"))):
             self.f[name] = QLineEdit()
             form.addRow(title, self.f[name])
-        self.f["hausnummer"].setMaximumWidth(120)
+        self.f["house_number"].setMaximumWidth(120)
         outer.addWidget(fields)
 
     def _build_extra_lists(self, outer: QVBoxLayout) -> None:
@@ -272,7 +272,7 @@ class PatientPage(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, self.tr("Vorlage speichern"),
                                               "patient.json", self.tr("JSON (*.json)"))
         if path:
-            Path(path).write_text(template(), encoding="utf-8")
+            Path(path).write_text(template(interface_language()), encoding="utf-8")
             self.note.setText(self.tr("Vorlage geschrieben: {pfad}").format(pfad=path))
 
     def import_vcf(self) -> None:
@@ -308,17 +308,18 @@ class PatientPage(QWidget):
         """Put a patient's identifiers into the fields; the card's notes go to the hint line."""
         street, house_number = street_and_number(p.street)
         values = {
-            "nachname": p.surname, "vorname": p.first_name, "geburtsname": p.birth_name,
-            "titel": p.title,
-            "geburtsdatum": p.birth_date.strftime("%d.%m.%Y") if p.birth_date else "",
-            "strasse": street, "hausnummer": house_number, "plz": p.postcode, "ort": p.place,
-            "telefone": "; ".join(p.phones),
-            "emails": "; ".join(p.emails), "versichertennummer": p.insurance_number,
-            "patienten_id": p.patient_id, "aktenzeichen": "; ".join(p.case_numbers),
+            "surname": p.surname, "first_name": p.first_name, "birth_name": p.birth_name,
+            "title": p.title,
+            "birth_date": p.birth_date.strftime("%d.%m.%Y") if p.birth_date else "",
+            "street": street, "house_number": house_number, "postcode": p.postcode,
+            "place": p.place,
+            "phones": "; ".join(p.phones),
+            "emails": "; ".join(p.emails), "insurance_number": p.insurance_number,
+            "patient_id": p.patient_id, "case_numbers": "; ".join(p.case_numbers),
         }
         for name, value in values.items():
             self.f[name].setText(value)
-        self.sex.setCurrentIndex({"m": 1, "w": 2}.get(p.sex, 0))
+        self.sex.setCurrentIndex({"m": 1, "f": 2}.get(p.sex, 0))
         self.relatives.setPlainText("\n".join(a.full_name for a in p.relatives))
         self.referrers.setPlainText("\n".join(" ".join(t for t in (z.title, z.full_name) if t)
                                               for z in p.referrers))
@@ -335,24 +336,24 @@ class PatientPage(QWidget):
             """The non-empty ;-separated entries of a field."""
             return [t.strip() for t in self.f[name].text().split(";") if t.strip()]
 
-        birth_date: dt.date | None = parse_date(self.f["geburtsdatum"].text()) \
-            if self.f["geburtsdatum"].text().strip() else None
+        birth_date: dt.date | None = parse_date(self.f["birth_date"].text()) \
+            if self.f["birth_date"].text().strip() else None
         return Patient(
-            surname=self.f["nachname"].text().strip(),
-            first_name=self.f["vorname"].text().strip(),
-            sex={1: "m", 2: "w"}.get(self.sex.currentIndex(), ""),
-            title=self.f["titel"].text().strip(),
-            birth_name=self.f["geburtsname"].text().strip(),
+            surname=self.f["surname"].text().strip(),
+            first_name=self.f["first_name"].text().strip(),
+            sex={1: "m", 2: "f"}.get(self.sex.currentIndex(), ""),
+            title=self.f["title"].text().strip(),
+            birth_name=self.f["birth_name"].text().strip(),
             birth_date=birth_date,
-            street=" ".join(t for t in (self.f["strasse"].text().strip(),
-                                        self.f["hausnummer"].text().strip()) if t),
-            postcode=self.f["plz"].text().strip(),
-            place=self.f["ort"].text().strip(),
-            phones=listing("telefone"),
+            street=" ".join(t for t in (self.f["street"].text().strip(),
+                                        self.f["house_number"].text().strip()) if t),
+            postcode=self.f["postcode"].text().strip(),
+            place=self.f["place"].text().strip(),
+            phones=listing("phones"),
             emails=listing("emails"),
-            insurance_number=self.f["versichertennummer"].text().strip(),
-            patient_id=self.f["patienten_id"].text().strip(),
-            case_numbers=listing("aktenzeichen"),
+            insurance_number=self.f["insurance_number"].text().strip(),
+            patient_id=self.f["patient_id"].text().strip(),
+            case_numbers=listing("case_numbers"),
             relatives=_parse_persons(self.relatives.toPlainText()),
             referrers=_parse_persons(self.referrers.toPlainText()),
             terms=[b.strip() for b in self.terms.toPlainText().splitlines() if b.strip()],
@@ -365,7 +366,7 @@ class PatientPage(QWidget):
         if not p.surname:
             QMessageBox.warning(self, self.tr("Patient"), self.tr("Der Nachname fehlt."))
             return
-        if self.f["geburtsdatum"].text().strip() and p.birth_date is None:
+        if self.f["birth_date"].text().strip() and p.birth_date is None:
             QMessageBox.warning(self, self.tr("Patient"),
                                 self.tr("Das Geburtsdatum ist nicht lesbar (TT.MM.JJJJ)."))
             return

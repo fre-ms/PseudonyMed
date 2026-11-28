@@ -5,9 +5,9 @@ and judgement.  The working state keeps all of it, so that another pseudonymisat
 variant of the same document (other options, other hits kept or discarded) does not start
 from scratch.  It is two files next to each other:
 
-* ``<name>.arbeitsstand.<ending>``: the original as it came (``.pdf``, ``.jpg``, ``.heic``
+* ``<name>.working-state.<ending>``: the original as it came (``.pdf``, ``.jpg``, ``.heic``
   …), byte for byte; for a text file the text (``.txt``, ``.srt`` …);
-* ``<name>.arbeitsstand.json``: the patient, the options, docrepro's chain document (the
+* ``<name>.working-state.json``: the patient, the options, docrepro's chain document (the
   configuration documents of typdoc, optdoc and ocrdoc: how the pages were bound and
   prepared, the words OCR read, the person's corrections and areas), the hits with their
   pseudonyms, the discarded hits, the manual boxes and marks.
@@ -18,8 +18,7 @@ refer to that reading.  Both files hold clear data and are to be kept like the o
 Dropping either of them on the documents step restores the review: patient, reading and
 hits are filled in, the review can change the selection, and a new analysis keeps the
 reading and the decisions (:func:`adopt_decisions`).  A state saved in recipient mode
-(one-time key) cannot be restored, so it is refused, and so is a state of a format that
-was superseded (version 1, which kept PseudonyMed's own clean-up plans and OCR words).
+(one-time key) cannot be restored, so it is refused.
 """
 
 from __future__ import annotations
@@ -57,9 +56,9 @@ from pseudonymed.pipeline.reading import read_chain
 from pseudonymed.pseudonyms.store import PseudonymStore
 from pseudonymed.redaction.pdf import RedactionOptions
 
-FORMAT_MARK = "pseudonymed_arbeitsstand"
-VERSION = 2  # 2: docrepro's chain document and the original, in place of plans and OCR words
-INFIX = ".arbeitsstand"
+FORMAT_MARK = "pseudonymed_working_state"
+VERSION = 1
+INFIX = ".working-state"
 EXTENSION = INFIX + ".json"
 _OUTER_OPTIONS = ("recipient", "recipient_fingerprint", "matching", "language")
 
@@ -80,7 +79,7 @@ class WorkingState:
     @property
     def is_text(self) -> bool:
         """True for a text file (transcript, note, subtitles), False for a PDF."""
-        return bool(self.data["dokument"]["ist_text"])
+        return bool(self.data["document"]["is_text"])
 
     @property
     def patient(self) -> Patient:
@@ -90,38 +89,38 @@ class WorkingState:
     @property
     def code(self) -> str:
         """The identifier the pseudonyms were issued under; empty when the state has none."""
-        return str(self.data.get("kennung", ""))
+        return str(self.data.get("code", ""))
 
     @property
     def options(self) -> PipelineOptions:
         """The pipeline options as they were saved."""
-        return _options_from(self.data["optionen"])
+        return _options_from(self.data["options"])
 
     @property
     def source(self) -> Path:
         """Path the outputs are named after: the original file name in the state's folder
         (an in-memory capture keeps the source's folder)."""
         folder = self.path.parent if self.path is not None else (self.folder or Path.cwd())
-        return folder / str(self.data["dokument"]["quelle"])
+        return folder / str(self.data["document"]["source"])
 
     @property
     def document_path(self) -> Path | None:
         """The original (or the text) next to the JSON file; None for an in-memory capture."""
         if self.path is None:
             return None
-        return self.path.parent / str(self.data["dokument"]["datei"])
+        return self.path.parent / str(self.data["document"]["file"])
 
     @property
     def chain(self) -> dict[str, Any]:
         """docrepro's chain document of a PDF or image (empty for a text file)."""
-        found = self.data.get("kette")
+        found = self.data.get("chain")
         return found if isinstance(found, dict) else {}
 
 
 # -- recognising the files -------------------------------------------------------------------------
 def is_working_state(path: str | Path) -> Path | None:
     """The JSON file of a working state when ``path`` is that file or the document next
-    to it (``x.arbeitsstand.pdf`` beside ``x.arbeitsstand.json``), else None."""
+    to it (``x.working-state.pdf`` beside ``x.working-state.json``), else None."""
     path = Path(path)
     if path.name.endswith(EXTENSION):
         try:
@@ -142,10 +141,9 @@ def is_working_state(path: str | Path) -> Path | None:
 def _options_as_dict(opt: PipelineOptions) -> dict[str, Any]:
     """The options as JSON data: the target folder as a string, the redaction options
     nested, the recipient and matching fields left out (they are not restored)."""
-    keys = PipelineOptions.STORED_KEYS
-    d = {keys.get(k, k): v for k, v in opt.__dict__.items() if k not in _OUTER_OPTIONS}
-    d["ziel_ordner"] = str(opt.target_folder) if opt.target_folder else None
-    d["schwaerzen"] = as_stored(opt.redaction)
+    d = {k: v for k, v in opt.__dict__.items() if k not in _OUTER_OPTIONS}
+    d["target_folder"] = str(opt.target_folder) if opt.target_folder else None
+    d["redaction"] = as_stored(opt.redaction)
     return d
 
 
@@ -153,9 +151,9 @@ def _options_from(d: dict[str, Any]) -> PipelineOptions:
     """The options read back: unknown keys and the outer fields are ignored, the
     colours become tuples again."""
     fields = {k: v for k, v in field_values(PipelineOptions, d).items() if k not in _OUTER_OPTIONS}
-    fields["target_folder"] = Path(d["ziel_ordner"]) if d.get("ziel_ordner") else None
-    redaction_data = dict(d.get("schwaerzen", {}))
-    for colour in ("fuellfarbe", "textfarbe"):
+    fields["target_folder"] = Path(d["target_folder"]) if d.get("target_folder") else None
+    redaction_data = dict(d.get("redaction", {}))
+    for colour in ("fill_colour", "text_colour"):
         if colour in redaction_data:
             redaction_data[colour] = tuple(redaction_data[colour])
     fields["redaction"] = RedactionOptions(**field_values(RedactionOptions, redaction_data))
@@ -165,11 +163,11 @@ def _options_from(d: dict[str, Any]) -> PipelineOptions:
 def _page_as_dict(s: PageEntry, is_text: bool) -> dict[str, Any]:
     """A page as JSON data: its hits and the hits over its corrected text, and for a text
     file the analysis copy of the text (a PDF's pages are read again from the chain)."""
-    page: dict[str, Any] = {"nummer": s.number}
+    page: dict[str, Any] = {"number": s.number}
     if is_text:
         page["text"] = s.text.as_dict()
-    page["fundstellen"] = [f.as_dict() for f in s.hits]
-    page["korrektur_treffer"] = [f.as_dict() for f in s.correction_matches]
+    page["hits"] = [f.as_dict() for f in s.hits]
+    page["correction_matches"] = [f.as_dict() for f in s.correction_matches]
     return page
 
 
@@ -200,32 +198,32 @@ def capture(v: Preparation | TextPreparation) -> WorkingState:
     document, extension = _captured_document(v)
     data: dict[str, Any] = {
         FORMAT_MARK: VERSION,
-        "erstellt": dt.datetime.now().isoformat(timespec="seconds"),
-        "werkzeug": TOOL,
-        "dokument": {"datei": "", "endung": extension,
+        "created": dt.datetime.now().isoformat(timespec="seconds"),
+        "tool": TOOL,
+        "document": {"file": "", "extension": extension,
                      "sha256": hashlib.sha256(document).hexdigest(),
-                     "quelle": v.source.name, "ist_text": v.is_text,
-                     "ausgabe_endung": getattr(v, "output_extension", ".txt")},
+                     "source": v.source.name, "is_text": v.is_text,
+                     "output_extension": getattr(v, "output_extension", ".txt")},
         "patient": v.patient.as_dict(),
-        "kennung": v.code,
-        "optionen": _options_as_dict(v.opt),
-        "kette": None if isinstance(v, TextPreparation) else v.chain,
-        "seiten": [_page_as_dict(s, v.is_text) for s in v.pages],
-        "ohne_text": list(v.without_text),
-        "verworfen": [f.as_dict() for f in v.discarded],
-        "wiederhergestellt": [list(k) for k in sorted(v.restored)],
-        "warnungen": list(v.warnings),
-        "hinweise": list(v.notes),
+        "code": v.code,
+        "options": _options_as_dict(v.opt),
+        "chain": None if isinstance(v, TextPreparation) else v.chain,
+        "pages": [_page_as_dict(s, v.is_text) for s in v.pages],
+        "without_text": list(v.without_text),
+        "discarded": [f.as_dict() for f in v.discarded],
+        "restored": [list(k) for k in sorted(v.restored)],
+        "warnings": list(v.warnings),
+        "notes": list(v.notes),
         # the same messages in English, so that a resumed review can still show them so
-        "warnungen_en": [in_language(w, "en") for w in v.warnings],
-        "hinweise_en": [in_language(h, "en") for h in v.notes],
+        "warnings_en": [in_language(w, "en") for w in v.warnings],
+        "notes_en": [in_language(h, "en") for h in v.notes],
         "version": v.version,
     }
     return WorkingState(data, document, folder=v.source.parent)
 
 
 def save(v: Preparation | TextPreparation, target: str | Path) -> tuple[Path, Path]:
-    """Write the two files; ``target`` is the JSON file (``….arbeitsstand.json``), a file name
+    """Write the two files; ``target`` is the JSON file (``….working-state.json``), a file name
     with another extension, or a folder (existing, or without an extension: created and the
     files named after the source).  Returns (document, json)."""
     a = capture(v)
@@ -240,8 +238,8 @@ def save(v: Preparation | TextPreparation, target: str | Path) -> tuple[Path, Pa
             name = name[:name.rindex(".")]
         target = target.with_name(name + EXTENSION)
     stem = target.name[:-len(EXTENSION)]
-    document = target.with_name(stem + INFIX + a.data["dokument"]["endung"])
-    a.data["dokument"]["datei"] = document.name
+    document = target.with_name(stem + INFIX + a.data["document"]["extension"])
+    a.data["document"]["file"] = document.name
     target.parent.mkdir(parents=True, exist_ok=True)
     document.write_bytes(a.document)
     target.write_text(json.dumps(a.data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -255,8 +253,7 @@ def save(v: Preparation | TextPreparation, target: str | Path) -> tuple[Path, Pa
 
 # -- reading ---------------------------------------------------------------------------------------
 def _check_version(path: Path, data: dict[str, Any]) -> None:
-    """Refuse a state of another version: a newer PseudonyMed's, or one of a format that was
-    superseded and is no longer read (no backward compatibility)."""
+    """Refuse a state of a newer PseudonyMed."""
     try:
         version = int(data[FORMAT_MARK])
     except (TypeError, ValueError) as e:
@@ -265,14 +262,6 @@ def _check_version(path: Path, data: dict[str, Any]) -> None:
     if version > VERSION:
         raise WorkingStateError(say(f"{path.name}: stammt von einem neueren PseudonyMed.",
                                     f"{path.name}: comes from a newer PseudonyMed."))
-    if version < VERSION:
-        raise WorkingStateError(say(
-            f"{path.name}: Arbeitsstand im abgelösten Format {version} (eigene Aufbereitungspläne"
-            " und OCR-Wörter, vor docrepro); er wird nicht mehr gelesen. Bitte das Original"
-            " erneut öffnen, aufbereiten und prüfen.",
-            f"{path.name}: working state in the superseded format {version} (PseudonyMed's own"
-            " clean-up plans and OCR words, before docrepro); it is no longer read. Please open"
-            " the original again, prepare and review it."))
 
 
 def read(path: str | Path) -> WorkingState:
@@ -288,14 +277,14 @@ def read(path: str | Path) -> WorkingState:
         raise WorkingStateError(say(f"{path.name}: kein Arbeitsstand von PseudonyMed.",
                                     f"{path.name}: not a working state of PseudonyMed."))
     _check_version(path, data)
-    document = path.parent / str(data["dokument"]["datei"])
+    document = path.parent / str(data["document"]["file"])
     try:
         content = document.read_bytes()
     except OSError as e:
         raise WorkingStateError(
             say(f"Das Dokument {document.name} fehlt neben {path.name}.",
                 f"The document {document.name} is missing next to {path.name}.")) from e
-    if hashlib.sha256(content).hexdigest() != data["dokument"]["sha256"]:
+    if hashlib.sha256(content).hexdigest() != data["document"]["sha256"]:
         raise WorkingStateError(
             say(f"{document.name} wurde seit dem Speichern verändert; der Arbeitsstand passt nicht"
                 " mehr dazu.",
@@ -306,7 +295,7 @@ def read(path: str | Path) -> WorkingState:
 
 def _text_page_from(d: dict[str, Any]) -> PageEntry:
     """A page of a text file as it was analysed, without its hits."""
-    return PageEntry(int(d["nummer"]), PageText.from_dict(d["text"]))
+    return PageEntry(int(d["number"]), PageText.from_dict(d["text"]))
 
 
 def _saved(a: WorkingState, key: str) -> list[str]:
@@ -329,7 +318,7 @@ def open_chain(a: WorkingState, parent: Path | None = None) -> DocumentChain:
     if original is not None:
         return DocumentChain.open(original, document=a.chain, parent=parent)
     folder = Path(tempfile.mkdtemp(prefix="pseudonymed-", dir=parent))
-    original = folder / (a.source.stem + str(a.data["dokument"]["endung"]))
+    original = folder / (a.source.stem + str(a.data["document"]["extension"]))
     try:
         original.write_bytes(a.document)
         chain = DocumentChain.open(original, document=a.chain, parent=parent)
@@ -359,7 +348,7 @@ def reading_from(a: WorkingState, opt: PipelineOptions | None = None,
 
 def _load_note(a: WorkingState) -> str:
     """The hint naming the state and when, and by which tool version, it was saved."""
-    saved, tool = a.data.get("erstellt", "?"), a.data.get("werkzeug", "?")
+    saved, tool = a.data.get("created", "?"), a.data.get("tool", "?")
     if a.path is None:
         return say(f"Arbeitsstand aus dem Speicher übernommen (gespeichert {saved}, {tool}).",
                    f"Working state taken over from memory (saved {saved}, {tool}).")
@@ -370,8 +359,8 @@ def _load_note(a: WorkingState) -> str:
 def _preparation_messages(a: WorkingState, r: Toolkit) -> tuple[list[str], list[str]]:
     """The saved warnings and hints without an earlier load hint, the current one added, and
     a warning when this database issues another identifier than the state was saved under."""
-    warnings = [w for w in _saved(a, "warnungen") if "Arbeitsstand" not in w]
-    notes = [h for h in _saved(a, "hinweise") if "Arbeitsstand" not in h]
+    warnings = [w for w in _saved(a, "warnings") if "Arbeitsstand" not in w]
+    notes = [h for h in _saved(a, "notes") if "Arbeitsstand" not in h]
     notes.append(_load_note(a))
     if a.code and r.code != a.code:
         warnings.append(say(
@@ -395,9 +384,9 @@ def _shared_from(a: WorkingState, r: Toolkit, patient: Patient, opt: PipelineOpt
         "source": a.source, "patient": patient, "opt": opt, "store": store,
         "own_store": own_store, "code": r.code, "assignment": r.assignment,
         "rules": r.rules, "targets": r.targets, "warnings": warnings, "notes": notes,
-        "discarded": [Hit.from_dict(f) for f in a.data.get("verworfen", [])],
+        "discarded": [Hit.from_dict(f) for f in a.data.get("discarded", [])],
         "version": int(a.data.get("version", 0)),
-        "restored": {(str(k[0]), str(k[1])) for k in a.data.get("wiederhergestellt", [])},
+        "restored": {(str(k[0]), str(k[1])) for k in a.data.get("restored", [])},
     }
 
 
@@ -406,8 +395,8 @@ def _text_preparation_from(a: WorkingState, shared: dict[str, Any]) -> TextPrepa
     PDF page behind them."""
     return TextPreparation(
         **shared, text=a.document.decode("utf-8"),
-        pages=[_text_page_from(d) for d in a.data["seiten"]],
-        output_extension=str(a.data["dokument"].get("ausgabe_endung", ".txt")))
+        pages=[_text_page_from(d) for d in a.data["pages"]],
+        output_extension=str(a.data["document"].get("output_extension", ".txt")))
 
 
 def _pdf_preparation_from(a: WorkingState, shared: dict[str, Any],
@@ -428,8 +417,8 @@ def _restore_page(s: PageEntry, d: dict[str, Any], is_text: bool,
     """Put the saved hits and correction hits back on a restored page and mark the medical
     terms afresh: on the text layer where the page has one (always for a text file) and on
     the OCR reading."""
-    s.hits = [Hit.from_dict(f) for f in d.get("fundstellen", [])]
-    s.correction_matches = [Hit.from_dict(f) for f in d.get("korrektur_treffer", [])]
+    s.hits = [Hit.from_dict(f) for f in d.get("hits", [])]
+    s.correction_matches = [Hit.from_dict(f) for f in d.get("correction_matches", [])]
     s.term_rects, s.term_spans, s.term_count = [], [], 0
     if medical_terms is None:
         return
@@ -456,11 +445,11 @@ def preparation_from(a: WorkingState, store: PseudonymStore | None = None,
         v: Preparation | TextPreparation = (
             _text_preparation_from(a, shared) if a.is_text
             else _pdf_preparation_from(a, shared, chain))
-        if len(v.pages) != len(a.data["seiten"]):
+        if len(v.pages) != len(a.data["pages"]):
             v.close()
             raise WorkingStateError(say("Die Seiten passen nicht mehr zum Arbeitsstand.",
                                         "The pages no longer fit the working state."))
-        for s, d in zip(v.pages, a.data["seiten"], strict=True):
+        for s, d in zip(v.pages, a.data["pages"], strict=True):
             _restore_page(s, d, v.is_text, r.medical_terms)
     except Exception:
         if own_store:
@@ -477,7 +466,7 @@ def _spans_overlap(f: Hit, g: Hit) -> bool:
 
 def _already_marked(f: Hit, hits: list[Hit]) -> bool:
     """True when the same manual hit (same boxes and span) is already among the hits."""
-    return any(g.source == "manuell" and g.rects == f.rects and g.start == f.start
+    return any(g.source == "manual" and g.rects == f.rects and g.start == f.start
                and g.end == f.end for g in hits)
 
 
@@ -486,7 +475,7 @@ def _mark_again(page: PageEntry, f: Hit) -> None:
     found underneath it; the other manual hits stay."""
     if f.end > f.start:
         page.hits = [g for g in page.hits
-                     if g.source == "manuell" or not _spans_overlap(f, g)]
+                     if g.source == "manual" or not _spans_overlap(f, g)]
     page.hits.append(f)
 
 
@@ -520,13 +509,13 @@ def _adopt_manual_matches(d: dict[str, Any], new: Preparation | TextPreparation,
     """Re-add the manual hits (boxes, masks, take-ups) of one saved page to the same page
     of the new preparation; returns how many were not there yet.  A page the new
     preparation does not have, or one that lies otherwise now (``moved``), is skipped."""
-    number = int(d["nummer"])
+    number = int(d["number"])
     if number >= len(new.pages) or number in moved:
         return 0
     page = new.pages[number]
     n = 0
-    for f in (Hit.from_dict(x) for x in d.get("fundstellen", [])):
-        if f.source != "manuell" or _already_marked(f, page.hits):
+    for f in (Hit.from_dict(x) for x in d.get("hits", [])):
+        if f.source != "manual" or _already_marked(f, page.hits):
             continue
         _mark_again(page, f)
         n += 1
@@ -536,8 +525,8 @@ def _adopt_manual_matches(d: dict[str, Any], new: Preparation | TextPreparation,
 def _discard_again(old: WorkingState, new: Preparation | TextPreparation) -> int:
     """Discard again every hit of the new preparation whose rule and text the saved state
     had discarded; returns how many."""
-    discarded = {tolerance_key(str(f["regel"]), str(f.get("text", "")))
-                 for f in old.data.get("verworfen", []) if f.get("text")}
+    discarded = {tolerance_key(str(f["rule"]), str(f.get("text", "")))
+                 for f in old.data.get("discarded", []) if f.get("text")}
     matches = [f for f in new.hits if tolerance_key(f.rule, f.text) in discarded]
     for f in matches:
         new.discard(f)
@@ -549,7 +538,7 @@ def adopt_decisions(old: WorkingState, new: Preparation | TextPreparation) -> in
     back and discard again what was discarded (same rule and text).  Returns how many
     hits were taken over or discarded."""
     moved = moved_pages(old, new)
-    n = sum(_adopt_manual_matches(d, new, moved) for d in old.data["seiten"])
+    n = sum(_adopt_manual_matches(d, new, moved) for d in old.data["pages"])
     n += _discard_again(old, new)
     new.notes.append(say(f"{n} Entscheidungen aus dem Arbeitsstand übernommen (Kästen, Masken,"
                          " Markierungen, verworfene Treffer).",

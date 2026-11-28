@@ -31,7 +31,7 @@ def test_longest_match_wins() -> None:
     text = "Herr Max Müller, geb. 01.02.1990, max. 3 Tabletten, Müllerstraße"
     matches = find_in_text(text, rules)
     ids = [r.id for _a, _b, r in matches]
-    assert ids == ["name.vollname", "datum.geburtsdatum"]
+    assert ids == ["name.full_name", "date.birth_date"]
     a, b, _ = matches[0]
     assert text[a:b] == "Max Müller"
 
@@ -45,8 +45,8 @@ def test_surname_as_an_initial_after_a_form_of_address() -> None:
             "Wir sahen Fr. M. Die Untersuchung blieb ohne Befund.\nDer Bruder, Herr M. Schmidt, "
             "kam später. Ein Morbus M. liegt nicht vor, Herr K. war nicht da.")
     found = [(text[a:b], r.id) for a, b, r in find_in_text(text, rules)]
-    assert found == [("M.", "name.nachname.initial")] * 4
-    oe = Patient(surname="Özdemir", first_name="Aylin", sex="w", birth_date=dt.date(1980, 3, 4))
+    assert found == [("M.", "name.surname.initial")] * 4
+    oe = Patient(surname="Özdemir", first_name="Aylin", sex="f", birth_date=dt.date(1980, 3, 4))
     found = [text[a:b] for text in ("Frau Ö. kam allein.", "Frau O. kam allein.")
              for a, b, _r in find_in_text(text, rules_for(oe, PseudonymAssignment(oe, "B")))]
     assert found == ["Ö.", "O."]
@@ -86,10 +86,10 @@ def test_generic_patterns_and_roles() -> None:
     rules = rules_for(p, PseudonymAssignment(p, "A"))
     text = "KVNR X123456789, IBAN DE12 3456 7890 1234 5678 90, fremd@example.com"
     ids = sorted(r.id for _a, _b, r in find_in_text(text, rules))
-    assert ids == ["muster.email", "muster.iban", "muster.versichertennummer"]
+    assert ids == ["pattern.email", "pattern.iban", "pattern.insurance_number"]
     # OCR puts spaces around dots: still one address
     matches = find_in_text("Mail an max. muster@example. org bitte", rules)
-    assert [("max. muster@example. org", "muster.email")] == [
+    assert [("max. muster@example. org", "pattern.email")] == [
         ("Mail an max. muster@example. org bitte"[a:b], r.id) for a, b, r in matches]
 
 
@@ -99,10 +99,10 @@ def test_label_rules_match_only_the_value() -> None:
     text = ("Versicherten-Nr. 0181590830 Pat.-ID 99887766 AZ 2024/555, Fall-Nr.: K-2024-0012\n"
             "Blutdruck 120/80 mmHg, Pat. wird vorgestellt.")
     matches = {text[a:b]: r.id for a, b, r in find_in_text(text, rules)}
-    assert matches["0181590830"] == "muster.versichertennummer.etikett"
-    assert matches["99887766"] == "muster.patienten_id.etikett"
-    assert matches["2024/555"] == "muster.aktenzeichen.etikett"
-    assert matches["K-2024-0012"] == "muster.aktenzeichen.etikett"
+    assert matches["0181590830"] == "pattern.insurance_number.label"
+    assert matches["99887766"] == "pattern.patient_id.label"
+    assert matches["2024/555"] == "pattern.case_number.label"
+    assert matches["K-2024-0012"] == "pattern.case_number.label"
     assert "120/80" not in matches and "Versicherten-Nr." not in matches
 
 
@@ -114,7 +114,7 @@ def test_label_not_in_codes() -> None:
             " 0181590830. AZ Sehr geehrte Frau, AZ MUSTER ohne Ziffer.")
     matches = {text[a:b]: r.id for a, b, r in find_in_text(text, rules)}
     assert "2024/17" in matches and "X-1" not in matches  # the value needs 4 characters
-    assert matches["0181590830"] == "muster.versichertennummer.etikett"  # label any case
+    assert matches["0181590830"] == "pattern.insurance_number.label"  # label any case
     assert not any("2Q4W" in t for t in matches)  # "AZ" inside a code is not a label
     assert "Sehr" not in matches and "MUSTER" not in matches  # values need a digit
 
@@ -130,11 +130,11 @@ def test_recheck_protects_misread_pseudonyms() -> None:
     spans = pseudonym_spans_tolerant(text, ["[Ort AZT63Z]", "Patient K7Q4MX"])
     matches = [(text[a:b].rstrip("."), r.id) for a, b, r in find_in_text(text, rules)
                if not in_pseudonym(a, b, spans)]
-    assert matches == [("2023/171", "muster.aktenzeichen.etikett")], matches
+    assert matches == [("2023/171", "pattern.case_number.label")], matches
 
 
-def _rule(id_: str, muster: str, priority: int) -> Rule:
-    return Rule(id_, re.compile(muster), Kind.TERM, "[x]", priority, None)
+def _rule(id_: str, pattern: str, priority: int) -> Rule:
+    return Rule(id_, re.compile(pattern), Kind.TERM, "[x]", priority, None)
 
 
 def test_candidates_without_edge_and_with_value_group() -> None:
@@ -142,11 +142,11 @@ def test_candidates_without_edge_and_with_value_group() -> None:
     and a match of nothing but blanks is no candidate."""
     from pseudonymed.detection.rules import _candidates
 
-    rules = [_rule("leer", r"\s*X\s*", 10), _rule("etikett", r"Nr\.\s*(?P<wert>\d+)", 5),
-             _rule("nichts", r"\s+", 1)]
+    rules = [_rule("blank", r"\s*X\s*", 10), _rule("label", r"Nr\.\s*(?P<value>\d+)", 5),
+             _rule("nothing", r"\s+", 1)]
     text = "a  X  b Nr. 42"
     assert [(text[a:b], r.id) for a, b, r in _candidates(text, rules)] == [
-        ("X", "leer"), ("42", "etikett")]
+        ("X", "blank"), ("42", "label")]
 
 
 def test_selection_length_before_priority_before_order() -> None:
@@ -154,12 +154,12 @@ def test_selection_length_before_priority_before_order() -> None:
     rule; whatever overlaps a chosen hit is dropped."""
     from pseudonymed.detection.rules import _without_overlap
 
-    long, high = _rule("lang", "x", 1), _rule("hoch", "x", 9)
-    early, late = _rule("frueh", "x", 5), _rule("spaet", "x", 5)
+    long, high = _rule("long", "x", 1), _rule("high", "x", 9)
+    early, late = _rule("early", "x", 5), _rule("late", "x", 5)
     candidates = [(0, 2, early), (0, 2, late), (0, 2, high), (2, 8, long), (3, 5, high),
                   (9, 12, late), (9, 12, early)]
     assert [(a, b, r.id) for a, b, r in _without_overlap(candidates)] == [
-        (0, 2, "hoch"), (2, 8, "lang"), (9, 12, "spaet")]
+        (0, 2, "high"), (2, 8, "long"), (9, 12, "late")]
 
 
 def test_box_grouped_per_line() -> None:
@@ -172,7 +172,7 @@ def test_box_grouped_per_line() -> None:
     rect = (70.0, 88.0, 200.0, 124.0)
     matches = box_to_hits(read_text_layer(page), rect, "[x]")
     assert [f.text for f in matches] == ["Erste Zeile hier", "Zweite Zeile"]
-    assert matches[0].rects[-1] == rect and all(f.rule == "manuell" for f in matches)
+    assert matches[0].rects[-1] == rect and all(f.rule == "manual" for f in matches)
     empty = PageText(number=2, width=595.0, height=842.0, text="Bild")
-    (single,) = box_to_hits(empty, rect, "[x]", "maske")
-    assert (single.start, single.end, single.rects, single.rule) == (0, 0, [rect], "maske")
+    (single,) = box_to_hits(empty, rect, "[x]", "mask")
+    assert (single.start, single.end, single.rects, single.rule) == (0, 0, [rect], "mask")

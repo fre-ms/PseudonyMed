@@ -86,12 +86,12 @@ def test_mapping_source(qapp: QApplication, tmp_path: Path) -> None:  # noqa: F8
     assert page.person.count() == 0 and page._mapping_source() is None
     page.reidentify()
     assert page.note.text() == "Keine Person gewählt." and page.output.toPlainText() == ""
-    page.capsule = Capsule(code="K7Q4MX", patient={"nachname": "Beispiel", "vorname": "Erika"},
+    page.capsule = Capsule(code="K7Q4MX", patient={"surname": "Beispiel", "first_name": "Erika"},
                            mappings={"Patient K7Q4MX": "Erika Beispiel"})
     source = page._mapping_source()
     assert source is not None and source.known == ["K7Q4MX"]
     assert source.mapping == {"Patient K7Q4MX": "Erika Beispiel"}
-    assert source.info is not None and source.info["kennung"] == "K7Q4MX"
+    assert source.info is not None and source.info["code"] == "K7Q4MX"
     page.input_text.setPlainText("Patient K7Q4MX kam allein.")
     page.reidentify()
     assert page.output.toPlainText() == "Erika Beispiel kam allein."

@@ -15,8 +15,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from lexcor import PackageInfo, Store
+from lexcor import PackageInfo, Store, StoreError
 
+from pseudonymed.core import names
 from pseudonymed.detection.store_table import own_lists
 
 VOCABULARY, IDENTIFIERS = "vocabulary", "identifiers"
@@ -33,10 +34,22 @@ def remember(store: Store, ticked: Iterable[str]) -> None:
     store.choose(ticked)
 
 
-def switch(store: Store, names: Iterable[str], on: bool) -> list[str]:
+def _find(store: Store, name: str) -> str:
+    """The URL of the list a person names: by URL or title as typed, else by the English
+    title of one of PseudonyMed's lists named in German or by its label (``Berufe``)."""
+    try:
+        return store.find(name)
+    except StoreError:
+        english = names.list_name(name)
+        if english == " ".join(name.split()):
+            raise
+        return store.find(english)
+
+
+def switch(store: Store, wanted: Iterable[str], on: bool) -> list[str]:
     """Tick or untick lists named by URL or title; returns their URLs.  An unknown name
     is lexcor's ``StoreError``, and then nothing has changed."""
-    urls = [store.find(name) for name in names]
+    urls = [_find(store, name) for name in wanted]
     for url in urls:
         store.switch(url, on)
     return urls

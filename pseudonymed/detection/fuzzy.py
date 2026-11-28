@@ -108,14 +108,14 @@ def _name_targets(prefix: str, person: Person, pseudonym: str, role: Role) -> li
     targets: list[Target] = []
     if first_names and person.surname:
         targets.append(Target([first_names[0], person.surname], pseudonym, Kind.NAME,
-                              f"{prefix}.vollname", role))
-    targets += [Target([t], pseudonym, Kind.SURNAME, f"{prefix}.nachname", role)
+                              f"{prefix}.full_name", role))
+    targets += [Target([t], pseudonym, Kind.SURNAME, f"{prefix}.surname", role)
                 for t in _surnames(person.surname)]
-    targets += [Target([v], pseudonym, Kind.FIRST_NAME, f"{prefix}.vorname",
+    targets += [Target([v], pseudonym, Kind.FIRST_NAME, f"{prefix}.first_name",
                        role) for v in first_names]
     if len(person.birth_name) >= 4:
         targets.append(Target([person.birth_name], pseudonym, Kind.BIRTH_NAME,
-                              f"{prefix}.geburtsname", role))
+                              f"{prefix}.birth_name", role))
     return targets
 
 
@@ -128,15 +128,16 @@ def _address_targets(prefix: str, person: Person, assignment: PseudonymAssignmen
     tokens = person.street.split()
     if tokens and len(tokens[0]) >= 4:
         pseudonym = assignment.street(person)
-        targets.append(Target(tokens, pseudonym, Kind.ADDRESS, f"{prefix}.strasse", role))
-        targets.append(Target([tokens[0]], pseudonym, Kind.ADDRESS, f"{prefix}.strasse", role))
+        targets.append(Target(tokens, pseudonym, Kind.ADDRESS, f"{prefix}.street", role))
+        targets.append(Target([tokens[0]], pseudonym, Kind.ADDRESS, f"{prefix}.street", role))
     if len(person.place) >= 4:
-        targets.append(Target([person.place], assignment.place(person), Kind.PLACE, f"{prefix}.ort",
+        targets.append(Target([person.place], assignment.place(person), Kind.PLACE,
+                              f"{prefix}.place",
                               role))
         if person.postcode:
             targets.append(Target([person.postcode, person.place],
                                   assignment.postcode_place(person), Kind.PLACE,
-                                  f"{prefix}.plz_ort", role))
+                                  f"{prefix}.postcode_place", role))
     return targets
 
 
@@ -149,7 +150,7 @@ def _date_targets(date: dt.date, pseudonym: str) -> list[Target]:
     forms = [[date.strftime("%d.%m.%Y")], [f"{date.day}.{date.month}.{date.year}"],
              [date.strftime("%d.%m.%y")], [day, month, str(date.year)],
              [day, month[:3] + ".", str(date.year)]]
-    return [Target(tokens, pseudonym, Kind.BIRTH_DATE, "datum.geburtsdatum", Role.PATIENT)
+    return [Target(tokens, pseudonym, Kind.BIRTH_DATE, "date.birth_date", Role.PATIENT)
             for tokens in forms]
 
 
@@ -159,13 +160,13 @@ def _code_targets(patient: Patient, assignment: PseudonymAssignment) -> list[Tar
     targets: list[Target] = []
     if len(patient.insurance_number) >= 6:
         targets.append(Target([patient.insurance_number], assignment.insurance_number(),
-                              Kind.INSURANCE_NUMBER, "versichertennummer", Role.PATIENT))
+                              Kind.INSURANCE_NUMBER, "insurance_number", Role.PATIENT))
     if len(patient.patient_id) >= 6:
         targets.append(Target([patient.patient_id], assignment.patient_id(), Kind.PATIENT_ID,
-                              "patienten_id", Role.PATIENT))
+                              "patient_id", Role.PATIENT))
     targets += [Target([e], assignment.email(), Kind.EMAIL, "email", Role.PATIENT)
                 for e in patient.emails if len(e) >= 8]
-    targets += [Target(a.split(), assignment.case_numbers(), Kind.CASE_NUMBER, "aktenzeichen",
+    targets += [Target(a.split(), assignment.case_numbers(), Kind.CASE_NUMBER, "case_number",
                        Role.PATIENT) for a in patient.case_numbers]
     return targets
 
@@ -173,18 +174,18 @@ def _code_targets(patient: Patient, assignment: PseudonymAssignment) -> list[Tar
 def targets_for(patient: Patient, assignment: PseudonymAssignment) -> list[Target]:
     """Token sequences worth a fuzzy search, with their pseudonyms."""
     targets = _name_targets("name", patient, assignment.main_person(), Role.PATIENT)
-    targets += _address_targets("adresse", patient, assignment, Role.PATIENT)
+    targets += _address_targets("address", patient, assignment, Role.PATIENT)
     if patient.birth_date:
         targets += _date_targets(patient.birth_date, assignment.birth_date())
     targets += _code_targets(patient, assignment)
     for i, person in enumerate(patient.relatives, 1):
-        targets += _name_targets(f"angehoerige{i}", person, assignment.relatives(i, person),
+        targets += _name_targets(f"relative{i}", person, assignment.relatives(i, person),
                                  Role.RELATIVE)
-        targets += _address_targets(f"angehoerige{i}", person, assignment, Role.RELATIVE)
+        targets += _address_targets(f"relative{i}", person, assignment, Role.RELATIVE)
     for i, person in enumerate(patient.referrers, 1):
-        targets += _name_targets(f"zuweiser{i}", person, assignment.referrers(i, person),
+        targets += _name_targets(f"referrer{i}", person, assignment.referrers(i, person),
                                  Role.REFERRER)
-        targets += _address_targets(f"zuweiser{i}", person, assignment, Role.REFERRER)
+        targets += _address_targets(f"referrer{i}", person, assignment, Role.REFERRER)
     return targets
 
 
@@ -321,7 +322,7 @@ def _hit(page: PageText, a: int, b: int, target: Target, source: str) -> Hit:
     """The hit for one span, with its boxes and font size read from the page."""
     return Hit(
         page=page.number, start=a, end=b, text=page.text[a:b], kind=target.kind,
-        rule=f"unscharf.{target.rule}", pseudonym=target.pseudonym,
+        rule=f"fuzzy.{target.rule}", pseudonym=target.pseudonym,
         rects=[tuple(r) for r in page.rects(a, b)], font_size=page.font_size(a, b),
         role=target.role, source=source,
     )

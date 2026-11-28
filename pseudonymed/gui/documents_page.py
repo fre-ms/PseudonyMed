@@ -71,7 +71,7 @@ class DocumentsPage(QWidget):
             "Dateien hierher ziehen oder hinzufügen (PDF, Fotos, Texte, Whisper-JSON, E-Mails)."
             " Scans und Fotos werden in den nächsten Schritten mit docrepro aufbereitet und"
             " gelesen; ein Foto wird dafür zu einem PDF gebunden. Ein gespeicherter"
-            " Arbeitsstand (…arbeitsstand.json oder das Original daneben) füllt alles bis zur"
+            " Arbeitsstand (…working-state.json oder das Original daneben) füllt alles bis zur"
             " Sichtprüfung wieder aus."))
         intro.setWordWrap(True)
         outer.addWidget(intro)

@@ -36,7 +36,7 @@ class PseudonymAssignment:
         self,
         patient: Patient,
         code: str,
-        date_format: str = "jahr",
+        date_format: str = "year",
         today: dt.date | None = None,
         secret: bytes | None = None,
     ) -> None:
@@ -63,7 +63,7 @@ class PseudonymAssignment:
     def register_matches(self, hits: list[Hit]) -> None:
         """Record the clear text of generic hits (e-mail, insurance number, IBAN)."""
         for f in hits:
-            if f.pseudonym not in self.mapping or f.rule.startswith("muster."):
+            if f.pseudonym not in self.mapping or f.rule.startswith("pattern."):
                 self._remember(f.pseudonym, " ".join(f.text.split()), f.kind)
 
     # -- the main person -----------------------------------------------------------------------
@@ -77,7 +77,7 @@ class PseudonymAssignment:
         d = self.patient.birth_date
         if d is None:
             return "[Geburtsdatum]"
-        if self.date_format == "alter":
+        if self.date_format == "age":
             not_yet = (self.today.month, self.today.day) < (d.month, d.day)
             age = self.today.year - d.year - not_yet
             pseudonym = f"[Alter {age}]"
@@ -96,7 +96,7 @@ class PseudonymAssignment:
         person = person or self.patient
         if self.secret is None or not person.street:
             own = person is self.patient
-            placeholder = PLACEHOLDERS[Kind.ADDRESS] if own else "[Praxisanschrift]"
+            placeholder = PLACEHOLDERS[Kind.ADDRESS] if own else "[Absenderanschrift]"
             return self._remember(placeholder, person.street, Kind.ADDRESS)
         code = self._address_code(canonical_street(person.street))
         return self._remember(f"[Straße {code}]", person.street, Kind.ADDRESS)

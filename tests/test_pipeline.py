@@ -70,8 +70,8 @@ def test_round_trip(report_pdf: Path, patient: Patient, store: PseudonymStore) -
     report = res.target_report.read_text(encoding="utf-8")
     assert found_plain_data(report, patient) == []
     data = json.loads(report)
-    assert data["bestanden"] is True and data["seiten"] == 2
-    assert len(data["fundstellen"]) >= 15
+    assert data["passed"] is True and data["pages"] == 2
+    assert len(data["hits"]) >= 15
     # the key is in the local store only
     z = store.mapping(patient.key())
     assert z[f"Patient {k}"] == patient.full_name
@@ -112,7 +112,7 @@ def test_spelling_variant_gets_same_code(tmp_path: Path, patient: Patient,
 
 
 def test_age_instead_of_year(report_pdf: Path, patient: Patient, store: PseudonymStore) -> None:
-    res = pseudonymise(report_pdf, patient, PipelineOptions(date_format="alter"), store=store)
+    res = pseudonymise(report_pdf, patient, PipelineOptions(date_format="age"), store=store)
     assert res.released
     today = dt.date.today()
     age = today.year - patient.birth_date.year - (
@@ -151,7 +151,7 @@ def test_scan_without_ocr_is_not_released(tmp_path: Path, report_pdf: Path, pati
         scan_path = tmp_path / "scan.pdf"
         scan.save(scan_path)
         scan.close()
-    res = pseudonymise(scan_path, patient, PipelineOptions(ocr="aus"), store=store)
+    res = pseudonymise(scan_path, patient, PipelineOptions(ocr="off"), store=store)
     assert not res.released
     assert not res.report.text_layer
     assert any("ohne Textebene" in w for w in res.report.warnings)
@@ -162,7 +162,7 @@ def test_image_without_ocr_is_not_released(tmp_path: Path, report_pdf: Path, pat
     with pymupdf.open(report_pdf) as d:
         image = tmp_path / "foto.png"
         d[0].get_pixmap(dpi=72).save(image)
-    res = pseudonymise(image, patient, PipelineOptions(ocr="aus"), store=store)
+    res = pseudonymise(image, patient, PipelineOptions(ocr="off"), store=store)
     assert not res.released
     assert res.report.pages == 1
 
@@ -173,7 +173,7 @@ def test_two_phases_with_discard_and_box(report_pdf: Path, patient: Patient,
     assert v.hits and not v.ocr_pages
     assert v.page_image(0)[:4] == b"\x89PNG"
     # drop the hit on the referrer's name on page 1 (a false positive, say)
-    referrers = [f for f in v.hits if f.rule == "zuweiser1.name"]
+    referrers = [f for f in v.hits if f.rule == "referrer1.name"]
     assert referrers
     for f in referrers:
         v.discard(f)
@@ -182,7 +182,7 @@ def test_two_phases_with_discard_and_box(report_pdf: Path, patient: Patient,
         rect = d[0].search_for("Leichte kognitive Störung")[0]
     added = v.box(0, (rect.x0 - 1, rect.y0 - 1, rect.x1 + 1, rect.y1 + 1), "[Diagnose]")
     assert len(added) == 1 and added[0].text == "Leichte kognitive Störung"
-    assert added[0].source == "manuell"
+    assert added[0].source == "manual"
     res = finalise(v)
     assert res.released, as_text(res.report)
     assert "[Diagnose]" in res.text and "Leichte kognitive Störung" not in res.text
@@ -203,7 +203,7 @@ def test_box_on_image_page(tmp_path: Path, report_pdf: Path, patient: Patient,
         scan_path = tmp_path / "scan.pdf"
         scan.save(scan_path)
         scan.close()
-    v = prepare(scan_path, patient, PipelineOptions(ocr="aus"), store=store)
+    v = prepare(scan_path, patient, PipelineOptions(ocr="off"), store=store)
     added = v.box(0, (50, 60, 300, 120))
     assert len(added) == 1 and added[0].rects == [(50, 60, 300, 120)] and added[0].text == ""
     v.close()
@@ -237,11 +237,11 @@ def test_mask_redacts_black_and_silent(report_pdf: Path, patient: Patient,
     v = prepare(report_pdf, patient, PipelineOptions(), store=store)
     before = len(v.hits)
     # the line "Betr.: Herrn <name>, geb. <date>" on page one: both hits lie inside the box
-    affected = next(f for f in v.pages[0].hits if f.rule == "datum.geburtsdatum")
+    affected = next(f for f in v.pages[0].hits if f.rule == "date.birth_date")
     y0 = min(r[1] for r in affected.rects) - 2
     y1 = max(r[3] for r in affected.rects) + 2
     added = v.add_mask(0, (50, y0, 560, y1))
-    assert added and all(f.rule == "maske" for f in added)
+    assert added and all(f.rule == "mask" for f in added)
     assert affected not in v.hits and len(v.hits) < before
     res = finalise(v)
     assert res.released, as_text(res.report)
@@ -261,7 +261,7 @@ def test_mask_redacts_black_and_silent(report_pdf: Path, patient: Patient,
 def test_discard_and_restore(report_pdf: Path, patient: Patient,
                              store: PseudonymStore) -> None:
     v = prepare(report_pdf, patient, PipelineOptions(), store=store)
-    f = next(x for x in v.hits if x.rule == "zuweiser1.name")
+    f = next(x for x in v.hits if x.rule == "referrer1.name")
     v.discard(f)
     assert f in v.discarded and f not in v.hits and v.tolerated
     v.restore(f)
@@ -284,7 +284,7 @@ def test_rasterise_with_text_layer_and_markdown(report_pdf: Path, patient: Patie
     md = res.target_md.read_text(encoding="utf-8")
     assert md.startswith("# Pseudonymisierter Text") and "## Seite 1" in md and "## Seite 2" in md
     assert found_plain_data(md, patient) == [] and "Ramipril" in md
-    assert res.report.options["textebene"] is True and res.report.options["markdown"]
+    assert res.report.options["text_layer"] is True and res.report.options["markdown"]
 
 
 def test_hidden_text_stays_text_layer(tmp_path: Path, patient: Patient,
@@ -302,7 +302,7 @@ def test_hidden_text_stays_text_layer(tmp_path: Path, patient: Patient,
         page.insert_text((60, 130), "Diagnose: arterielle Hypertonie, Ramipril 5 mg",
                          fontsize=11, render_mode=3)
         d.save(source)
-    res = pseudonymise(source, patient, PipelineOptions(ocr="aus"), store=store)
+    res = pseudonymise(source, patient, PipelineOptions(ocr="off"), store=store)
     assert res.released, as_text(res.report)
     with pymupdf.open(res.target_pdf) as d:
         text = d[0].get_text("text")
@@ -315,21 +315,21 @@ def test_remember_discarded_matches(report_pdf: Path, patient: Patient) -> None:
     and exporting forgets it again."""
     with PseudonymStore(":memory:", secret=TEST_KEY) as sp:
         v = prepare(report_pdf, patient, PipelineOptions(remember_discarded=True), store=sp)
-        f = next(x for x in v.hits if x.rule == "zuweiser1.name")
+        f = next(x for x in v.hits if x.rule == "referrer1.name")
         v.discard(f)
         res = finalise(v)
         assert res.released and v.finalised
         report = as_text(res.report)
-        assert "Bewusst belassen (im Prüfschritt verworfen): zuweiser1.name ×1" in report
+        assert "Bewusst belassen (im Prüfschritt verworfen): referrer1.name ×1" in report
         line = next(z for z in report.splitlines() if "Erneut geprüft" in z)
         assert "Geburtsdatum" in line and "Zuweiser" in line and "nichts gefunden" in line
         assert res.report.recheck.checked[0] == "Name"
-        assert sp.discarded_for(patient) == {("zuweiser1.name", f.text.casefold())}
+        assert sp.discarded_for(patient) == {("referrer1.name", f.text.casefold())}
         v2 = prepare(report_pdf, patient, PipelineOptions(remember_discarded=True), store=sp)
-        assert any(x.rule == "zuweiser1.name" and x.text == f.text for x in v2.discarded)
+        assert any(x.rule == "referrer1.name" and x.text == f.text for x in v2.discarded)
         assert not any(x.text == f.text for x in v2.hits)  # other spellings stay hits
         assert any("gespeicherter Entscheidung" in w for w in v2.notes)
-        g = next(x for x in v2.discarded if x.rule == "zuweiser1.name")
+        g = next(x for x in v2.discarded if x.rule == "referrer1.name")
         v2.restore(g)
         assert v2.version == 1 and v2.restored
         res2 = finalise(v2, final=False)  # a check run: nothing stored, v2 stays open
@@ -381,10 +381,10 @@ def test_vocabulary_only_from_guessed_matches() -> None:
         return Hit(page=0, start=0, end=len(text), text=text, kind=Kind.NAME,
                    rule=rule, pseudonym="[X]", source=source)
 
-    discarded = [f("ner.person", "Konzentration"), f("ner.ort", "Nierenlager"),
-                 f("unscharf.name.nachname", "Bauch", "unscharf"),
-                 f("ner.person", "konzentration"), f("name.nachname", "Bauer"),
-                 f("muster.email", "max@example.org"), f("ner.person", "A1"),
+    discarded = [f("ner.person", "Konzentration"), f("ner.place", "Nierenlager"),
+                 f("fuzzy.name.surname", "Bauch", "fuzzy"),
+                 f("ner.person", "konzentration"), f("name.surname", "Bauer"),
+                 f("pattern.email", "max@example.org"), f("ner.person", "A1"),
                  f("ner.person", "  Klinikum   Süd ")]
     assert vocabulary_from(discarded) == ["Bauch", "Klinikum Süd", "Konzentration", "Nierenlager"]
 

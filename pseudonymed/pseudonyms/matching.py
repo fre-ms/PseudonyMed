@@ -28,11 +28,11 @@ from pseudonymed.pseudonyms.phonetics import cologne_phonetics
 # (config/mainzelliste.conf.default: vorname f=0.000235 e=0.01, nachname f=0.0000271 e=0.008,
 # geburtstag f=0.0333 e=0.005, geburtsmonat f=0.0833 e=0.002, geburtsjahr f=0.0286 e=0.004).
 WEIGHTS = {
-    "nachname": 15.2,
-    "vorname": 12.0,
-    "geburtsjahr": 5.1,
-    "geburtsmonat": 3.6,
-    "geburtstag": 4.9,
+    "surname": 15.2,
+    "first_name": 12.0,
+    "birth_year": 5.1,
+    "birth_month": 3.6,
+    "birth_day": 4.9,
 }
 MATCH_THRESHOLD = 0.95  # Mainzelliste threshold_match
 UNCERTAIN_THRESHOLD = 0.80  # Mainzelliste uses 0.6; raised so that mere namesakes do not ask
@@ -155,12 +155,12 @@ class _Candidate:
 
     @classmethod
     def from_row(cls, candidate: dict[str, Any]) -> _Candidate:
-        """Build from a store row (keys nachname, vorname, geburtsname, geburtsdatum)."""
+        """Build from a store row (keys surname, first_name, birth_name, birth_date)."""
         return cls(
-            surname=_text(candidate.get("nachname")),
-            first_name=_text(candidate.get("vorname")),
-            birth_name=_text(candidate.get("geburtsname")),
-            birth_date=_date(candidate.get("geburtsdatum")),
+            surname=_text(candidate.get("surname")),
+            first_name=_text(candidate.get("first_name")),
+            birth_name=_text(candidate.get("birth_name")),
+            birth_date=_date(candidate.get("birth_date")),
         )
 
 
@@ -191,9 +191,9 @@ def _name_fields(patient: Patient, k: _Candidate) -> dict[str, float]:
         last = first = swapped
     fields: dict[str, float] = {}
     if patient.surname and k.surname:
-        fields["nachname"] = last
+        fields["surname"] = last
     if patient.first_name and k.first_name:
-        fields["vorname"] = first
+        fields["first_name"] = first
     return fields
 
 
@@ -209,12 +209,12 @@ def _date_fields(d1: dt.date | None, d2: dt.date | None) -> dict[str, float]:
     if not d1 or not d2:
         return {}
     fields = {
-        "geburtsjahr": 1.0 if d1.year == d2.year else 0.0,
-        "geburtsmonat": 1.0 if d1.month == d2.month else 0.0,
-        "geburtstag": 1.0 if d1.day == d2.day else 0.0,
+        "birth_year": 1.0 if d1.year == d2.year else 0.0,
+        "birth_month": 1.0 if d1.month == d2.month else 0.0,
+        "birth_day": 1.0 if d1.day == d2.day else 0.0,
     }
     if _day_and_month_swapped(d1, d2):
-        fields["geburtsmonat"] = fields["geburtstag"] = 0.5
+        fields["birth_month"] = fields["birth_day"] = 0.5
     return fields
 
 
@@ -225,13 +225,13 @@ def _weighted_score(fields: dict[str, float]) -> float:
 
 
 def compare(patient: Patient, candidate: dict[str, Any]) -> Comparison:
-    """Score ``patient`` against one stored row (keys nachname, vorname, geburtsname,
-    geburtsdatum, kennung, schluessel)."""
+    """Score ``patient`` against one stored row (keys surname, first_name, birth_name,
+    birth_date, code, patient_key)."""
     k = _Candidate.from_row(candidate)
     fields = {**_name_fields(patient, k), **_date_fields(patient.birth_date, k.birth_date)}
     return Comparison(
-        code=str(candidate.get("kennung", "")),
-        key=str(candidate.get("schluessel", "")),
+        code=str(candidate.get("code", "")),
+        key=str(candidate.get("patient_key", "")),
         score=round(_weighted_score(fields), 4),
         fields=fields,
         surname=k.surname,

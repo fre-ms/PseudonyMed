@@ -137,7 +137,7 @@ def test_candidates_without_model(patient: Patient) -> None:
     assert (person.core, person.kind, person.rule) == ("Erika Beispiel", Kind.NAME, "ner.person")
     assert v.mapping[person.pseudonym] == "Erika Beispiel"
     place = ner_module._candidate_from("GPE", "(Dresden)", v)
-    assert place is not None and (place.core, place.rule) == ("Dresden", "ner.ort")
+    assert place is not None and (place.core, place.rule) == ("Dresden", "ner.place")
     assert place.pseudonym.startswith("[Ort ")
     assert ner_module._candidate_from("PER", "Morbus Parkinson", v) is None
     assert ner_module._candidate_from("LOC", "Glasgow", v) is None

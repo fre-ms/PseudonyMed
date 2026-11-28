@@ -28,9 +28,9 @@ from tests.test_gui import qapp  # noqa: F401
 @pytest.fixture
 def data_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     folder = tmp_path / "daten"
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(folder))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(folder))
     monkeypatch.delenv("PSEUDONYMED_CARDDAV_URL", raising=False)
-    monkeypatch.delenv("PSEUDONYMED_CARDDAV_PASSWORT", raising=False)
+    monkeypatch.delenv("PSEUDONYMED_CARDDAV_PASSWORD", raising=False)
     return folder
 
 
@@ -109,20 +109,20 @@ def test_storage_location_configurable(data_folder: Path, tmp_path: Path, report
                                        patient: Patient) -> None:
     from pseudonymed.pipeline import PipelineOptions, pseudonymise
 
-    assert default_path() == data_folder / "pseudonyme.sqlite"
+    assert default_path() == data_folder / "pseudonyms.sqlite"
     with PseudonymStore() as sp:
         res = pseudonymise(report_pdf, patient, PipelineOptions(report=False, text_file=False,
                                                            target_folder=tmp_path / "aus"),
                            store=sp)
         code = res.code
-    assert (data_folder / "pseudonymschluessel.txt").exists()
+    assert (data_folder / "pseudonym-key.txt").exists()
     new_db, new_key = tmp_path / "tresor" / "pseudonymed.sqlite", tmp_path / "keys" / "k.txt"
     with pytest.raises(backup_mod.BackupError):
         backup_mod.relocate(Path("relativ.sqlite"), new_key)
     v = backup_mod.relocate(new_db, new_key)
     assert v.copied and len(v.renamed) == 2 and all(p.exists() for p in v.renamed)
     assert default_path() == new_db and default_key_path() == new_key
-    assert not (data_folder / "pseudonyme.sqlite").exists()
+    assert not (data_folder / "pseudonyms.sqlite").exists()
     with PseudonymStore() as sp:  # default store now lives there, same key, same code
         assert sp.path == new_db and sp.key_path == new_key
         assert sp.code_for(patient).code == code
@@ -130,11 +130,11 @@ def test_storage_location_configurable(data_folder: Path, tmp_path: Path, report
     assert st.path == new_db and st.key_path == new_key and st.patients == 1
     # an explicit database path keeps its key next to it (tests, --speicher)
     with PseudonymStore(tmp_path / "anders" / "x.sqlite") as sp:
-        assert sp.key_path == tmp_path / "anders" / "pseudonymschluessel.txt"
+        assert sp.key_path == tmp_path / "anders" / "pseudonym-key.txt"
     # a second move with another database already at the target is refused
     foreign = tmp_path / "fremd" / "p.sqlite"
     with PseudonymStore(foreign) as sp:
-        sp.code_for(synthetic_patient(3, "w"))
+        sp.code_for(synthetic_patient(3, "f"))
     with pytest.raises(backup_mod.BackupError, match="schon eine Datenbank"):
         backup_mod.relocate(foreign, new_key)
     runner = CliRunner()
@@ -160,7 +160,7 @@ def test_patient_page(qapp: QApplication, data_folder: Path, tmp_path: Path,  # 
     result = page.run_search()
     assert result is not None and len(result.patients) == 1
     assert page.match_group.isVisibleTo(window) and page.listing.count() == 1
-    assert page.f["nachname"].text() == patient.surname  # a single hit fills the form
+    assert page.f["surname"].text() == patient.surname  # a single hit fills the form
     page.search.setText("gibtesnicht")
     page.run_search()
     assert not page.match_group.isVisibleTo(window) and "Kein Treffer" in page.note.text()
@@ -221,7 +221,7 @@ def test_database_page_storage_location(qapp: QApplication, data_folder: Path,  
     page = window.database
     page.synchronous = True
     page.refresh()
-    assert page.database_location.text() == str(data_folder / "pseudonyme.sqlite")
+    assert page.database_location.text() == str(data_folder / "pseudonyms.sqlite")
     page.database_location.setText(str(tmp_path / "woanders" / "db.sqlite"))
     page.key_location.setText(str(tmp_path / "woanders" / "schluessel.txt"))
     v = page.set_storage_location()

@@ -138,7 +138,7 @@ def test_what_ocr_did_not_see_does_not_leave(tmp_path: Path, report_pdf: Path,
 def test_without_backend_no_release(tmp_path: Path, report_pdf: Path, patient: Patient,
                                     store: PseudonymStore) -> None:
     scan = _scan(report_pdf, tmp_path / "scan.pdf")
-    res = pseudonymise(scan, patient, PipelineOptions(ocr="aus"), store=store)
+    res = pseudonymise(scan, patient, PipelineOptions(ocr="off"), store=store)
     assert not res.released
     assert any("ohne OCR" in w for w in res.report.warnings)
 
@@ -241,8 +241,8 @@ def test_fuzzy_search() -> None:
     s = page_text_from_words(words, 0, 595, 842)
     matches = find_fuzzy(s, targets, [])
     texts = {f.text: f.rule for f in matches}
-    assert texts["21. Jull 1959"] == "unscharf.datum.geburtsdatum"
-    assert texts["Rlesa"] == "unscharf.adresse.ort"
+    assert texts["21. Jull 1959"] == "fuzzy.date.birth_date"
+    assert texts["Rlesa"] == "fuzzy.address.place"
     assert "Fiantz, Gotthard" in texts or "Fiantz" in texts
     assert "Zahn" not in texts and "Geboren" not in texts
     # a long token split by OCR is found across the pieces
@@ -289,7 +289,7 @@ def test_correct_ocr_text(tmp_path: Path, report_pdf: Path, patient: Patient,
     new = (ocr.rstrip("\n")
            + f"\nZusatz: {patient.first_name} {patient.surname} aus {patient.place}.\n")
     matches = v.set_ocr_text(0, new)
-    assert matches and all(f.source == "korrektur" and not f.rects for f in matches)
+    assert matches and all(f.source == "correction" and not f.rects for f in matches)
     assert {f.kind for f in matches} >= {Kind.NAME, Kind.PLACE}
     assert v.ocr_text(0) == new and v.correction_matches
     assert v.set_ocr_text(0, ocr) == [] and v.pages[0].correction is None  # back to OCR
@@ -309,7 +309,7 @@ def test_correct_ocr_text(tmp_path: Path, report_pdf: Path, patient: Patient,
     # the corrected text sits on the image words: selecting "Diagnosen" covers the printed word
     assert any(abs(r.x0 - ocr_box.x0) < 3 and r.y0 < ocr_box.y1 and r.y1 > ocr_box.y0
                for r in found), (found, ocr_box)
-    assert any(f["quelle"] == "korrektur" for f in res.report.hits)
+    assert any(f["source"] == "correction" for f in res.report.hits)
 
 
 @needs_backend
@@ -332,12 +332,12 @@ def test_cleanup_before_the_ocr(tmp_path: Path, report_pdf: Path, patient: Patie
     res = pseudonymise(scan, patient, PipelineOptions(), store=store)
     assert res.released, as_text(res.report)
     assert any("aufbereitet" in w and "begradigt" in w for w in res.report.notes)
-    assert res.report.options["aufbereitung"]["1"]["straighten"] is True
+    assert res.report.options["cleaned_up"]["1"]["straighten"] is True
     assert found_plain_data(res.text, patient) == [] and "Ramipril" in res.text
-    without = pseudonymise(scan, patient, PipelineOptions(clean_up="aus", suffix="_roh"),
+    without = pseudonymise(scan, patient, PipelineOptions(clean_up="off", suffix="_roh"),
                         store=store)
     assert not any("aufbereitet" in w for w in without.report.notes)
-    assert "aufbereitung" not in without.report.options
+    assert "cleaned_up" not in without.report.options
     # a person's choice wins over the suggestion, and comes in with the chain document
     from optdoc.cleanup import CleanupPlan
 
@@ -371,7 +371,7 @@ def test_read_then_analyse(tmp_path: Path, report_pdf: Path, patient: Patient,
     assert reading.pages[1].correction is None
     v = analyse(reading, patient, PipelineOptions(), store=store)
     assert reading.used_up and v.pages[0].correction_matches
-    assert any(f.source == "korrektur" for f in v.correction_matches)
+    assert any(f.source == "correction" for f in v.correction_matches)
     with pytest.raises(RuntimeError):
         analyse(reading, patient, PipelineOptions(), store=store)
     res = finalise(v)
@@ -383,7 +383,7 @@ def test_read_then_analyse(tmp_path: Path, report_pdf: Path, patient: Patient,
 @needs_backend
 def test_structured_ocr_text(tmp_path: Path, report_pdf: Path, patient: Patient,
                              store: PseudonymStore) -> None:
-    """The OCR text goes out as Markdown with paragraphs joined; ``gliedern=False`` keeps
+    """The OCR text goes out as Markdown with paragraphs joined; ``structured=False`` keeps
     the raw lines; the structured text is what the text-recognition step shows."""
     from pseudonymed.pipeline import finalise, prepare
 
@@ -401,10 +401,10 @@ def test_structured_ocr_text(tmp_path: Path, report_pdf: Path, patient: Patient,
     res = finalise(v)
     assert res.released, as_text(res.report)
     assert "Diagnosen" in res.text and found_plain_data(res.text, patient) == []
-    assert res.report.options["gliedern"] is True
+    assert res.report.options["structured"] is True
     raw_res = pseudonymise(scan, patient, PipelineOptions(structured=False, suffix="_roh"),
                            store=store)
-    assert raw_res.released and raw_res.report.options["gliedern"] is False
+    assert raw_res.released and raw_res.report.options["structured"] is False
     # without structuring the continuation line still starts a line of its own
     starts = [" ".join(lines[i].split()[:2]) for i, r in enumerate(roles)
               if r.separator == "word" and len(lines[i].split()) >= 2]

@@ -16,8 +16,9 @@ review may discard:
 Drug names are those of the lexicon (Wikidata, ATC and INN), less those that also name a
 disease, finding, body part or organism ("ASS" is also an autism spectrum disorder) and a
 few everyday substances, plus every term of the medical vocabulary filed under the category
-"Medikament" (trade names such as Marcumar are missing from Wikidata).  Lab names are the
-curated lab list of the lexicon plus the vocabulary category "Laborwert"; the Wikidata lab
+"drugs" (German "Medikamente"; trade names such as Marcumar are missing from Wikidata).
+Lab names are the curated lab list of the lexicon plus the vocabulary category "lab tests"
+("Laborwerte"); the Wikidata lab
 rows are too noisy to use ("Zuname", "Arizona").  A term on both lists ("Kalium",
 "Insulin", "Eisen") is a lab value when a measurement follows, a medication when a dose
 follows, otherwise a lab value when lab values are asked for.
@@ -41,20 +42,24 @@ from pseudonymed.core.model import Hit, Kind
 from pseudonymed.detection import lexicon
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
-CATEGORY_DRUG = "Medikament"
-CATEGORY_LAB_TEST = "Laborwert"
-PREFIX_DOSE = "Dosierung"
-PREFIX_MEASUREMENT = "Messwert"
-RULE_IDS = {CATEGORY_DRUG: "medizin.medikament", PREFIX_DOSE: "medizin.dosierung",
-            CATEGORY_LAB_TEST: "medizin.laborwert", PREFIX_MEASUREMENT: "medizin.messwert"}
+CATEGORY_DRUG = "drug"
+CATEGORY_LAB_TEST = "lab_test"
+KIND_DOSE = "dose"
+KIND_MEASUREMENT = "measurement"
+RULE_IDS = {kind: f"medical.{kind}"
+            for kind in (CATEGORY_DRUG, KIND_DOSE, CATEGORY_LAB_TEST, KIND_MEASUREMENT)}
+# the word in the pseudonym of a kind, in the language of the documents
+PREFIX = {CATEGORY_DRUG: "Medikament", KIND_DOSE: "Dosierung", CATEGORY_LAB_TEST: "Laborwert",
+          KIND_MEASUREMENT: "Messwert"}
+# the vocabulary categories of the user's own whose terms count as drugs or lab tests
 VOCABULARY_CATEGORIES = {
-    CATEGORY_DRUG: ("medikament", "medikamente"),
-    CATEGORY_LAB_TEST: ("laborwert", "laborwerte"),
+    CATEGORY_DRUG: ("drug", "drugs", "medikament", "medikamente"),
+    CATEGORY_LAB_TEST: ("lab test", "lab tests", "lab_test", "laborwert", "laborwerte"),
 }
-SOURCE_LAB_TESTS = "Laborwerte"  # the curated list; the Wikidata lab rows are left out
+SOURCE_LAB_TESTS = lexicon.LAB_TESTS  # the curated list; the Wikidata lab rows are left out
 # A drug name that also names one of these is no safe medication hit.
-_OTHER_CATEGORIES = ("Erkrankung", "Symptom", "Befund", "Anatomie", "Physiologie", "Psyche",
-                     "Organismus", "Eponym")
+_OTHER_CATEGORIES = ("disease", "symptom", "finding", "anatomy", "physiology", "psyche",
+                     "organism", "eponym")
 # Everyday substances that the drug classes of Wikidata list too.
 _NOT_DRUG = {"sauerstoff", "salz", "kochsalz", "wasser", "zucker", "alkohol", "ethanol",
              "koffein", "nikotin", "luft", "licht", "kaffee", "tee"}
@@ -66,7 +71,7 @@ _UNIT = (r"(?:%|‰|mmHg|mm/h|fl|fL|pg|INR|Ratio|(?:Tsd\.?|G|T|Mio\.?)/[µμunp]
          r"|24[ \t]?h|mmol))?)(?![\w/])")
 _MEASUREMENT = re.compile(
     r"[ \t]*(?:\([^()\n]{1,20}\)[ \t]*)?(?:[:=][ \t]*)?(?:(?:von|bei|mit|auf|ca\.)[ \t]+)?"
-    r"(?P<wert>(?:(?:[<>≤≥]=?)[ \t]*)?\d+(?:[.,]\d+)?(?![\d.,/:]*\d)(?:[ \t]*" + _UNIT
+    r"(?P<value>(?:(?:[<>≤≥]=?)[ \t]*)?\d+(?:[.,]\d+)?(?![\d.,/:]*\d)(?:[ \t]*" + _UNIT
     + r")?)")
 
 # -- doses and schedules ------------------------------------------------------------------------
@@ -144,7 +149,7 @@ def _is_abbreviation(term: str) -> bool:
 def measurement(text: str, end: int) -> tuple[int, int] | None:
     """Span of a measurement right after a lab name ending at ``end``, or None."""
     m = _MEASUREMENT.match(text, end)
-    return (m.start("wert"), m.end("wert")) if m else None
+    return (m.start("value"), m.end("value")) if m else None
 
 
 def _valid_run(tokens: list[re.Match[str]]) -> bool:
@@ -273,7 +278,7 @@ class MedicalSearch:
         if self.selection.drugs:
             out.append((k.start, k.end, CATEGORY_DRUG))
         if self.selection.doses:
-            out += [(*span, PREFIX_DOSE)
+            out += [(*span, KIND_DOSE)
                     for span in (dose_before(text, k.start), dose_after(text, k.end))
                     if span is not None]
         return out
@@ -285,11 +290,11 @@ class MedicalSearch:
             out.append((k.start, k.end, CATEGORY_LAB_TEST))
         span = measurement(text, k.end) if self.selection.measurements else None
         if span is not None:
-            out.append((*span, PREFIX_MEASUREMENT))
+            out.append((*span, KIND_MEASUREMENT))
         return out
 
     def spans(self, text: str) -> list[tuple[int, int, str]]:
-        """(start, end, kind) of every element to redact, kind being the pseudonym prefix."""
+        """(start, end, kind) of every element to redact: drug, dose, lab_test, measurement."""
         out: list[tuple[int, int, str]] = []
         for k in self.recogniser.candidates(text):
             category = self._category(text, k)
@@ -310,7 +315,8 @@ class MedicalSearch:
             plaintext = text[a:b]
             matches.append(Hit(
                 page=page.number, start=a, end=b, text=plaintext, kind=Kind.MEDICAL,
-                rule=RULE_IDS[kind], pseudonym=assignment.identifier(kind, plaintext, Kind.MEDICAL),
+                rule=RULE_IDS[kind],
+                pseudonym=assignment.identifier(PREFIX[kind], plaintext, Kind.MEDICAL),
                 rects=[tuple(r) for r in page.rects(a, b)],
                 font_size=page.font_size(a, b), source=source))
         return matches

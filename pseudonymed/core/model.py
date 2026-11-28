@@ -8,44 +8,56 @@ may travel with the pseudonymised file.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import Any
 
 from pseudonymed.core.stored import as_stored
 
 
 class Kind(StrEnum):
-    """Kind of identifier.  The value doubles as the prefix of rule ids."""
+    """Kind of identifier; reports and the pseudonym store keep the value."""
 
     NAME = "name"
-    FIRST_NAME = "vorname"
-    SURNAME = "nachname"
-    BIRTH_NAME = "geburtsname"
-    BIRTH_DATE = "geburtsdatum"
-    ADDRESS = "adresse"
-    PLACE = "ort"
-    PHONE = "telefon"
+    FIRST_NAME = "first_name"
+    SURNAME = "surname"
+    BIRTH_NAME = "birth_name"
+    BIRTH_DATE = "birth_date"
+    ADDRESS = "address"
+    PLACE = "place"
+    PHONE = "phone"
     EMAIL = "email"
-    INSURANCE_NUMBER = "versichertennummer"
-    PATIENT_ID = "patienten_id"
-    CASE_NUMBER = "aktenzeichen"
+    INSURANCE_NUMBER = "insurance_number"
+    PATIENT_ID = "patient_id"
+    CASE_NUMBER = "case_number"
     IBAN = "iban"
-    TERM = "begriff"
-    IDENTIFIER = "identifikator"
-    MEDICAL = "medizin"  # medications, lab values: redacted only on request
-    MANUAL = "manuell"
+    TERM = "term"
+    IDENTIFIER = "identifier"
+    MEDICAL = "medical"  # medications, lab values: redacted only on request
+    MANUAL = "manual"
 
 
 class Role(StrEnum):
     """Role of a person relative to the document."""
 
     PATIENT = "patient"
-    RELATIVE = "angehoerige"
-    REFERRER = "zuweiser"
+    RELATIVE = "relative"
+    REFERRER = "referrer"
+
+
+def normalised_sex(value: str) -> str:
+    """"m" or "f" from what a record or a person writes ("m", "männlich", "male", "Herr";
+    "f", "w", "weiblich", "female", "Frau"), "" for anything else."""
+    v = value.strip().lower()
+    if v.startswith(("m", "herr")):
+        return "m"
+    if v.startswith(("f", "w")):
+        return "f"
+    return ""
 
 
 def normalise(text: str) -> str:
@@ -59,15 +71,9 @@ def normalise(text: str) -> str:
 class Person:
     """A natural person whose identifiers must be removed."""
 
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "surname": "nachname", "first_name": "vorname", "sex": "geschlecht", "title": "titel",
-        "birth_name": "geburtsname", "birth_date": "geburtsdatum", "street": "strasse",
-        "postcode": "plz", "place": "ort", "phones": "telefone",
-        "insurance_number": "versichertennummer", "patient_id": "patienten_id"}
-
     surname: str
     first_name: str = ""
-    sex: str = ""  # "m", "w" or "" when unknown
+    sex: str = ""  # "m", "f" or "" when unknown (see normalised_sex)
     title: str = ""
     birth_name: str = ""
     birth_date: dt.date | None = None
@@ -78,6 +84,9 @@ class Person:
     emails: list[str] = field(default_factory=list)
     insurance_number: str = ""
     patient_id: str = ""
+
+    def __post_init__(self) -> None:
+        self.sex = normalised_sex(self.sex)
 
     @property
     def full_name(self) -> str:
@@ -91,15 +100,15 @@ class Person:
 
     @property
     def female(self) -> bool:
-        """True for a gender recorded as "w"/"weiblich" or "f"/"female"."""
-        return self.sex.lower().startswith(("w", "f"))
+        """True for a woman ("f")."""
+        return self.sex == "f"
 
     @property
     def male(self) -> bool:
-        """True for a gender recorded as "m"/"männlich"/"male"."""
-        return self.sex.lower().startswith("m")
+        """True for a man ("m")."""
+        return self.sex == "m"
 
-    def salutation_form(self, grammatical_case: str = "nominativ") -> str:
+    def salutation_form(self, grammatical_case: str = "nominative") -> str:
         """"Herr Mustermann", "Herrn Mustermann", "Frau Mustermann" or the full name.
 
         Without a known gender the full name is returned, which is correct in
@@ -108,17 +117,13 @@ class Person:
         if self.female:
             return f"Frau {self.surname}"
         if self.male:
-            return f"{'Herr' if grammatical_case == 'nominativ' else 'Herrn'} {self.surname}"
+            return f"{'Herr' if grammatical_case == 'nominative' else 'Herrn'} {self.surname}"
         return self.full_name
 
 
 @dataclass
 class Patient(Person):
     """The main person of a document plus the people around them."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        **Person.STORED_KEYS, "relatives": "angehoerige", "referrers": "zuweiser",
-        "case_numbers": "aktenzeichen", "terms": "begriffe", "notes": "hinweise"}
 
     relatives: list[Person] = field(default_factory=list)
     referrers: list[Person] = field(default_factory=list)
@@ -134,40 +139,67 @@ class Patient(Person):
         return "|".join(parts)
 
     def as_dict(self) -> dict[str, Any]:
-        """Plain dict for the JSON patient file (``pseudonymed kontakte export``)."""
+        """Plain dict for the JSON patient file (``pseudonymed contacts export``): English
+        keys, empty fields of a person left out, the notes (display only) left out."""
 
         def person(p: Person) -> dict[str, Any]:
             """A person without empty fields, the birth date in ISO form."""
-            d = as_stored(p)
-            d["geburtsdatum"] = p.birth_date.isoformat() if p.birth_date else ""
+            d = {f.name: as_stored(getattr(p, f.name)) for f in dataclasses.fields(Person)}
+            d["birth_date"] = p.birth_date.isoformat() if p.birth_date else ""
             return {k: v for k, v in d.items() if v not in ("", [], None)}
 
         d = person(self)
         d.update({
-            "angehoerige": [person(a) for a in self.relatives],
-            "zuweiser": [person(z) for z in self.referrers],
-            "aktenzeichen": list(self.case_numbers),
-            "begriffe": list(self.terms),
+            "relatives": [person(a) for a in self.relatives],
+            "referrers": [person(z) for z in self.referrers],
+            "case_numbers": list(self.case_numbers),
+            "terms": list(self.terms),
         })
-        d.pop("hinweise", None)
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Patient:
-        """Build a patient from a plain dict (JSON/TOML input, M1 CLI)."""
+        """Build a patient from a plain dict (a patient file in JSON or TOML): English keys,
+        or their German equivalents (``nachname``, ``angehoerige`` …), for people who write
+        the file by hand."""
+        d = in_english(d)
 
         def person(p: dict[str, Any]) -> Person:
             """A relative or referrer from their plain dict."""
-            return Person(**_person_fields(p))
+            return Person(**_person_fields(in_english(p)))
 
-        fields = _person_fields(d)
         return cls(
-            **fields,
-            relatives=[person(p) for p in d.get("angehoerige", [])],
-            referrers=[person(p) for p in d.get("zuweiser", [])],
-            case_numbers=[str(a) for a in d.get("aktenzeichen", [])],
-            terms=[str(b) for b in d.get("begriffe", [])],
+            **_person_fields(d),
+            relatives=[person(p) for p in d.get("relatives", [])],
+            referrers=[person(p) for p in d.get("referrers", [])],
+            case_numbers=[str(a) for a in d.get("case_numbers", [])],
+            terms=[str(b) for b in d.get("terms", [])],
         )
+
+
+# the keys of a patient file in German, for those who write it in German; the singular
+# forms are understood as well
+GERMAN_KEYS = {
+    "nachname": "surname", "vorname": "first_name", "geschlecht": "sex", "titel": "title",
+    "geburtsname": "birth_name", "geburtsdatum": "birth_date", "strasse": "street",
+    "straße": "street", "plz": "postcode", "ort": "place", "telefone": "phones",
+    "telefon": "phones", "phone": "phones", "email": "emails", "e-mail": "emails",
+    "versichertennummer": "insurance_number", "patienten_id": "patient_id",
+    "angehoerige": "relatives", "angehörige": "relatives", "zuweiser": "referrers",
+    "aktenzeichen": "case_numbers", "begriffe": "terms", "hinweise": "notes"}
+
+
+def in_english(d: dict[str, Any]) -> dict[str, Any]:
+    """A patient file's mapping with its keys in English: German keys translated, English
+    ones kept as they are.  Where a file names one field twice, the English key wins, and
+    among the German ones the first of :data:`GERMAN_KEYS` (the plural ``telefone`` before
+    the singular ``telefon``)."""
+    english = {k: v for k, v in d.items() if str(k).lower() not in GERMAN_KEYS}
+    order = list(GERMAN_KEYS)
+    for k in sorted((k for k in d if str(k).lower() in GERMAN_KEYS),
+                    key=lambda k: order.index(str(k).lower())):
+        english.setdefault(GERMAN_KEYS[str(k).lower()], d[k])
+    return english
 
 
 _TEXT_FIELDS = ("surname", "first_name", "sex", "title", "birth_name", "street", "postcode",
@@ -192,14 +224,13 @@ def _list_from(value: Any) -> list[str]:
 
 
 def _person_fields(d: dict[str, Any]) -> dict[str, Any]:
-    """The :class:`Person` constructor arguments read from a plain dict: text fields
-    stripped, the birth date parsed, phone numbers and e-mail addresses as lists (the
-    singular keys ``telefon``/``email`` are accepted too)."""
-    keys = Person.STORED_KEYS
-    fields: dict[str, Any] = {name: str(d.get(keys[name], "")).strip() for name in _TEXT_FIELDS}
-    fields["birth_date"] = _date_from(d.get("geburtsdatum"))
-    fields["phones"] = _list_from(d.get("telefone", d.get("telefon", [])))
-    fields["emails"] = _list_from(d.get("emails", d.get("email", [])))
+    """The :class:`Person` constructor arguments read from a plain dict with English keys:
+    text fields stripped, the birth date parsed, phone numbers and e-mail addresses as
+    lists."""
+    fields: dict[str, Any] = {name: str(d.get(name, "")).strip() for name in _TEXT_FIELDS}
+    fields["birth_date"] = _date_from(d.get("birth_date"))
+    fields["phones"] = _list_from(d.get("phones", []))
+    fields["emails"] = _list_from(d.get("emails", []))
     return fields
 
 
@@ -233,51 +264,46 @@ class Hit:
     rects: list[tuple[float, float, float, float]] = field(default_factory=list)
     font_size: float = 10.0
     role: Role | None = None
-    source: str = "text"  # "text", "ocr" or "manuell"
+    source: str = "text"  # "text", "ocr" or "manual"
 
     def as_dict(self) -> dict[str, Any]:
         """Complete form including the clear text: only for the working state, which
         sits next to the unredacted document anyway; never for a report or a log."""
         return {
-            "seite": self.page, "start": self.start, "ende": self.end, "text": self.text,
-            "art": str(self.kind), "regel": self.rule, "pseudonym": self.pseudonym,
+            "page": self.page, "start": self.start, "end": self.end, "text": self.text,
+            "kind": str(self.kind), "rule": self.rule, "pseudonym": self.pseudonym,
             "rects": [[round(v, 2) for v in r] for r in self.rects],
-            "schriftgroesse": round(self.font_size, 2),
-            "rolle": str(self.role) if self.role is not None else None, "quelle": self.source,
+            "font_size": round(self.font_size, 2),
+            "role": str(self.role) if self.role is not None else None, "source": self.source,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Hit:
         """A hit from its :meth:`as_dict` form (the working state)."""
         return cls(
-            page=int(d["seite"]), start=int(d["start"]), end=int(d["ende"]),
-            text=str(d.get("text", "")), kind=Kind(d["art"]), rule=str(d["regel"]),
+            page=int(d["page"]), start=int(d["start"]), end=int(d["end"]),
+            text=str(d.get("text", "")), kind=Kind(d["kind"]), rule=str(d["rule"]),
             pseudonym=str(d["pseudonym"]), rects=[tuple(r) for r in d.get("rects", [])],
-            font_size=float(d.get("schriftgroesse", 10.0)),
-            role=Role(d["rolle"]) if d.get("rolle") else None,
-            source=str(d.get("quelle", "text")),
+            font_size=float(d.get("font_size", 10.0)),
+            role=Role(d["role"]) if d.get("role") else None,
+            source=str(d.get("source", "text")),
         )
 
     def without_clear_text(self) -> dict[str, Any]:
         """Report form of the hit: everything except the clear text."""
         return {
-            "seite": self.page + 1,
-            "art": str(self.kind),
-            "regel": self.rule,
+            "page": self.page + 1,
+            "kind": str(self.kind),
+            "rule": self.rule,
             "pseudonym": self.pseudonym,
             "rects": [tuple(round(v, 1) for v in r) for r in self.rects],
-            "quelle": self.source,
+            "source": self.source,
         }
 
 
 @dataclass
 class Recheck:
     """Result of re-checking the pseudonymised output."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "residual_matches": "resttreffer", "metadata_empty": "metadaten_leer",
-        "structure_clean": "struktur_sauber", "remarks": "anmerkungen", "checked": "geprueft",
-        "kept_on_purpose": "belassen"}
 
     residual_matches: list[dict[str, Any]] = field(default_factory=list)
     metadata_empty: bool = True
@@ -309,12 +335,6 @@ class RunLog:
 class Report:
     """Audit report for one pseudonymised document.  Contains no clear data."""
 
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "source": "quelle", "target": "ziel", "pages": "seiten", "timestamp": "zeitpunkt",
-        "tool": "werkzeug", "text_layer": "textebene", "hits": "fundstellen",
-        "pseudonyms": "pseudonyme", "recheck": "gegenprobe", "options": "optionen",
-        "warnings": "warnungen", "notes": "hinweise", "residual_risk": "restrisiko"}
-
     source: str
     target: str
     pages: int
@@ -337,7 +357,7 @@ class Report:
     def as_dict(self) -> dict[str, Any]:
         """The JSON form of the report, with the verdict as an extra key."""
         d = as_stored(self)
-        d["bestanden"] = self.passed
+        d["passed"] = self.passed
         return d
 
     @staticmethod

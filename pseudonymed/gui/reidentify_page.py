@@ -80,7 +80,7 @@ class ReidentifyPage(QWidget):
         line.addWidget(choose_key)
         capsule_layout.addLayout(line)
         self.capsule_info = QLabel(self.tr(
-            "Eine Kapsel (<name>_pseudonym.kapsel.asc) kommt vom Absender eines pseudonymisierten"
+            "Eine Kapsel (<name>_pseudonym.capsule.asc) kommt vom Absender eines pseudonymisierten"
             " Dokuments und enthält die Zuordnung, verschlüsselt für Ihren Schlüssel."))
         self.capsule_info.setWordWrap(True)
         capsule_layout.addWidget(self.capsule_info)
@@ -96,8 +96,8 @@ class ReidentifyPage(QWidget):
         self.person = QComboBox()
         top.addWidget(self.person, 1)
         self.form = QComboBox()
-        self.form.addItem(self.tr("voller Name"), "vollname")
-        self.form.addItem(self.tr("Herr/Frau Nachname"), "anrede")
+        self.form.addItem(self.tr("voller Name"), "full-name")
+        self.form.addItem(self.tr("Herr/Frau Nachname"), "salutation")
         top.addWidget(self.form)
         new = QPushButton(self.tr("Liste aktualisieren"))
         new.clicked.connect(self.refresh)
@@ -141,13 +141,13 @@ class ReidentifyPage(QWidget):
         self.person.clear()
         with self.session.store() as sp:
             for e in sp.find():
-                self.person.addItem(f"{e['kennung']}  {e['nachname']}, {e['vorname']}",
-                                    e["schluessel"])
+                self.person.addItem(f"{e['code']}  {e['surname']}, {e['first_name']}",
+                                    e["patient_key"])
         if self.session.patient is not None:
             with self.session.store() as sp:
                 info = sp.patient_info(self.session.patient.key())
             if info:
-                i = self.person.findData(info["schluessel"])
+                i = self.person.findData(info["patient_key"])
                 if i >= 0:
                     self.person.setCurrentIndex(i)
 
@@ -183,7 +183,7 @@ class ReidentifyPage(QWidget):
         """Pick a capsule file and open it."""
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("Schlüsselkapsel"), "",
-            self.tr("Kapseln (*.kapsel.asc *.asc);;Alle Dateien (*)"))
+            self.tr("Kapseln (*.capsule.asc *.asc);;Alle Dateien (*)"))
         if path:
             self.open_capsule(Path(path))
 

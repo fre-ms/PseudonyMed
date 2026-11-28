@@ -34,7 +34,7 @@ def _document_of(*pages: str) -> pymupdf.Document:
 
 
 def _brief(result: Recheck) -> list[tuple[int, str, str]]:
-    return [(r["seite"], r["regel"], r["quelle"]) for r in result.residual_matches]
+    return [(r["page"], r["rule"], r["source"]) for r in result.residual_matches]
 
 
 def test_is_tolerated_normalises_whitespace_and_case() -> None:
@@ -61,8 +61,8 @@ def test_plaintext_reports_only_new_and_each_match_once() -> None:
     seen: set[tuple[int, str, str]] = {(2, "probe.wort", "Beispielwort")}
     rc._check_plain_text(_targets(pseudonyms=("[Akte CD5678]",)), 2, text, result, seen)
     assert result.residual_matches == [{
-        "seite": 3, "art": str(Kind.CASE_NUMBER), "regel": "probe.akte",
-        "pseudonym": "[Akte]", "rects": [], "quelle": "plaintext"}]
+        "page": 3, "kind": str(Kind.CASE_NUMBER), "rule": "probe.akte",
+        "pseudonym": "[Akte]", "rects": [], "source": "plaintext"}]
     assert result.kept_on_purpose == []
     assert seen == {(2, "probe.wort", "Beispielwort"), (2, "probe.akte", "AB1234")}
 
@@ -78,7 +78,7 @@ def test_extra_text_does_not_count_kept_again() -> None:
     result = Recheck()
     rc._check_extra_text(_targets(TOLERATED, ("[Akte CD5678]",)), 2,
                          "Beispielwort, AB1234, [Akte CD5678]", result)
-    assert _brief(result) == [(0, "probe.akte", "zusatztext2")]
+    assert _brief(result) == [(0, "probe.akte", "companion_text2")]
     assert result.kept_on_purpose == []
 
 
@@ -130,7 +130,7 @@ def test_check_collects_sources_in_fixed_order() -> None:
                       tolerated=[rc.tolerance_key("probe.wort", "Beispielwort")],
                       pseudonyms=["", "[Akte CD5678]"])
     assert _brief(result) == [(1, "probe.akte", "text"), (2, "probe.akte", "text"),
-                              (0, "probe.akte", "zusatztext1")]
+                              (0, "probe.akte", "companion_text1")]
     assert result.kept_on_purpose == ["probe.wort"]
     assert result.checked == ["Begriffe", "Aktenzeichen"]
     assert not result.passed

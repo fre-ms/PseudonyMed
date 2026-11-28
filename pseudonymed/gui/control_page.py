@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import as_text
 from pseudonymed.config import Settings, load_settings, save_settings
 from pseudonymed.document import docrepro_adapter
@@ -60,8 +59,8 @@ class ControlPage(QWidget):
         self.status = QLabel("")
         self.status.setWordWrap(True)
         outer.addWidget(self.status)
-        self._set_traffic_light(self.traffic_light, "grau")
-        self._set_traffic_light(self.risk_traffic_light, "grau")
+        self._set_traffic_light(self.traffic_light, "grey")
+        self._set_traffic_light(self.risk_traffic_light, "grey")
 
     # -- build -------------------------------------------------------------------------------------
     def _build_check_row(self, outer: QVBoxLayout) -> None:
@@ -160,17 +159,17 @@ class ControlPage(QWidget):
         label.setStyleSheet(
             f"background: {TRAFFIC_LIGHT_COLOURS[colour]}; border-radius: 14px;"
             " border: 1px solid #555;")
-        label.setProperty("farbe", colour)
+        label.setProperty("colour", colour)
 
     @property
     def colour(self) -> str:
         """Colour of the re-check light: grau, gruen, gelb or rot."""
-        return self.traffic_light.property("farbe") or "grau"
+        return self.traffic_light.property("colour") or "grey"
 
     @property
     def risk_colour(self) -> str:
         """Colour of the residual-risk light: grau, gruen, gelb or rot."""
-        return self.risk_traffic_light.property("farbe") or "grau"
+        return self.risk_traffic_light.property("colour") or "grey"
 
     def refresh(self) -> None:
         """Called when the step is shown: run the re-check for what needs it, then fill in."""
@@ -209,7 +208,7 @@ class ControlPage(QWidget):
         if not self._queue:
             self._render()
             return
-        self._set_traffic_light(self.traffic_light, "grau")
+        self._set_traffic_light(self.traffic_light, "grey")
         self.traffic_light_text.setText(self.tr("Erneute Prüfung läuft …"))
         self._run_next()
 
@@ -257,10 +256,10 @@ class ControlPage(QWidget):
         """Light 2: the joint estimate over all documents of the patient, grey without one."""
         total, earlier = self.session.control()
         if total is None:
-            self._set_traffic_light(self.risk_traffic_light, "grau")
+            self._set_traffic_light(self.risk_traffic_light, "grey")
             self.risk_text.setText(self.tr("Noch kein geprüftes Dokument."))
             return
-        self._set_traffic_light(self.risk_traffic_light, risk_module.light_colour(total))
+        self._set_traffic_light(self.risk_traffic_light, total.light)
         self.risk_text.setText(self._risk_sentence(total, earlier))
 
     def _risk_sentence(self, total: Estimate, earlier: int) -> str:

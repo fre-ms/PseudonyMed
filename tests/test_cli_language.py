@@ -26,11 +26,11 @@ def _run(arguments: list[str], tmp_path: Path, spoken: str | None,
     # whatever COLUMNS says; the help is to be read as a person's terminal shows it
     env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")
            and k not in ("GITHUB_ACTIONS", "FORCE_COLOR", "PY_COLORS")}
-    env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_LEXIKON="0",
+    env.update(PSEUDONYMED_DATA_FOLDER=str(tmp_path / "daten"), PSEUDONYMED_LEXICON="0",
                COLUMNS=str(columns), NO_COLOR="1", TERM="dumb", LANG="C.UTF-8",
                PYTHONIOENCODING="utf-8")  # Windows writes a pipe in cp1252 otherwise
     if spoken:
-        env["PSEUDONYMED_SPRACHE"] = spoken
+        env["PSEUDONYMED_LANGUAGE"] = spoken
     run = subprocess.run([sys.executable, "-m", "pseudonymed.cli", *arguments],
                          capture_output=True, text=True, encoding="utf-8", env=env, timeout=600)
     run.stdout = re.sub(r"\x1b\[[0-9;]*m", "", run.stdout)  # the CI forces coloured help
@@ -47,7 +47,7 @@ def _flat(help_text: str) -> str:
 def test_output_that_is_not_utf8_replaces_instead_of_failing(tmp_path: Path) -> None:
     """A run whose output is cp1252 (a redirected Windows console) still ends normally."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("PSEUDONYMED_")}
-    env.update(PSEUDONYMED_DATENORDNER=str(tmp_path / "daten"), PSEUDONYMED_SPRACHE="de",
+    env.update(PSEUDONYMED_DATA_FOLDER=str(tmp_path / "daten"), PSEUDONYMED_LANGUAGE="de",
                PYTHONIOENCODING="cp1252", COLUMNS="100", NO_COLOR="1", TERM="dumb")
     code = ("import sys; from pseudonymed.cli.base import _tolerant_output; _tolerant_output();"
             " print('λ ≈ 3 → ROT')")
@@ -60,19 +60,25 @@ def test_the_language_is_chosen_like_the_desktops(monkeypatch: pytest.MonkeyPatc
     assert language.from_arguments(["--language=en_GB"]) == "en_gb"
     assert language.from_arguments(["konfig"]) is None
     assert language.without_arguments(["--sprache", "en", "konfig"]) == ["konfig"]
-    monkeypatch.setenv("PSEUDONYMED_SPRACHE", "en")
+    monkeypatch.setenv("PSEUDONYMED_LANGUAGE", "en")
     assert language.determine([]) == "en"
     assert language.determine(["--sprache", "de"]) == "de"
-    monkeypatch.delenv("PSEUDONYMED_SPRACHE")
+    monkeypatch.delenv("PSEUDONYMED_LANGUAGE")
     monkeypatch.setattr("pseudonymed.language.load_settings",
                         lambda: type("S", (), {"gui_language": ""})())
     for name in ("LC_ALL", "LC_MESSAGES"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LANG", "en_GB.UTF-8")
     assert language.determine([]) == "en_gb"
+    monkeypatch.setenv("LANG", "de_AT.UTF-8")
+    assert language.determine([]) == "de_at"
+    monkeypatch.setenv("LANG", "fr_FR.UTF-8")
+    assert language.determine([]) == "en"  # a language PseudonyMed does not speak: English
+    assert language.determine(["--language", "fr"]) == "en"
     monkeypatch.setenv("LANG", "C.UTF-8")
     monkeypatch.setattr("pseudonymed.language.locale.getlocale", lambda: (None, None))
-    assert language.system_language() == "de"  # no language named: the source language
+    assert language.system_language() == "en"  # no language named: English
+    assert language.determine([]) == "en"
 
 
 def test_help_in_both_languages(tmp_path: Path) -> None:
@@ -159,9 +165,9 @@ def test_a_run_reports_in_english(tmp_path: Path, report_pdf: Path, patient: Pat
     assert run.returncode == 0, run.stderr
     assert "audit report" in run.stdout and "Re-check: passed" in run.stdout, run.stdout
     assert "Prüfbericht" not in run.stdout and "Gegenprobe" not in run.stdout
-    report = next((tmp_path / "out").glob("*.bericht.json"))
+    report = next((tmp_path / "out").glob("*.report.json"))
     stored = json.loads(report.read_text(encoding="utf-8"))
-    assert stored["gegenprobe"]["geprueft"][0] == "Name" and "gegenprobe" in stored
+    assert stored["recheck"]["checked"][0] == "Name" and "recheck" in stored
     again = _run(["pseudonymisieren", str(report_pdf), "--patient", str(patient_file),
                   "--ziel", str(tmp_path / "de")], tmp_path, "de")
     assert "Prüfbericht" in again.stdout and "Gegenprobe: bestanden" in again.stdout

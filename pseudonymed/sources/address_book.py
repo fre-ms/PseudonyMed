@@ -89,9 +89,9 @@ def search(term: str, config_file: str | Path | None = None,
         password = load_password(k)
         if not password:
             result.error.append(say(f"Kein App-Passwort für {k.code} (Schlüsselbund,"
-                                    " Konfiguration oder PSEUDONYMED_CARDDAV_PASSWORT).",
+                                    " Konfiguration oder PSEUDONYMED_CARDDAV_PASSWORD).",
                                     f"No app password for {k.code} (keyring, configuration or"
-                                    " PSEUDONYMED_CARDDAV_PASSWORT)."))
+                                    " PSEUDONYMED_CARDDAV_PASSWORD)."))
         else:
             try:
                 client = CardDAVClient(k.url, k.user, password)

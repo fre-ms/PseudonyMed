@@ -1,9 +1,10 @@
 """The language of the interface, the same for the desktop and the command line.
 
-Order of precedence: ``--sprache``/``--language`` on the command line,
-``PSEUDONYMED_SPRACHE`` or ``[gui] sprache`` in the configuration file, then the
-system's locale.  German is the source language; a code starting with "en" asks for
-English.
+Order of precedence: ``--language``/``--sprache`` on the command line, the language set in
+the environment or in the configuration file, then the system's locale.  PseudonyMed speaks
+German and English: a code starting with "de" asks for German, any other language, and a
+system that names none, gets English.  (German is the language the texts are written in;
+English comes from the translation.)
 """
 
 from __future__ import annotations
@@ -29,24 +30,25 @@ def from_arguments(arguments: list[str]) -> str | None:
 def determine(arguments: list[str], system: str | None = None) -> str:
     """The language code in lower case ("de", "en_gb" …): from the command line, else the
     environment or the configuration, else ``system`` or the locale of the process."""
-    chosen = from_arguments(arguments)
-    if chosen:
-        return chosen
-    selected = load_settings().gui_language
-    if selected:
-        return selected.lower()
-    return (system or system_language()).lower()
+    chosen = from_arguments(arguments) or load_settings().gui_language
+    return spoken((chosen or system or system_language()).lower())
+
+
+def spoken(code: str) -> str:
+    """A language PseudonyMed speaks: the code itself when it is German or English, else
+    English."""
+    return code if code.startswith(("de", "en")) else "en"
 
 
 def system_language() -> str:
     """The locale the environment names (``LC_ALL``, ``LC_MESSAGES``, ``LANG``), else the
-    process's locale; "de" when none names a language (the C locale, for instance)."""
+    process's locale; "en" when none names a language (the C locale, for instance)."""
     for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
         value = os.environ.get(name, "")
         if value and value.split(".")[0] not in ("C", "POSIX"):
             return value.split(".")[0]
     code = locale.getlocale()[0]
-    return code if code and code not in ("C", "POSIX") else "de"
+    return code if code and code not in ("C", "POSIX") else "en"
 
 
 def without_arguments(arguments: list[str]) -> list[str]:

@@ -51,15 +51,15 @@ def test_full_name(patient: Patient) -> None:
 
 def test_salutation_by_case(patient: Patient) -> None:
     z = _mapping(patient)
-    info = {"nachname": patient.surname, "vorname": patient.first_name, "geschlecht": "m"}
-    r = reidentify("Patient A kam. Wir sahen Patienten A erneut.", z, info, form="anrede")
+    info = {"surname": patient.surname, "first_name": patient.first_name, "sex": "m"}
+    r = reidentify("Patient A kam. Wir sahen Patienten A erneut.", z, info, form="salutation")
     assert r.text == f"Herr {patient.surname} kam. Wir sahen Herrn {patient.surname} erneut."
 
 
 def test_salutation_female(female_patient: Patient) -> None:
     z = _mapping(female_patient)
-    info = {"nachname": female_patient.surname, "geschlecht": "w"}
-    r = reidentify("Patientin A berichtet.", z, info, form="anrede")
+    info = {"surname": female_patient.surname, "sex": "f"}
+    r = reidentify("Patientin A berichtet.", z, info, form="salutation")
     assert r.text == f"Frau {female_patient.surname} berichtet."
 
 

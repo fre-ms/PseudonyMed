@@ -22,12 +22,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pseudonymed.core import names
 from pseudonymed.detection import choice
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
 from pseudonymed.gui.lists_panel import FHIR, Lists
-from pseudonymed.gui.translation import shown_error
+from pseudonymed.gui.translation import interface_language, shown_error
 
 
 class VocabularyModel(ListModel):
@@ -50,15 +51,17 @@ class VocabularyModel(ListModel):
         return 0 if parent is not None and parent.isValid() else len(self.lines)
 
     def _cell(self, line: int, column: int) -> str:
-        """The cell text."""
-        return self.lines[line][column]
+        """The cell text; a category by its label in the interface language."""
+        value = self.lines[line][column]
+        return names.label(value, interface_language()) if column == 1 else value
 
     def _apply_edit(self, line: int, column: int, value: str) -> bool:
         """Hand the edit to the page and, when it took, keep the text with its whitespace
         collapsed, as the store keeps it."""
         if not self.page.change(self.lines[line][0], column, value):
             return False
-        self.lines[line][column] = " ".join(value.split())
+        self.lines[line][column] = (names.category_name(value) if column == 1
+                                    else " ".join(value.split()))
         index = self.index(line, column)
         self.dataChanged.emit(index, index)
         return True
@@ -130,7 +133,7 @@ class VocabularyPage(ListPage):
         return self.tr(
             "CSV (begriff,kategorie; Kopfzeile optional; Komma, Semikolon oder Tabulator) oder"
             " eine Liste mit einem Begriff je Zeile, etwa die beim Export geschriebene"
-            " .vokabular.txt")
+            " .vocabulary.txt")
 
     def _build_own_button(self) -> QPushButton:
         """The button that brings back what was deleted from the bundled lists."""
@@ -173,12 +176,14 @@ class VocabularyPage(ListPage):
         """Refill the category filter (with counts) and the category box for new entries,
         keeping what was chosen in each; the user's category is always offered."""
         self._refill_filter(self.category_filter, categories)
-        current = self.new_category.currentText() or vocab_mod.CATEGORY_USER
+        language = interface_language()
+        current = self.new_category.currentText() or names.label(vocab_mod.CATEGORY_USER,
+                                                                 language)
+        known = [k for k, _n in categories]
         self.new_category.clear()
-        self.new_category.addItems([k for k, _n in categories]
-                                   or [vocab_mod.CATEGORY_USER])
-        if vocab_mod.CATEGORY_USER not in [k for k, _n in categories]:
-            self.new_category.addItem(vocab_mod.CATEGORY_USER)
+        self.new_category.addItems([names.label(k, language) for k in
+                                    known + [vocab_mod.CATEGORY_USER] * (
+                                        vocab_mod.CATEGORY_USER not in known)])
         self.new_category.setCurrentText(current)
 
     def _apply_filter(self) -> None:
@@ -250,7 +255,7 @@ class VocabularyPage(ListPage):
     def choose_and_export(self) -> None:
         """Ask for a target and write the vocabulary as CSV."""
         path, _ = QFileDialog.getSaveFileName(self, self.tr("Vokabular als CSV"),
-                                              "vokabular.csv", self.tr("CSV (*.csv)"))
+                                              "vocabulary.csv", self.tr("CSV (*.csv)"))
         if path:
             self.export_csv(Path(path))
 

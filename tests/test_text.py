@@ -41,7 +41,7 @@ def test_text_file_round_trip(transcript: Path, patient: Patient,
     out = res.target.read_text(encoding="utf-8")
     assert found_plain_data(out, patient) == []
     assert misspelt(patient.surname) not in out  # the misspelt surname: fuzzy search
-    assert any(f.source == "unscharf" for f in res.hits)
+    assert any(f.source == "fuzzy" for f in res.hits)
     for kept in ("Ramipril", "Atorvastatin", "Arterielle Hypertonie", "MoCA ergab 22 von 30"):
         assert kept in out
     assert f"Patient {res.code}" in out and f"Angehörige {res.code}-1" in out
@@ -49,7 +49,7 @@ def test_text_file_round_trip(transcript: Path, patient: Patient,
     assert "[Telefon] oder [E-Mail]." in out  # sentence end after an address is kept
     assert out.count("\n") == transcript.read_text(encoding="utf-8").count("\n")
     report = json.loads(res.target_report.read_text(encoding="utf-8"))
-    assert report["bestanden"] and report["optionen"]["unscharf_text"] is True
+    assert report["passed"] and report["options"]["fuzzy_text"] is True
     assert found_plain_data(json.dumps(report), patient) == []
 
 
@@ -91,7 +91,7 @@ def test_exact_leaves_misspellings_standing(transcript: Path, patient: Patient,
     assert res.released
     out = res.target.read_text(encoding="utf-8")
     assert misspelt(patient.surname) in out and patient.surname not in out
-    assert not any(f.source == "unscharf" for f in res.hits)
+    assert not any(f.source == "fuzzy" for f in res.hits)
 
 
 def test_capitalisation_protects_small_words(tmp_path: Path,
@@ -104,7 +104,7 @@ def test_capitalisation_protects_small_words(tmp_path: Path,
     out = res.target.read_text(encoding="utf-8")
     assert "lang." in out and "Lanq" not in out and "Herr Lang" not in out
     # "Land" is capitalised and within tolerance: a guess the review step shows in orange
-    assert any(f.source == "unscharf" and f.text == "Land" for f in res.hits)
+    assert any(f.source == "fuzzy" and f.text == "Land" for f in res.hits)
 
 
 def test_discard_mark_and_recheck(transcript: Path, patient: Patient,
@@ -113,12 +113,12 @@ def test_discard_mark_and_recheck(transcript: Path, patient: Patient,
     assert isinstance(v, TextPreparation) and v.is_text and v.text
     assert v.medical_term_count >= 3 and v.medical_term_spans(0)
     assert v.medical_term_rects(0) == [] and v.ocr_pages == []
-    referrers = next(f for f in v.hits if f.rule == "zuweiser1.name")
+    referrers = next(f for f in v.hits if f.rule == "referrer1.name")
     v.discard(referrers)
     assert referrers.text not in [f.text for f in v.hits]
     a = v.text.index("Wörter vergesse")
     f = v.mark(0, a, a + len("Wörter vergesse"), "[Symptom]")
-    assert f.source == "manuell" and f.text == "Wörter vergesse"
+    assert f.source == "manual" and f.text == "Wörter vergesse"
     with pytest.raises(ValueError):
         v.mark(0, 0, 0)
     res = finalise(v)
@@ -134,7 +134,7 @@ def test_marking_replaces_overlapping_matches(transcript: Path, patient: Patient
     a = v.text.index("Meine Frau")
     b = v.text.index("hat gemerkt")
     v.mark(0, a, b, "[Angabe]")
-    assert not any(f.rule == "angehoerige1.vollname" for f in v.hits)
+    assert not any(f.rule == "relative1.full_name" for f in v.hits)
     res = finalise(v)
     assert res.released and "[Angabe]" in res.text
 

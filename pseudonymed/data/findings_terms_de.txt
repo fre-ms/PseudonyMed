@@ -1,8 +1,8 @@
-# Begriffe der klinischen Untersuchung und des Befundberichts (Neurologie, Psychiatrie,
-# Innere Medizin), wie sie in Befundlisten am Zeilenanfang stehen („Konzentration: gut“).
-# Sie sind weder in MeSH noch in der Körperteil-Liste und wurden von der Namenserkennung
-# für Personen oder Orte gehalten. Ein Begriff je Zeile; Beugungen erkennt der Abgleich.
-# Allgemein und Vitalparameter
+# Terms of the clinical examination and of the findings report (neurology, psychiatry,
+# internal medicine), as they stand at the start of a line in lists of findings ("Konzentration: gut").
+# They are neither in MeSH nor in the list of body parts and were taken for persons or
+# places by the name recognition. One term per line; the matching recognises inflected forms.
+# General and vital signs
 Allgemeinzustand
 Ernährungszustand
 Bewusstsein
@@ -53,7 +53,7 @@ Temperatur
 Sauerstoffsättigung
 Blutzucker
 Vitalparameter
-# Haltung, Gang, Motorik
+# Posture, gait, motor function
 Haltung
 Körperhaltung
 Gang
@@ -124,7 +124,7 @@ Armhalteversuch
 Beinhalteversuch
 Halteversuche
 Vorhalteversuch
-# Koordination, Reflexe, Sensibilität
+# Coordination, reflexes, sensation
 Koordination
 Finger-Nase-Versuch
 Knie-Hacke-Versuch
@@ -177,7 +177,7 @@ Hypästhesie
 Hypalgesie
 Allodynie
 Hyperpathie
-# Hirnnerven, Sprache, Schlucken
+# Cranial nerves, speech, swallowing
 Hirnnervenstatus
 Hirnnerven
 Pupillen
@@ -239,7 +239,7 @@ Nackensteifigkeit
 Lasègue-Zeichen
 Kernig-Zeichen
 Brudzinski-Zeichen
-# Innere Medizin
+# Internal medicine
 Nierenlager
 Nierenlagerklopfschmerz
 Klopfschmerz
@@ -287,7 +287,7 @@ Hautkolorit
 Schleimhäute
 Rachenring
 Zahnstatus
-# Verlauf und Befundsprache
+# Course and language of findings
 Anamnese
 Eigenanamnese
 Fremdanamnese

@@ -114,7 +114,7 @@ def sign_app(app: Path) -> None:
 
 def smoke_test() -> None:
     # German, whatever the build machine's locale: the checks below read German output
-    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "PSEUDONYMED_SPRACHE": "de"}
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "PSEUDONYMED_LANGUAGE": "de"}
     if sys.platform == "darwin":
         import plistlib
 
@@ -133,7 +133,7 @@ def smoke_test() -> None:
                         str(ROOT / "dist" / "PseudonyMed.app")], check=True)
     with tempfile.TemporaryDirectory() as folder:
         data = Path(folder)
-        environment["PSEUDONYMED_DATENORDNER"] = str(data)
+        environment["PSEUDONYMED_DATA_FOLDER"] = str(data)
         out = run([str(exe("pseudonymed")), "konfig"], capture_output=True, env=environment)
         print(out.stdout)
         assert "PseudonyMed" in out.stdout and "OCR-Backends" in out.stdout
@@ -192,8 +192,8 @@ def photo_through_the_chain(data: Path, environment: dict[str, str]) -> None:
               capture_output=True, env=environment)
     assert "Gegenprobe: bestanden" in out.stdout and "per OCR gelesen" in out.stdout, \
         out.stdout + out.stderr
-    state = data / "foto" / "foto.arbeitsstand.json"
-    assert state.exists() and (data / "foto" / "foto.arbeitsstand.png").exists()
+    state = data / "foto" / "foto.working-state.json"
+    assert state.exists() and (data / "foto" / "foto.working-state.png").exists()
     out = run([str(exe("pseudonymed")), "pseudonymisieren", str(state), "--speicher",
                str(data / "s.sqlite"), "--ziel", str(data / "wieder")],
               capture_output=True, env=environment)

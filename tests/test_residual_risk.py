@@ -7,12 +7,14 @@ from pathlib import Path
 
 import identicalc
 import pytest
+from identicalc import Feature
 from identicalc.model import BITS_YEAR
 from PySide6.QtWidgets import QApplication
 
 from pseudonymed.checks import residual_risk as rr
 from pseudonymed.checks.report import as_text
 from pseudonymed.core.model import Patient
+from pseudonymed.core.stored import as_stored, field_values
 from pseudonymed.pipeline import PipelineOptions, pseudonymise
 from pseudonymed.pseudonyms.store import PseudonymStore
 from tests.test_gui import qapp  # noqa: F401
@@ -31,10 +33,10 @@ def test_data_present() -> None:
 
 
 def test_weights_and_traffic_light() -> None:
-    village = rr.estimate("Patientin [geb. 1959] aus Weitnau.", "w")
+    village = rr.estimate("Patientin [geb. 1959] aus Weitnau.", "f")
     assert {m.category for m in village.features} == {"sex", "birth", "place"}
     assert abs(village.bits - (1 + BITS_YEAR + 14.0)) < 0.2  # λ ≈ 30
-    assert rr.light_colour(village) == "gruen"
+    assert village.light == "green"
     assert any("unter 20.000" in mk.text for mk in village.markers)
     # a village of about 1,000: sex + year leave λ between 5 and 11, so yellow
     index = rr.municipality_index()
@@ -42,18 +44,18 @@ def test_weights_and_traffic_light() -> None:
                                    key=lambda g: g.name)
                  if 900 <= g.population <= 1100 and g.namesakes == 1 and len(g.name) >= 6
                  and "-" not in g.name and " " not in g.name)
-    hamlet = rr.estimate(f"Patientin [geb. 1959] aus {small.name}.", "w")
-    assert rr.light_colour(hamlet) == "gelb" and 5 <= hamlet.lam < 11, (small, hamlet.lam)
+    hamlet = rr.estimate(f"Patientin [geb. 1959] aus {small.name}.", "f")
+    assert hamlet.light == "yellow" and 5 <= hamlet.lam < 11, (small, hamlet.lam)
     tiny = rr.estimate(f"Die 66-jährige Patientin [geb. 1959] aus {small.name}, gesehen am"
-                       " 12.03.2026.", "w")
-    assert rr.light_colour(tiny) == "rot"  # the age next to the date adds 2.6 bits
+                       " 12.03.2026.", "f")
+    assert tiny.light == "red"  # the age next to the date adds 2.6 bits
     city = rr.estimate("Patient [geb. 1959] aus Augsburg, Termin am 12.03.2026.", "m")
-    assert rr.light_colour(city) == "gruen" and city.lam > 100 and city.date_mentions == 1
+    assert city.light == "green" and city.lam > 100 and city.date_mentions == 1
     assert city.dominant is not None and city.dominant.category == "place"
     own = rr.estimate("Patient [geb. 1959] aus Augsburg.", "m", own_places=["Augsburg"])
     assert not any(m.category == "place" for m in own.features)
     rare = rr.estimate("Patient [geb. 1959] mit Chorea Huntington, wohnhaft in Augsburg.", "m")
-    assert rr.light_colour(rare) == "rot" and rare.lam < 1
+    assert rare.light == "red" and rare.lam < 1
     assert any(mk.key.startswith("rare:") for mk in rare.markers)
     nothing = rr.estimate("Essen und Trinken unauffällig, Grund zur Sorge besteht nicht.", "")
     assert nothing.features == [] and nothing.light == "green" and nothing.kappa < 0.001
@@ -62,7 +64,7 @@ def test_weights_and_traffic_light() -> None:
     places = [m for m in two.features if m.category == "place"]
     assert [m.counted for m in sorted(places, key=lambda m: -m.bits)] == [True, False]
     # age next to birth year and an exact date narrows the birthday
-    window = rr.estimate("Die 66-jährige Patientin [geb. 1959] kam am 12.03.2026.", "w")
+    window = rr.estimate("Die 66-jährige Patientin [geb. 1959] kam am 12.03.2026.", "f")
     assert any(m.key == "birth:window" for m in window.features)
     assert any(mk.key == "age_and_date" for mk in window.markers)
     old = rr.estimate("Der 91-jährige Patient", "m")
@@ -73,43 +75,43 @@ def test_weights_and_traffic_light() -> None:
 
 
 def test_union_with_earlier_documents() -> None:
-    """Features of documents released earlier come from the database in its German form and
-    are merged as identicalc's own."""
+    """Features of documents released earlier come from the database in identicalc's form
+    (key, category, description, bits) and are merged as identicalc's own."""
     a = rr.estimate("Patient [geb. 1959] aus Augsburg.", "m")
     b = rr.estimate("Patient [geb. 1959] mit Chorea Huntington.", "m")
-    earlier = [rr.feature_from_stored({"schluessel": "ort:weitnau", "kategorie": "Ort",
-                                       "beschreibung": "Ort Weitnau (5.270 Einwohner)",
-                                       "bits": 14.0})]
+    row = {"key": "place:weitnau", "category": "place",
+           "description": "Ort Weitnau (5.270 Einwohner)", "bits": 14.0}
+    earlier = [Feature(**field_values(Feature, row))]
     assert (earlier[0].key, earlier[0].category, earlier[0].counted) == (
         "place:weitnau", "place", True)
     total = identicalc.merge([a, b], earlier, 3)
-    assert total.earlier == 3 and rr.light_colour(total) == "rot"
+    assert total.earlier == 3 and total.light == "red"
     places = [m for m in total.features if m.category == "place"]
     assert sum(m.counted for m in places) == 1 and max(places, key=lambda m: m.bits).counted
     assert any(m.category == "diagnosis" and m.counted for m in total.features)
     assert len([m for m in total.features if m.key == "sex"]) == 1
 
 
-def test_the_stored_form_stays_german() -> None:
-    """Reports and the database keep German keys and values; read back, the estimate is the
-    same, its English wording included."""
+def test_the_stored_form_is_identicalcs() -> None:
+    """Reports and the database keep identicalc's own keys and values; read back, the estimate
+    is the same, its English wording included."""
     e = rr.estimate("Die 66-jährige Patientin [geb. 1959] aus Weitnau, Wilson-Krankheit, kam am"
-                    " 12.03.2026; arbeitet als Lehrerin.", "w")
+                    " 12.03.2026; arbeitet als Lehrerin.", "f")
     d = rr.stored(e)
-    assert {m["kategorie"] for m in d["merkmale"]} == {"Geschlecht", "Geburtsdatum", "Ort",
-                                                       "Diagnose"}
-    keys = [m["schluessel"] for m in d["merkmale"]] + [mk["schluessel"] for mk in d["markierungen"]]
-    assert {"geschlecht", "geburt:jahr", "geburt:fenster", "ort:weitnau", "alter_und_datum",
-            "kleiner_ort:weitnau", "beruf"} <= set(keys)
-    assert d["ampel"] == rr.light_colour(e) and d["identicalc"] == identicalc.__version__
-    assert d["modell"] == "k-map-Schätzung (Synthese, kein Standard)"
+    assert d == e.as_dict()
+    assert {m["category"] for m in d["features"]} == {"sex", "birth", "place", "diagnosis"}
+    keys = [m["key"] for m in d["features"]] + [mk["key"] for mk in d["markers"]]
+    assert {"sex", "birth:year", "birth:window", "place:weitnau", "age_and_date",
+            "small_place:weitnau", "occupation"} <= set(keys)
+    assert d["light"] == e.light and d["identicalc"] == identicalc.__version__
+    assert d["model"] == "k-map-Schätzung (Synthese, kein Standard)"
     english = rr.stored(e, "en")
-    assert english["merkmale"][0]["beschreibung"] == "Sex (salutation, pseudonym)"
-    assert english["modell"] == "k-map estimate (synthesis, not a standard)"
+    assert english["features"][0]["description"] == "Sex (salutation, pseudonym)"
+    assert english["model"] == "k-map estimate (synthesis, not a standard)"
     back = rr.from_stored(d)
     assert [m.key for m in back.features] == [m.key for m in e.features]
     assert back.as_lines("en") == e.as_lines("en") and back.short() == e.short()
-    assert rr.stored_feature(e.features[0])["kategorie"] == "Geschlecht"
+    assert as_stored(e.features[0])["category"] == "sex"
 
 
 def test_report_and_store(tmp_path: Path, report_pdf: Path, patient: Patient) -> None:
@@ -118,17 +120,17 @@ def test_report_and_store(tmp_path: Path, report_pdf: Path, patient: Patient) ->
                                                            target_folder=tmp_path / "aus"),
                            store=sp)
         assert res.released and res.residual_risk is not None
-        assert res.report.residual_risk["ampel"] == rr.light_colour(res.residual_risk)
+        assert res.report.residual_risk["light"] == res.residual_risk.light
         assert "Restrisiko (Schätzung" in as_text(res.report)
-        assert res.report.options["referenzpopulation"] == identicalc.REFERENCE_GERMANY
+        assert res.report.options["reference_population"] == identicalc.REFERENCE_GERMANY
         assert sp.earlier_residual_risks(patient) == ([], 0)
         sp.remember_residual_risk(patient, "a.pdf",
-                                  [{"schluessel": "ort:weitnau", "kategorie": "Ort",
-                                    "beschreibung": "Ort Weitnau", "bits": 14.0}],
+                                  [{"key": "place:weitnau", "category": "place",
+                                    "description": "Ort Weitnau", "bits": 14.0}],
                                   21.4, 30.0)
         sp.remember_residual_risk(patient, "b.pdf",
-                                  [{"schluessel": "ort:weitnau", "kategorie": "Ort",
-                                    "beschreibung": "Ort Weitnau", "bits": 12.0}],
+                                  [{"key": "place:weitnau", "category": "place",
+                                    "description": "Ort Weitnau", "bits": 12.0}],
                                   19.0, 150.0)
         features, n = sp.earlier_residual_risks(patient)
         assert n == 2 and features[0]["bits"] == 14.0  # the higher weight stays
@@ -161,9 +163,9 @@ def test_window_control(qapp: QApplication, tmp_path: Path, report_pdf: Path,  #
     window.show_page(ko)
     qapp.processEvents()
     d = session.documents[0]
-    assert d.precheck is not None and ko.colour in ("gruen", "gelb")
+    assert d.precheck is not None and ko.colour in ("green", "yellow")
     assert ko.table.rowCount() == 1 and ko.table.item(0, 1).text() == "bestanden"
-    assert ko.risk_colour in ("gruen", "gelb", "rot") and "λ" in ko.risk_text.text()
+    assert ko.risk_colour in ("green", "yellow", "red") and "λ" in ko.risk_text.text()
     assert ko.features.rowCount() >= 2 and "Restrisiko" in ko.log.toPlainText()
     total, earlier = session.control()
     assert total is not None and earlier == 0
@@ -175,11 +177,11 @@ def test_window_control(qapp: QApplication, tmp_path: Path, report_pdf: Path,  #
     ko.reference.setText("300")
     ko.recalculate()
     qapp.processEvents()
-    assert session.options.reference_population == 300 and ko.risk_colour == "rot"
+    assert session.options.reference_population == 300 and ko.risk_colour == "red"
     window.export.target.setText(str(tmp_path / "aus"))
     window.export.refresh()
     qapp.processEvents()
-    assert window.export.risk_colour == "rot" and not window.export.button.isEnabled()
+    assert window.export.risk_colour == "red" and not window.export.button.isEnabled()
     assert window.export.risk_confirmed.isVisible() or True
     with pytest.raises(RuntimeError, match="Restrisiko"):
         window.export.run_export()
@@ -242,7 +244,7 @@ def test_age_90_plus_from_the_birth_year() -> None:
     assert any(mk.key == "age_90" for mk in high.markers)
     young = rr.estimate("Patient [geb. 1930].", "m", current_year=2010)
     assert not any(mk.key == "age_90" for mk in young.markers)
-    without_date = rr.estimate("Die 66-jährige Patientin [geb. 1959].", "w")
+    without_date = rr.estimate("Die 66-jährige Patientin [geb. 1959].", "f")
     assert [m.key for m in without_date.features] == ["sex", "birth:year"]
     assert without_date.features[1].evidence == "[geb. 1959]" and without_date.date_mentions == 0
     age_only = rr.estimate("Alter: 66 Jahre, [Alter 66].", "")

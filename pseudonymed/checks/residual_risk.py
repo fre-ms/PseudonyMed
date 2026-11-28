@@ -17,9 +17,8 @@ PseudonyMed's own is finding the quasi-identifiers in a German letter:
 * flags the model cannot weigh: dated reportable events, occupations or employers, family
   constellations.
 
-PseudonyMed's files and its database keep German keys and values (``merkmale``, ``Ort``,
-``gruen``); :func:`stored` and :func:`from_stored` translate at that boundary, as
-:mod:`pseudonymed.core.stored` does for every file PseudonyMed writes.
+Reports and the pseudonym store keep identicalc's own form of the estimate (English keys and
+values).
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 import identicalc
 from identicalc import Disease, Estimate, Feature, Marker, Municipality, features
 
-from pseudonymed.core.text import english, in_language, say
+from pseudonymed.core.text import say
 
 if TYPE_CHECKING:
     from pseudonymed.detection.medical_terms import MedicalTerms
@@ -174,7 +173,7 @@ class PartialResult:
 
 def _sex(text: str, sex: str) -> PartialResult:
     """One bit for the sex when it is known or the prose gives it away ("Patientin")."""
-    if sex not in ("m", "w") and not re.search(r"\bPatientin\b|\bPatient\b", text):
+    if sex not in ("m", "f") and not re.search(r"\bPatientin\b|\bPatient\b", text):
         return PartialResult()
     return PartialResult((features.sex(),))
 
@@ -307,7 +306,7 @@ def _notes(text: str) -> PartialResult:
 def estimate(text: str, sex: str = "", reference: int = identicalc.REFERENCE_GERMANY,
              own_places: Iterable[str] = (), medical_terms: MedicalTerms | None = None,
              current_year: int | None = None) -> Estimate:
-    """Estimate for one pseudonymised text.  ``sex`` is the patient's sex ("m", "w",
+    """Estimate for one pseudonymised text.  ``sex`` is the patient's sex ("m", "f",
     "") when known; ``own_places`` names places of the sender that are not the patient's
     (practice, clinic); ``medical_terms`` (a MedicalTerms matcher) keeps medical terms from
     being taken for place names.  One detector per family of quasi-identifiers; their
@@ -323,84 +322,12 @@ def estimate(text: str, sex: str = "", reference: int = identicalc.REFERENCE_GER
                     reference=ref, date_mentions=len(data))
 
 
-# -- PseudonyMed's stored form ---------------------------------------------------------------------
-_CATEGORIES = {identicalc.SEX: "Geschlecht", identicalc.BIRTH: "Geburtsdatum",
-               identicalc.PLACE: "Ort", identicalc.DIAGNOSIS: "Diagnose"}
-# keys as identicalc and PseudonyMed's own detectors make them → as PseudonyMed stores them;
-# an entry ending in ":" is a prefix
-_KEYS = (("sex", "geschlecht"), ("birth:year", "geburt:jahr"),
-         ("birth:window", "geburt:fenster"), ("place:", "ort:"), ("diagnosis:", "diagnose:"),
-         ("small_place:", "kleiner_ort:"), ("rare:", "selten:"),
-         ("age_and_date", "alter_und_datum"), ("age_90", "alter_90"),
-         ("dated_event", "ereignis_datiert"), ("occupation", "beruf"), ("family", "familie"))
-_LIGHTS = {identicalc.GREEN: "gruen", identicalc.YELLOW: "gelb", identicalc.RED: "rot"}
-
-
-def _translated_key(key: str, pairs: Iterable[tuple[str, str]]) -> str:
-    """A key with its name or prefix replaced by the pair's other side."""
-    for old, new in pairs:
-        if key == old or (old.endswith(":") and key.startswith(old)):
-            return new + key[len(old):]
-    return key
-
-
-def _stored_key(key: str) -> str:
-    return _translated_key(key, _KEYS)
-
-
-def _key_from_stored(key: str) -> str:
-    return _translated_key(key, ((de, en) for en, de in _KEYS))
-
-
-def light_colour(e: Estimate) -> str:
-    """The light of an estimate in PseudonyMed's words for its lights ("gruen", "gelb",
-    "rot")."""
-    return _LIGHTS[e.light]
-
-
-def stored_feature(m: Feature, language: str = "de") -> dict[str, Any]:
-    """A feature as PseudonyMed's reports and database keep it."""
-    en = english(language)
-    return {"schluessel": _stored_key(m.key), "kategorie": _CATEGORIES.get(m.category, m.category),
-            "beschreibung": in_language(m.description, language) if en else m.description,
-            "bits": m.bits, "beleg": m.evidence,
-            "quelle": in_language(m.source, language) if en else m.source,
-            "gezaehlt": m.counted}
-
-
-def feature_from_stored(d: dict[str, Any]) -> Feature:
-    """The inverse of :func:`stored_feature`; what the database leaves out takes the
-    defaults."""
-    categories = {de: en for en, de in _CATEGORIES.items()}
-    return Feature(_key_from_stored(str(d.get("schluessel", ""))),
-                   categories.get(d.get("kategorie", ""), d.get("kategorie", "")),
-                   d.get("beschreibung", ""), float(d.get("bits", 0.0)), d.get("beleg", ""),
-                   d.get("quelle", ""), bool(d.get("gezaehlt", True)))
-
-
+# -- the stored form -----------------------------------------------------------------------------
 def stored(e: Estimate, language: str = "de") -> dict[str, Any]:
-    """An estimate as PseudonyMed's reports keep it: German keys and values, the derived
-    figures, the model and the identicalc that computed it; with an English ``language`` the
-    wording (descriptions, flags, sources) is English."""
-    en = english(language)
-    return {
-        "merkmale": [stored_feature(m, language) for m in e.features],
-        "markierungen": [{"schluessel": _stored_key(mk.key),
-                          "text": in_language(mk.text, language) if en else mk.text,
-                          "beleg": mk.evidence} for mk in e.markers],
-        "referenz": e.reference, "fruehere": e.earlier, "datumsangaben": e.date_mentions,
-        "bits": round(e.bits, 2), "referenz_bits": round(e.reference_bits, 2),
-        "lambda": round(e.lam, 3), "kappa": round(e.kappa, 4), "ampel": light_colour(e),
-        "modell": in_language(identicalc.MODEL, language),
-        "identicalc": identicalc.__version__}
+    """An estimate as reports keep it: identicalc's form, with the wording in ``language``."""
+    return e.as_dict(language)
 
 
 def from_stored(d: dict[str, Any]) -> Estimate:
     """The inverse of :func:`stored`; the derived figures are computed again, not read."""
-    return Estimate(features=[feature_from_stored(m) for m in d.get("merkmale", [])],
-                    markers=[Marker(_key_from_stored(str(mk.get("schluessel", ""))),
-                                    mk.get("text", ""), mk.get("beleg", ""))
-                             for mk in d.get("markierungen", [])],
-                    reference=int(d.get("referenz", identicalc.REFERENCE_GERMANY)),
-                    earlier=int(d.get("fruehere", 0)),
-                    date_mentions=int(d.get("datumsangaben", 0)))
+    return Estimate.from_dict(d)

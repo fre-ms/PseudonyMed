@@ -175,8 +175,8 @@ def _context_before(e: Span, text: str) -> bool:
     """Does a salutation, title or kinship word (person) or a preposition or postcode
     (place) stand right before the entity?  Only that makes a lone unknown word count."""
     preceding = text[max(0, e.start_char - 30):e.start_char]
-    muster = _PERSON_CONTEXT if e.label_ == "PER" else _PLACE_CONTEXT
-    return muster.search(preceding) is not None
+    pattern = _PERSON_CONTEXT if e.label_ == "PER" else _PLACE_CONTEXT
+    return pattern.search(preceding) is not None
 
 
 _EDGE_CHARS = " .,;:-–()"
@@ -281,7 +281,7 @@ def _place_from(text: str, assignment: PseudonymAssignment,
     core = text.strip(_EDGE_CHARS)
     placed = context and len(core) >= 3 and core[:1].isupper() and _municipality(core)
     if placed or _plausible_place(core):
-        return _Candidate(core, Kind.PLACE, "ner.ort", assignment.unknown_place(core), placed)
+        return _Candidate(core, Kind.PLACE, "ner.place", assignment.unknown_place(core), placed)
     return None
 
 

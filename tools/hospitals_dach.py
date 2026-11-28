@@ -1,23 +1,23 @@
-"""Build ``pseudonymed/daten/kliniken_dach.csv.gz``: hospitals and rehabilitation clinics in DE
+"""Build ``pseudonymed/data/hospitals_dach.csv.gz``: hospitals and rehabilitation clinics in DE
 and CH.
 
-One row per site with name, type, address, official municipality code, operator and beds, so
+One row per site with name, type, address, official municipality code, provider and beds, so
 that a clinic name found in a document can later be tied to a municipality and its population.
 
 Sources and licences
 --------------------
 Germany (DE): Statistische Ämter des Bundes und der Länder, "Verzeichnis der Krankenhäuser und
-Vorsorge- oder Rehabilitationseinrichtungen in Deutschland", reporting year 2024 (Stand
-31.12.2024), workbook ``krankenhausverzeichnis-3500100247005.xlsx`` published by Destatis in
-May 2026.  Sheet ``KHV_<Jahr>`` has one row per hospital site, sheet ``RHV_<Jahr>`` one row per
-prevention or rehabilitation facility (Wirtschaftseinheit).  Licence: "Vervielfältigung und
+Vorsorge- oder Rehabilitationseinrichtungen in Deutschland", reporting year 2024 (as of
+31 December 2024), workbook ``krankenhausverzeichnis-3500100247005.xlsx`` published by Destatis
+in May 2026.  Sheet ``KHV_<year>`` has one row per hospital site, sheet ``RHV_<year>`` one row
+per prevention or rehabilitation facility (Wirtschaftseinheit).  Licence: "Vervielfältigung und
 Verbreitung, auch auszugsweise, mit Quellenangabe gestattet" (imprint of the workbook; the
 general terms at https://www.destatis.de/DE/Service/Impressum/copyright-allgemein.html allow
 commercial reuse and ask that changes be marked).  The workbook gives the municipality key
-(Country, Kreis incl. Regierungsbezirk, Gemeinde) as of 31.12.2024; it is turned into the 12-digit
-ARS of ``pseudonymed/daten/gemeinden_de.csv.gz`` (GV-ISys), with a fallback over place name and
-postcode for municipalities that changed since.  Berlin and Hamburg carry district codes in
-the source and map to the city as a whole.
+(Land, Kreis including Regierungsbezirk, Gemeinde) as of 31 December 2024; it is turned into
+the 12-digit ARS of identicalc's ``municipalities_de.csv.gz`` (Destatis GV-ISys), with a
+fallback over place name and postcode for municipalities that changed since.  Berlin and
+Hamburg carry district codes in the source and map to the city as a whole.
 
 Switzerland (CH): Bundesamt für Gesundheit (BAG), "Kennzahlen der Schweizer Spitäler 2023",
 workbook ``kzp23_data.xlsx`` from https://opendata.swiss/de/dataset/kennzahlen-der-schweizer-
@@ -32,15 +32,15 @@ Not included: Austria (the ministry's "Liste der Krankenanstalten in Österreich
 reprinting only for non-commercial purposes) and the Bundes-Klinik-Atlas export (no open
 licence; the G-BA imprint reserves all rights).
 
-Columns: land, kennung, name, typ, strasse, plz, ort, gemeinde_kennung, traeger, betten, quelle.
-``code`` is the source's site key: Destatis has only a random hospital ID per edition
+Columns: country, code, name, type, street, postcode, place, municipality_code, provider, beds,
+source.  ``code`` is the source's site key: Destatis has only a random hospital ID per edition
 (``KH<id>-<n>`` for the n-th site of a hospital, ``RH<id>`` for rehabilitation facilities); the
 BAG data have no key, so ``kzp-<hash>`` is derived from canton, enterprise, site and address.
 ``name`` is the site name; where the site label alone is not self-contained it is joined to the
-hospital name with " – ".  ``type_name`` is krankenhaus, psychiatrie (most beds in psychiatric,
-child and adolescent psychiatric or psychosomatic departments; sites without beds by name, by
-the hospital as a whole, or as day clinic/outpatient unit of a hospital with psychiatric beds;
-CH by the BFS hospital type K211/K212) or reha (Destatis RHV, BFS K221).  ``beds`` is
+hospital name with " – ".  ``type`` is hospital, psychiatry (most beds in psychiatric, child
+and adolescent psychiatric or psychosomatic departments; sites without beds by name, by the
+hospital as a whole, or as day clinic/outpatient unit of a hospital with psychiatric beds; CH
+by the BFS hospital type K211/K212) or rehabilitation (Destatis RHV, BFS K221).  ``beds`` is
 empty for CH sites of multi-site enterprises (beds are given per enterprise only).
 
 Usage: python -I tools/hospitals_dach.py [--destatis X.xlsx] [--bag Y.xlsx]
@@ -65,6 +65,8 @@ import zipfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import identicalc.data
+
 URL_DESTATIS = ("https://www.destatis.de/DE/Themen/Gesellschaft-Umwelt/Gesundheit/Krankenhauser/"
                 "Publikationen/Downloads-Krankenhaeuser/krankenhausverzeichnis-3500100247005.xlsx"
                 "?__blob=publicationFile")
@@ -72,11 +74,11 @@ URL_BAG = ("https://opendata.bagnet.ch/?r=/download&path="
            "L0taUC9renAyMy9renAyM19kYXRhLnhsc3g%3D")  # /KZP/kzp23/kzp23_data.xlsx
 URL_LOCALITIES = ("https://data.geo.admin.ch/ch.swisstopo-vd.ortschaftenverzeichnis_plz/"
                   "ortschaftenverzeichnis_plz/ortschaftenverzeichnis_plz_2056.csv.zip")
-DATA = Path(__file__).resolve().parent.parent / "pseudonymed" / "data"
-TARGET = DATA / "kliniken_dach.csv.gz"
-MUNICIPALITIES = DATA / "gemeinden_de.csv.gz"
-COLUMNS = ["land", "kennung", "name", "typ", "strasse", "plz", "ort", "gemeinde_kennung",
-           "traeger", "betten", "quelle"]
+TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "hospitals_dach.csv.gz"
+MUNICIPALITIES = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
+COLUMNS = ["country", "code", "name", "type", "street", "postcode", "place", "municipality_code",
+           "provider", "beds", "source"]
+HOSPITAL, PSYCHIATRY, REHABILITATION = "hospital", "psychiatry", "rehabilitation"
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
       "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
@@ -94,7 +96,14 @@ _GENERIC = {"", "hauptstandort", "standort"}
 _LEGAL_FORM = re.compile(r"\b(?:ggmbh|gmbh|mbh|gag|ag|kg|kgaa|gbr|aör|aoer|adör|kdör|ku|se|"
                          r"e\.?\s?v|co|sa|sarl)\b\.?")
 CITY_STATES = {"02": "02000000", "11": "11000000"}  # Hamburg, Berlin: whole city
-TYPES_CH = {"K211": "psychiatrie", "K212": "psychiatrie", "K221": "reha"}
+TYPES_CH = {"K211": PSYCHIATRY, "K212": PSYCHIATRY, "K221": REHABILITATION}
+# German month names of the Destatis imprint ("Erschienen im Mai 2026, …").
+MONTHS = {"Januar": "January", "Februar": "February", "März": "March", "April": "April",
+          "Mai": "May", "Juni": "June", "Juli": "July", "August": "August",
+          "September": "September", "Oktober": "October", "November": "November",
+          "Dezember": "December"}
+_PUBLISHED = re.compile(r"Erschienen im (\w+) (\d{4})"
+                        r"(?:, aktualisiert am (\d{1,2})\. (\w+) (\d{4}))?")
 
 
 def load(source: str | None, url: str) -> bytes:
@@ -119,6 +128,19 @@ def simplify(text: str) -> str:
     return " ".join(re.sub(r"[^\w]+", " ", text).split())
 
 
+def publication_note(imprint: str) -> str:
+    """The publication note of the Destatis imprint in English ("Erschienen im Mai 2026,
+    aktualisiert am 9. Juni 2026" → "published May 2026, updated 9 June 2026"); a note of
+    another form stays as it is."""
+    m = _PUBLISHED.fullmatch(imprint)
+    if not m or m.group(1) not in MONTHS or (m.group(4) and m.group(4) not in MONTHS):
+        return imprint
+    note = f"published {MONTHS[m.group(1)]} {m.group(2)}"
+    if m.group(3):
+        note += f", updated {int(m.group(3))} {MONTHS[m.group(4)]} {m.group(5)}"
+    return note
+
+
 # --- xlsx with the standard library -----------------------------------------------------------
 
 class Workbook:
@@ -141,12 +163,12 @@ class Workbook:
             self.sheets[(s.get("name") or "").strip()] = (
                 target if target.startswith("xl/") else "xl/" + target)
 
-    def sheet(self, muster: str) -> str:
-        """Name of the first sheet whose name matches the regular expression ``muster``."""
+    def sheet(self, pattern: str) -> str:
+        """Name of the first sheet whose name matches the regular expression ``pattern``."""
         for name in self.sheets:
-            if re.fullmatch(muster, name):
+            if re.fullmatch(pattern, name):
                 return name
-        raise KeyError(f"kein Tabellenblatt passt zu {muster!r}: {list(self.sheets)}")
+        raise KeyError(f"no sheet matches {pattern!r}: {list(self.sheets)}")
 
     def raw(self, name: str) -> Iterator[dict[str, str]]:
         """Rows of a sheet as {column letter: text}."""
@@ -186,7 +208,8 @@ def to_int(text: str) -> int:
 # --- municipality keys ------------------------------------------------------------------------
 
 class MunicipalityKeys:
-    """AGS (Destatis, 31.12.2024) → ARS of ``gemeinden_de.csv.gz``, fallback by place name/PLZ."""
+    """AGS (Destatis, 31 December 2024) → ARS of identicalc's ``municipalities_de.csv.gz``,
+    fallback by place name and postcode."""
 
     def __init__(self, path: Path) -> None:
         with gzip.open(path, "rt", encoding="utf-8", newline="") as f:
@@ -199,39 +222,41 @@ class MunicipalityKeys:
             # "Hanau, Brüder-Grimm-Stadt": index the name before the comma as well
             for name in {simplify(z["name"]), simplify(z["name"].split(",")[0])}:
                 self.by_name[name].append(z)
-            self.by_postcode[z["plz"]].append(z)
+            self.by_postcode[z["postcode"]].append(z)
 
     def ars(self, ags: str, postcode: str, place: str) -> tuple[str, str]:
-        """(ARS, method); method is schluessel, ort, ort+plz, ort+kreis, ort+land, plz or ''."""
+        """(ARS, method); method is key, place, place+postcode, place+district, place+state,
+        postcode or ''."""
         ags = CITY_STATES.get(ags[:2], ags)
         if ags in self.by_ags:
-            return self.by_ags[ags]["ars"], "schluessel"
+            return self.by_ags[ags]["ars"], "key"
         candidates = self.by_name.get(simplify(place), [])
         if not candidates:
             # postal place names may carry additions ("Bad Homburg v.d. Höhe", "Halle (Saale)")
             short = simplify(re.split(r"[,(/]", place)[0])
             candidates = self.by_name.get(short, [])
         if len(candidates) == 1:
-            return candidates[0]["ars"], "ort"
-        for method, fits in (("ort+plz", lambda z: z["plz"] == postcode),
-                             ("ort+kreis", lambda z: z["ars"][:5] == ags[:5]),
-                             ("ort+land", lambda z: z["ars"][:2] == ags[:2])):
+            return candidates[0]["ars"], "place"
+        for method, fits in (("place+postcode", lambda z: z["postcode"] == postcode),
+                             ("place+district", lambda z: z["ars"][:5] == ags[:5]),
+                             ("place+state", lambda z: z["ars"][:2] == ags[:2])):
             narrower = [z for z in candidates if fits(z)]
             if len(narrower) == 1:
                 return narrower[0]["ars"], method
         if not candidates and len(self.by_postcode.get(postcode, [])) == 1:
-            return self.by_postcode[postcode][0]["ars"], "plz"
+            return self.by_postcode[postcode][0]["ars"], "postcode"
         return "", ""
 
 
 class Localities:
-    """swisstopo Amtliches Ortschaftenverzeichnis: (PLZ, place, canton) → BFS municipality no."""
+    """swisstopo Amtliches Ortschaftenverzeichnis: (postcode, place, canton) → BFS municipality
+    number."""
 
     def __init__(self, data: bytes) -> None:
         z = zipfile.ZipFile(io.BytesIO(data))
         name = next(n for n in z.namelist() if n.lower().endswith(".csv"))
-        year, month, tag = z.getinfo(name).date_time[:3]
-        self.state = f"{year:04d}-{month:02d}-{tag:02d}"
+        year, month, day = z.getinfo(name).date_time[:3]
+        self.state = f"{year:04d}-{month:02d}-{day:02d}"
         text = z.read(name).decode("utf-8-sig")
         self.by_postcode: dict[str, list[dict[str, str]]] = collections.defaultdict(list)
         self.municipalities: dict[str, list[dict[str, str]]] = collections.defaultdict(list)
@@ -263,35 +288,35 @@ class Localities:
     def bfs(self, postcode: str, place: str, canton: str = "") -> tuple[str, str]:
         """(BFS number, method).
 
-        Methods: ``postcode`` (postcode lies in one municipality), ``plz+gemeinde`` (place name is
-        the municipality's name), ``plz+ort`` (place name is a locality of one municipality),
-        ``gemeinde-statt-plz`` (the place is a municipality of the same canton that the
-        postcode does not cover: the name wins), ``plz-anteil`` (still ambiguous: the
-        municipality with the largest share of the postcode's addresses), ``municipality``/``place``
-        (postcode unknown, e.g. a post-box or large-customer postcode, found by name within
-        the canton), or '' (not found).
+        Methods: ``postcode`` (postcode lies in one municipality), ``postcode+municipality``
+        (place name is the municipality's name), ``postcode+place`` (place name is a locality
+        of one municipality), ``municipality-not-postcode`` (the place is a municipality of
+        the same canton that the postcode does not cover: the name wins), ``postcode-share``
+        (still ambiguous: the municipality with the largest share of the postcode's
+        addresses), ``municipality``/``place`` (postcode unknown, e.g. a post-box or
+        large-customer postcode, found by name within the canton), or '' (not found).
         """
         o = simplify(re.sub(r"\s+\d+$", "", place))  # "Bern 60", "Luzern 16"
         candidates = self.by_postcode.get(postcode, [])
         if len({r["BFS-Nr"] for r in candidates}) == 1:
-            return candidates[0]["BFS-Nr"], "plz"
+            return candidates[0]["BFS-Nr"], "postcode"
         if candidates:
             municipality = [r for r in candidates if o in self._municipality(r)]
             if number := self._unique(municipality, ""):
-                return number, "plz+gemeinde"
+                return number, "postcode+municipality"
             locality = [r for r in candidates if simplify(r["Ortschaftsname"]) == o]
             if number := self._unique(locality, ""):
-                return number, "plz+ort"
+                return number, "postcode+place"
             if not municipality and not locality:
                 if number := self._unique(self.municipalities.get(o, []), canton):
-                    return number, "gemeinde-statt-plz"
+                    return number, "municipality-not-postcode"
             pool = municipality or locality or candidates
             pool = [r for r in pool if r["Kantonskürzel"] == canton] or pool
-            return max(pool, key=self._share)["BFS-Nr"], "plz-anteil"
+            return max(pool, key=self._share)["BFS-Nr"], "postcode-share"
         if number := self._unique(self.municipalities.get(o, []), canton):
-            return number, "gemeinde"
+            return number, "municipality"
         if number := self._unique(self.localities.get(o, []), canton):
-            return number, "ort"
+            return number, "place"
         return "", ""
 
 
@@ -333,7 +358,8 @@ def read_destatis(data: bytes) -> tuple[dict[str, str], list[dict[str, str]]]:
     published = next((v for v in imprint if v.startswith("Erschienen")), "")
     copyright_ = next((normalise_spaces(v) for v in imprint
                        if v.startswith("©") and "Statistisches Bundesamt" in v), "")
-    meta = {"jahr": year, "erschienen": published.rstrip("."), "copyright": copyright_}
+    meta = {"year": year, "published": publication_note(published.rstrip(".")),
+            "copyright": copyright_}
 
     hospitals = [z for z in workbook.table(hospital_sheet, lambda z: z.get("A") == "KH_ID_Pseudo")
                  if z.get("KH_ID_Pseudo")]
@@ -349,13 +375,13 @@ def read_destatis(data: bytes) -> tuple[dict[str, str], list[dict[str, str]]]:
     def shared(z: dict[str, str], kind: str) -> dict[str, str]:
         postcode = z.get("PLZ", "")
         return {
-            "land": "DE",
-            "strasse": normalise_spaces(f"{z.get('Straße', '')} {z.get('Hausnummer', '')}"),
-            "plz": postcode.zfill(5) if postcode.isdigit() else postcode,
-            "ort": normalise_spaces(z.get("Ort", "")),
-            "traeger": normalise_spaces(z.get("Trägername", "")),
-            "betten": str(to_int(z.get("Betten", ""))),
-            "quelle": f"destatis-{kind}-{year}",
+            "country": "DE",
+            "street": normalise_spaces(f"{z.get('Straße', '')} {z.get('Hausnummer', '')}"),
+            "postcode": postcode.zfill(5) if postcode.isdigit() else postcode,
+            "place": normalise_spaces(z.get("Ort", "")),
+            "provider": normalise_spaces(z.get("Trägername", "")),
+            "beds": str(to_int(z.get("Betten", ""))),
+            "source": f"destatis-{kind}-{year}",
             "ags": (z.get("Land", "").zfill(2) + z.get("Kreis", "").zfill(3)
                     + z.get("Gemeinde", "").zfill(3)),
         }
@@ -368,7 +394,7 @@ def read_destatis(data: bytes) -> tuple[dict[str, str], list[dict[str, str]]]:
         name = site_name(z.get("KH_Name", ""), z.get("Standortname", ""))
         beds, psych = to_int(z.get("Betten", "")), _psych_beds(z)
         if beds > 0:
-            type_name = "psychiatrie" if 2 * psych > beds else "krankenhaus"
+            type_name = PSYCHIATRY if 2 * psych > beds else HOSPITAL
         else:
             # no beds (day clinic, outpatient unit): by name, else by the hospital as a whole;
             # a day clinic or outpatient unit of a hospital with psychiatric beds counts as
@@ -376,14 +402,14 @@ def read_destatis(data: bytes) -> tuple[dict[str, str], list[dict[str, str]]]:
             p, t = hospital_psych[hid]
             psychiatric = (_PSYCH_WORD.search(name) or (t > 0 and 2 * p > t)
                            or (p > 0 and _DAY_CLINIC.search(name)))
-            type_name = "psychiatrie" if psychiatric else "krankenhaus"
-        lines.append({**shared(z, "khv"), "kennung": f"KH{hid}-{serial[hid]}",
-                      "name": name, "typ": type_name})
+            type_name = PSYCHIATRY if psychiatric else HOSPITAL
+        lines.append({**shared(z, "khv"), "code": f"KH{hid}-{serial[hid]}",
+                      "name": name, "type": type_name})
     for z in rehabs:
-        lines.append({**shared(z, "rhv"), "kennung": f"RH{z['RH_ID_Pseudo']}",
-                      "name": normalise_spaces(z.get("RH_Name", "")), "typ": "reha"})
+        lines.append({**shared(z, "rhv"), "code": f"RH{z['RH_ID_Pseudo']}",
+                      "name": normalise_spaces(z.get("RH_Name", "")), "type": REHABILITATION})
     meta["khv"], meta["rhv"] = str(len(hospitals)), str(len(rehabs))
-    meta["krankenhaeuser"] = str(len({z["KH_ID_Pseudo"] for z in hospitals}))
+    meta["hospitals"] = str(len({z["KH_ID_Pseudo"] for z in hospitals}))
     return meta, lines
 
 
@@ -411,25 +437,63 @@ def read_bag(data: bytes) -> tuple[dict[str, str], list[dict[str, str]]]:
         key = "|".join([s["KT"], s["Inst"], s.get("Standort", ""),
                         s.get("Adr_Standort", ""), s.get("Ort_Standort", "")])
         lines.append({
-            "land": "CH",
-            "kennung": "kzp-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10],
+            "country": "CH",
+            "code": "kzp-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:10],
             "name": site_name(s["Inst"], s.get("Standort", "")),
-            "typ": TYPES_CH.get(b.get("Typ", ""), "krankenhaus"),
-            "strasse": normalise_spaces(s.get("Adr_Standort", "")),
-            "plz": postcode, "ort": normalise_spaces(place),
-            "traeger": normalise_spaces(s["Inst"]), "betten": beds,
-            "quelle": f"bag-kzp-{year}",
-            "kanton": s.get("KT_Standort") or s["KT"],
+            "type": TYPES_CH.get(b.get("Typ", ""), HOSPITAL),
+            "street": normalise_spaces(s.get("Adr_Standort", "")),
+            "postcode": postcode, "place": normalise_spaces(place),
+            "provider": normalise_spaces(s["Inst"]), "beds": beds,
+            "source": f"bag-kzp-{year}",
+            "canton": s.get("KT_Standort") or s["KT"],
         })
-    return {"jahr": year, "betriebe": str(len(enterprises)), "standorte": str(len(lines))}, lines
+    return {"year": year, "enterprises": str(len(enterprises)), "sites": str(len(lines))}, lines
+
+
+# --- output -----------------------------------------------------------------------------------
+
+def header_line(de_meta: dict[str, str], ch_meta: dict[str, str], territory_date: str,
+                localities_state: str) -> str:
+    """The provenance line at the top of the file: sources, licences and dates."""
+    return (
+        f"# Source: DE Statistische Ämter des Bundes und der Länder (statistical offices of the"
+        f" Federation and the Länder), Verzeichnis der Krankenhäuser und Vorsorge- oder"
+        f" Rehabilitationseinrichtungen in Deutschland {de_meta['year']} (directory of"
+        f" hospitals and prevention or rehabilitation facilities in Germany; Destatis,"
+        f" {de_meta['published']}), modified: site names merged, type derived, ARS added from"
+        f" Destatis GV-ISys (territory as of {territory_date}); CH Bundesamt für Gesundheit"
+        f" (BAG, Federal Office of Public Health), Kennzahlen der Schweizer Spitäler"
+        f" {ch_meta['year']} (key figures of Swiss hospitals), sites, modified: BFS numbers"
+        f" added from swisstopo Amtliches Ortschaftenverzeichnis (official directory of"
+        f" localities, {localities_state}); AT not included; Licence: DE reproduction and"
+        f" distribution permitted with attribution ({de_meta['copyright']}), CH opendata.swiss"
+        f" terms_by (free use, attribution compulsory), swisstopo terms_open; As of:"
+        f" DE {de_meta['year']}-12-31, CH {ch_meta['year']}\n"
+    )
+
+
+def write(target: Path, header: str, lines: list[dict[str, str]]) -> None:
+    """Write the provenance line, the column names and the rows, gzip-compressed with
+    reproducible bytes."""
+    buffer = io.StringIO()
+    buffer.write(header)
+    w = csv.DictWriter(buffer, fieldnames=COLUMNS, lineterminator="\n", extrasaction="raise")
+    w.writeheader()
+    w.writerows(lines)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # no file name and no time stamp in the gzip header, the text compressed in one piece:
+    # reproducible bytes
+    with (open(target, "wb") as raw,
+          gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz):
+        gz.write(buffer.getvalue().encode("utf-8"))
 
 
 # --- main -------------------------------------------------------------------------------------
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--destatis", help="Krankenhausverzeichnis .xlsx (sonst Download)")
-    ap.add_argument("--bag", help="kzp23_data.xlsx (sonst Download)")
+    ap.add_argument("--destatis", help="Krankenhausverzeichnis .xlsx (else downloaded)")
+    ap.add_argument("--bag", help="kzp23_data.xlsx (else downloaded)")
     ap.add_argument("--localities", help="ortschaftenverzeichnis_plz_2056.csv.zip")
     ap.add_argument("--target", type=Path, default=TARGET)
     args = ap.parse_args(argv[1:])
@@ -439,62 +503,45 @@ def main(argv: list[str]) -> int:
     methods_de: collections.Counter[str] = collections.Counter()
     unresolved_de = []
     for z in de:
-        ars, method = key.ars(z.pop("ags"), z["plz"], z["ort"])
-        z["gemeinde_kennung"] = ars
-        methods_de[method or "offen"] += 1
-        if method not in ("schluessel", ""):
-            unresolved_de.append(f"  {method}: {z['plz']} {z['ort']} → {ars} ({z['name']})")
+        ars, method = key.ars(z.pop("ags"), z["postcode"], z["place"])
+        z["municipality_code"] = ars
+        methods_de[method or "open"] += 1
+        if method not in ("key", ""):
+            unresolved_de.append(f"  {method}: {z['postcode']} {z['place']} → {ars}"
+                                 f" ({z['name']})")
         elif not method:
-            unresolved_de.append(f"  offen: {z['plz']} {z['ort']} ({z['name']})")
+            unresolved_de.append(f"  open: {z['postcode']} {z['place']} ({z['name']})")
 
     ch_meta, ch = read_bag(load(args.bag, URL_BAG))
     places = Localities(load(args.localities, URL_LOCALITIES))
     methods_ch: collections.Counter[str] = collections.Counter()
     unresolved_ch = []
     for z in ch:
-        number, method = places.bfs(z["plz"], z["ort"], z.pop("kanton"))
-        z["gemeinde_kennung"] = number
-        methods_ch[method or "offen"] += 1
-        if method in ("plz-anteil", "gemeinde-statt-plz", ""):
-            unresolved_ch.append(f"  {method or 'offen'}: {z['plz']} {z['ort']} → {number}"
-                                 f" ({z['name']})")
+        number, method = places.bfs(z["postcode"], z["place"], z.pop("canton"))
+        z["municipality_code"] = number
+        methods_ch[method or "open"] += 1
+        if method in ("postcode-share", "municipality-not-postcode", ""):
+            unresolved_ch.append(f"  {method or 'open'}: {z['postcode']} {z['place']}"
+                                 f" → {number} ({z['name']})")
 
     lines = de + ch
-    territory_date = (re.search(r"Gebietsstand ([\d-]+)", key.source) or [None, "?"])[1]
-    header = (
-        f"# Quelle: DE Statistische Ämter des Bundes und der Länder, Verzeichnis der "
-        f"Krankenhäuser und Vorsorge- oder Rehabilitationseinrichtungen in Deutschland "
-        f"{de_meta['jahr']} (Destatis, {de_meta['erschienen']}), verändert: Standortnamen "
-        f"zusammengeführt, Typ abgeleitet, ARS aus Destatis GV-ISys ergänzt (Gebietsstand "
-        f"{territory_date}); CH Bundesamt für Gesundheit (BAG), Kennzahlen der Schweizer "
-        f"Spitäler {ch_meta['jahr']}, Standorte, verändert: BFS-Nr. aus swisstopo Amtliches "
-        f"Ortschaftenverzeichnis ({places.state}) ergänzt; AT nicht enthalten; "
-        f"Lizenz: DE Vervielfältigung und Verbreitung mit Quellenangabe gestattet "
-        f"({de_meta['copyright']}), CH opendata.swiss terms_by (freie "
-        f"Nutzung, Quellenangabe Pflicht), swisstopo terms_open; "
-        f"Stand: DE 31.12.{de_meta['jahr']}, CH {ch_meta['jahr']}\n"
-    )
-    args.target.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.target, "wb") as raw, \
-            gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz, \
-            io.TextIOWrapper(gz, encoding="utf-8", newline="") as f:
-        f.write(header)
-        w = csv.DictWriter(f, fieldnames=COLUMNS, lineterminator="\n", extrasaction="raise")
-        w.writeheader()
-        w.writerows(lines)
+    found = re.search(r"(?:Gebietsstand|territory as of) ([\d-]+)", key.source)
+    territory_date = found[1] if found else "?"
+    write(args.target, header_line(de_meta, ch_meta, territory_date, places.state), lines)
 
-    types = collections.Counter((z["land"], z["typ"]) for z in lines)
-    print(f"DE: {de_meta['khv']} Krankenhausstandorte ({de_meta['krankenhaeuser']} Häuser), "
-          f"{de_meta['rhv']} Vorsorge-/Reha-Einrichtungen, Berichtsjahr {de_meta['jahr']}")
-    print(f"CH: {ch_meta['standorte']} Standorte von {ch_meta['betriebe']} Spitalbetrieben, "
-          f"Datenjahr {ch_meta['jahr']}")
+    types = collections.Counter((z["country"], z["type"]) for z in lines)
+    print(f"DE: {de_meta['khv']} hospital sites ({de_meta['hospitals']} hospitals), "
+          f"{de_meta['rhv']} prevention/rehabilitation facilities, reporting year"
+          f" {de_meta['year']}")
+    print(f"CH: {ch_meta['sites']} sites of {ch_meta['enterprises']} hospital enterprises, "
+          f"data year {ch_meta['year']}")
     for (country, type_name), n in sorted(types.items()):
         print(f"  {country} {type_name}: {n}")
-    print("Gemeindeschlüssel DE:", dict(methods_de.most_common()))
-    print("Gemeindeschlüssel CH:", dict(methods_ch.most_common()))
-    print("DE ohne direkten Schlüssel:", *sorted(set(unresolved_de)), sep="\n")
-    print("CH mehrdeutig oder offen:", *unresolved_ch, sep="\n")
-    print(f"{len(lines)} Zeilen nach {args.target} geschrieben"
+    print("municipality keys DE:", dict(methods_de.most_common()))
+    print("municipality keys CH:", dict(methods_ch.most_common()))
+    print("DE without a direct key:", *sorted(set(unresolved_de)), sep="\n")
+    print("CH ambiguous or open:", *unresolved_ch, sep="\n")
+    print(f"{len(lines)} rows written to {args.target}"
           f" ({args.target.stat().st_size / 1024:.0f} KB)")
     return 0
 

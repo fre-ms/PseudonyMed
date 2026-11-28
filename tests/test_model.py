@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pseudonymed.core.model import Patient, _date_from, _list_from, _person_fields
+from pseudonymed.core.model import Patient, _date_from, _list_from, _person_fields, in_english
 
 
 def test_date_from() -> None:
@@ -24,13 +24,15 @@ def test_list_from() -> None:
 
 
 def test_person_fields_and_patient() -> None:
-    fields = _person_fields({"nachname": " Beispiel ", "vorname": "Max", "telefon": "0123",
-                             "email": "max@example.org", "geburtsdatum": "02.01.1970 10:30"})
+    fields = _person_fields({"surname": " Beispiel ", "first_name": "Max", "phones": "0123",
+                             "emails": "max@example.org", "birth_date": "02.01.1970 10:30"})
     assert fields["surname"] == "Beispiel" and fields["phones"] == ["0123"]
     assert fields["emails"] == ["max@example.org"]
     assert fields["birth_date"] == dt.date(1970, 1, 2)
-    assert _person_fields({"telefone": ["a"], "telefon": "b"})["phones"] == ["a"]
+    # a file written by hand may use the German keys, the singular forms included
+    assert in_english({"Telefon": "0123", "email": "x", "nachname": "B", "first_name": "M"}) == {
+        "phones": "0123", "emails": "x", "surname": "B", "first_name": "M"}
     p = Patient.from_dict({"nachname": "Beispiel", "aktenzeichen": [1],
                            "angehoerige": [{"nachname": "B", "telefon": "9"}]})
     assert p.relatives[0].phones == ["9"] and p.case_numbers == ["1"]
-    assert p.as_dict()["angehoerige"] == [{"nachname": "B", "telefone": ["9"]}]
+    assert p.as_dict()["relatives"] == [{"surname": "B", "phones": ["9"]}]

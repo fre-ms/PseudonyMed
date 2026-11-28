@@ -184,7 +184,7 @@ class Preparation(PreparationBase):
         page = self.pages[number]
         added = box_to_hits(page.text_base, rect, pseudonym)
         for f in added:
-            f.source = "manuell"
+            f.source = "manual"
         page.hits += added
         self.version += 1
         return added
@@ -197,12 +197,12 @@ class Preparation(PreparationBase):
         inside = pymupdf.Rect(rect)
         page.hits = [
             f for f in page.hits
-            if f.rule == "maske" or not f.rects
+            if f.rule == "mask" or not f.rects
             or not all(inside.contains(pymupdf.Rect(r)) for r in f.rects)
         ]
         added = self.box(number, rect, "[geschwärzt]")
         for f in added:
-            f.rule = "maske"
+            f.rule = "mask"
         return added
 
     def word_at(self, number: int, x: float, y: float) -> tuple[int, int] | None:
@@ -222,14 +222,14 @@ class Preparation(PreparationBase):
         text = base.text[start:end]
         source = "ocr" if base is page.ocr else "text"
         page.hits = [f for f in page.hits
-                     if f.source not in (source, "manuell")
+                     if f.source not in (source, "manual")
                      or not (start < f.end and end > f.start)]
         f = Hit(page=number, start=start, end=end, text=text, kind=Kind.TERM,
-                rule="aufnahme",
+                rule="taken_up",
                        pseudonym=(pseudonym
                                   or self.assignment.identifier("Begriff", text, Kind.TERM)),
                 rects=[tuple(r) for r in base.rects(start, end)],
-                font_size=base.font_size(start, end), source="manuell")
+                font_size=base.font_size(start, end), source="manual")
         page.hits.append(f)
         self.version += 1
         return f
@@ -246,7 +246,7 @@ def _page_notes(r: Toolkit, pages: list[PageEntry], spared: list[str]) -> list[s
     unreadable OCR lines that were redacted as a precaution."""
     all_items = [f for s in pages for f in s.hits]
     notes = analysis_notes(r, all_items, spared)
-    unreadable = sum(1 for f in all_items if f.rule == "ocr.unlesbar")
+    unreadable = sum(1 for f in all_items if f.rule == "ocr.unreadable")
     if unreadable:
         notes.append(say(f"{unreadable} unlesbare OCR-Zeile(n) vorsorglich geschwärzt.",
                          f"{unreadable} unreadable OCR line(s) redacted as a precaution."))

@@ -14,11 +14,11 @@ from pseudonymed.cli.base import (
     StoreOption,
     abort,
     add_group,
+    canonical,
     choice,
     command,
     error_message,
     flags,
-    german,
     shown,
     value_name,
     w,
@@ -68,14 +68,11 @@ def load_extra_data(
     from pseudonymed.detection import extra_data as extra_data_mod
     from pseudonymed.detection.identifiers import IdentifierTable
 
-    if german(name, ("kliniken-at",)) != "kliniken-at":
+    if canonical(name, ("hospitals-at",)) != "hospitals-at":
         raise typer.BadParameter(w("bekannt ist nur: kliniken-at",
                                    "the only one known is hospitals-at"))
-    typer.echo(w(extra_data_mod.CLINICS_AT_NOTE,
-                 "Source: Federal Ministry of Labour, Social Affairs, Health, Care and Consumer"
-                 " Protection (BMASGPK), list of hospitals in Austria. The ministry permits"
-                 " reprinting with attribution except for commercial purposes. PseudonyMed loads"
-                 " the list into your local database only and does not pass it on."))
+    note = extra_data_mod.CLINICS_AT_NOTE
+    typer.echo(w(note, note.en))
     try:
         with IdentifierTable() as table:
             report = extra_data_mod.load_clinics_at(table, file=file)
@@ -128,13 +125,13 @@ def export_database(
         help=w("Zielordner oder Dateiname (.zip).", "Target folder or file name (.zip)."))],
     store: StoreOption = None,
     config: Annotated[bool, typer.Option(*flags("--konfig/--ohne-konfig"),
-                                         help=w("konfig.toml einschließen.",
-                                                "Include konfig.toml."))] = True,
+                                         help=w("config.toml einschließen.",
+                                                "Include config.toml."))] = True,
     vocabulary: Annotated[bool, typer.Option(*flags("--vokabular/--ohne-vokabular"),
                                              help=w("Fachvokabular einschließen.",
                                                     "Include the vocabulary."))] = True,
     passphrase: Annotated[str | None, typer.Option(
-        "--passphrase", envvar=environment.names("SICHERUNG_PASSPHRASE"),
+        "--passphrase", envvar=environment.names("BACKUP_PASSPHRASE"),
         help=w("Passphrase für das Archiv (sonst Abfrage).",
                "Passphrase for the archive (otherwise asked for)."))] = None,
     unencrypted: Annotated[bool, typer.Option(
@@ -179,9 +176,9 @@ def import_database(
     mode: Annotated[str, typer.Option(*flags("--modus"),
                                       help=w("ersetzen oder zusammenfuehren.",
                                              "replace or merge."))]
-    = value_name("ersetzen"),
+    = value_name("replace"),
     passphrase: Annotated[str | None, typer.Option(
-        "--passphrase", envvar=environment.names("SICHERUNG_PASSPHRASE"),
+        "--passphrase", envvar=environment.names("BACKUP_PASSPHRASE"),
         help=w("Passphrase des Archivs (sonst Abfrage, falls verschlüsselt).",
                "Passphrase of the archive (otherwise asked for if it is encrypted)."))] = None,
     config: Annotated[bool, typer.Option(*flags("--konfig/--ohne-konfig"),
@@ -210,7 +207,7 @@ def import_database(
     if not yes and not typer.confirm(
             w("Datenbank und Schlüssel ersetzen (die jetzigen werden daneben gesichert)?",
               "Replace database and key (the current ones are backed up alongside)?")
-            if mode == "ersetzen" else w("Einträge des Archivs übernehmen?",
+            if mode == "replace" else w("Einträge des Archivs übernehmen?",
                                          "Add the entries of the archive?")):
         raise typer.Exit(code=1)
     try:
@@ -272,7 +269,7 @@ def create_key(
     except pgp_module.PGPError as e:
         abort(error_message(e), cause=e)
     target.mkdir(parents=True, exist_ok=True)
-    pub, sec = target / "pseudonymed_oeffentlich.asc", target / "pseudonymed_privat.asc"
+    pub, sec = target / "pseudonymed_public.asc", target / "pseudonymed_private.asc"
     if sec.exists():
         abort(w(f"{sec} existiert schon; nicht überschrieben.",
                 f"{sec} already exists; not overwritten."))

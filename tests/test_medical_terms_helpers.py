@@ -55,7 +55,7 @@ def test_without_a_store_the_bundled_lists_protect(tmp_path: Path,
     fb = terms_module.load()
     assert fb.sources == [(k, len(terms)) for k, terms in vocab_mod.bundled().items()]
     assert fb.is_medical_term("Nierenlager") and not fb.is_medical_term("Flantzitis")
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path))
     terms_module.standard.cache_clear()
     with vocab_mod.Vocabulary() as v:
         v.add(["Flantzitis"])

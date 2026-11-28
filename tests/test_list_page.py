@@ -43,15 +43,17 @@ def test_common_buttons_translated(qapp: QApplication) -> None:  # noqa: F811
 def test_selection_follows_the_sorting(qapp: QApplication) -> None:  # noqa: F811
     """Selected view rows come back as model rows in model order, whatever the sort."""
     page = VocabularyPage(Session(store_path=None))
-    page.model.load([("Wade", "Anatomie", ""), ("Arm", "Anatomie", ""),
-                     ("Knie", "Anatomie", "")])
+    page.model.load([("Wade", "body parts", ""), ("Arm", "body parts", ""),
+                     ("Knie", "body parts", "")])
     page.view.sortByColumn(0, Qt.SortOrder.DescendingOrder)  # Wade, Knie, Arm
     selection = page.view.selectionModel()
     for line in (0, 2):
         selection.select(page.proxy.index(line, 0), QItemSelectionModel.SelectionFlag.Select
                          | QItemSelectionModel.SelectionFlag.Rows)
     assert page.selected_entries() == ["Wade", "Arm"]
-    assert page.model.columnCount() == 2 and page.model.data(page.model.index(0, 1)) == "Anatomie"
+    # the category by its label in the interface language
+    assert page.model.columnCount() == 2
+    assert page.model.data(page.model.index(0, 1)) == "Körperteile"
 
 
 def test_model_answers_qt(qapp: QApplication) -> None:  # noqa: F811
@@ -59,11 +61,12 @@ def test_model_answers_qt(qapp: QApplication) -> None:  # noqa: F811
     yields nothing, and an edit in a foreign role is refused before it reaches the page."""
     page = IdentifiersPage(Session(store_path=None))
     model = page.model
-    model.load([Entry("Musterwerk AG", "Sonstiges", lexicon.USER, "", "")])
+    model.load([Entry("Musterwerk AG", "other", lexicon.USER, "", "")])
     assert model.rowCount() == 1 and model.columnCount() == 4
     assert [model.headerData(i, Qt.Orientation.Horizontal) for i in range(4)] == [
         "Begriff", "Klasse", "Angaben", "Quelle"]
     assert model.headerData(0, Qt.Orientation.Vertical) is None
+    assert model.data(model.index(0, 1)) == "Sonstiges"  # the class by its German label
     assert model.data(model.index(0, 3)) == "eigene"
     assert model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole) is None
     editable = [bool(model.flags(model.index(0, i)) & Qt.ItemFlag.ItemIsEditable)

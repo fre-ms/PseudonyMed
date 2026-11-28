@@ -22,11 +22,11 @@ from pseudonymed.pseudonyms.pgp import Certificate  # noqa: E402
 from tests.test_gui import qapp  # noqa: E402, F401
 
 # the run options the page owns, in their default state and ticked the other way round
-DEFAULTS = {"date_format": "jahr", "codes": True, "unreadable": "schwaerzen", "medical_terms": True,
+DEFAULTS = {"date_format": "year", "codes": True, "unreadable": "redact", "medical_terms": True,
             "identifiers": True, "redact_drugs": False,
             "redact_doses": False, "redact_lab_tests": False,
             "redact_measurements": False, "fuzzy_text": True}
-INVERTED = {"date_format": "alter", "codes": False, "unreadable": "lassen", "medical_terms": False,
+INVERTED = {"date_format": "age", "codes": False, "unreadable": "keep", "medical_terms": False,
              "identifiers": False, "redact_drugs": True,
              "redact_doses": True, "redact_lab_tests": True,
              "redact_measurements": True, "fuzzy_text": False}
@@ -102,7 +102,7 @@ def test_analyse_again_button(qapp: QApplication, tmp_path: Path, report_pdf: Pa
     d = session.documents[0]
     first = d.preparation
     assert first is not None and "Fertig: 1" in page.status.text()
-    first.discard(next(f for f in first.hits if f.rule == "zuweiser1.name"))
+    first.discard(next(f for f in first.hits if f.rule == "referrer1.name"))
     page.button.click()  # nothing queued: the document waits for its review and export
     qapp.processEvents()
     assert d.preparation is first and "Fertig: 0" in page.status.text()
@@ -111,7 +111,7 @@ def test_analyse_again_button(qapp: QApplication, tmp_path: Path, report_pdf: Pa
     qapp.processEvents()
     assert d.preparation is not None and d.preparation is not first
     assert "Fertig: 1" in page.status.text() and page.button.isEnabled()
-    assert [f.rule for f in d.preparation.discarded] == ["zuweiser1.name"]
+    assert [f.rule for f in d.preparation.discarded] == ["referrer1.name"]
     assert "Treffer" in page.listing.item(0).text()
     _tidy_up(qapp, session, page)
 

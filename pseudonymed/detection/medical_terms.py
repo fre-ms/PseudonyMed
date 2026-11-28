@@ -159,7 +159,7 @@ USER_LIST = "nutzervokabular"
 def merge_terms(path: Path, name: str = USER_LIST) -> tuple[Path, int]:
     """Merge the terms of ``path`` (one per line or CSV) into the vocabulary under the
     category ``name`` ("nutzervokabular" = Nutzervokabular); returns the store and how
-    many were new.  This is what the exported ``.vokabular.txt`` files are for: the
+    many were new.  This is what the exported ``.vocabulary.txt`` files are for: the
     vocabulary grows with every review."""
     from pseudonymed.detection import vocabulary as vocab_mod
 
@@ -171,7 +171,7 @@ def merge_terms(path: Path, name: str = USER_LIST) -> tuple[Path, int]:
     return target, new
 
 
-def import_file(path: Path, name: str, format_: str = "liste", column: int = 0,
+def import_file(path: Path, name: str, format_: str = "list", column: int = 0,
                 delimiter: str = ";") -> tuple[Path, int]:
     """Add the terms of ``path`` to the vocabulary under the category ``name``; returns
     the store and how many were new."""
@@ -179,7 +179,7 @@ def import_file(path: Path, name: str, format_: str = "liste", column: int = 0,
         terms = terms_from_mesh_xml(path)
     elif format_ == "csv":
         terms = terms_from_csv(path, column, delimiter)
-    elif format_ == "liste":
+    elif format_ == "list":
         terms = _read_list(path)
     else:
         raise ValueError(say(f"Unbekanntes Format: {format_!r} (liste, csv, mesh-xml)",

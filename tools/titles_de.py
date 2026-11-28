@@ -1,8 +1,8 @@
-"""Build ``pseudonymed/daten/titel_de.csv.gz``: academic, noble, ecclesiastical and official titles.
+"""Build ``pseudonymed/data/titles_de.csv.gz``: academic, noble, religious and official titles.
 
 Sources
 -------
-* **Curated list** in this script (``kuratiert()``): academic degrees and positions with
+* **Curated list** in this script (``curated()``): academic degrees and positions with
   their usual abbreviations, Austrian and Swiss particularities (Mag., DI, lic. phil.,
   med. pract., Austrian "Berufstitel" such as Hofrat or Kommerzialrat), noble titles and
   particles, ecclesiastical titles, official titles ("Amtsbezeichnungen", ranks of the
@@ -18,9 +18,9 @@ Sources
   Wikidata's noble and honorary title classes were checked too but are dominated by
   non-German titles (British peerages, Soviet honorary titles) and are not used.
 
-Columns: ``term`` (full form, one row per gender form), ``category`` (always "Titel"),
-``kind`` (akademisch, adel, kirchlich, amt, ehren), ``abkuerzung`` (one per row; a title
-with several abbreviations has several rows), ``country`` (DE, AT, CH or alle).
+Columns: ``term`` (full form, one row per gender form), ``class`` (always "title"),
+``kind`` (academic, nobility, religious, office, honorary), ``abbreviation`` (one per row; a
+title with several abbreviations has several rows), ``country`` (DE, AT, CH or all).
 
 Usage::
 
@@ -45,16 +45,18 @@ from pathlib import Path
 ENDPOINT = "https://query.wikidata.org/sparql"
 AGENT = ("PseudonyMed/0.1 (open-source medical de-identification;"
          " https://github.com/fre-ms/PseudonyMed)")
-TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "titel_de.csv.gz"
+TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "titles_de.csv.gz"
+HEADER = ["term", "class", "kind", "abbreviation", "country"]
 COUNTRIES = {"Q183": "DE", "Q40": "AT", "Q39": "CH"}
 # Wrong or misleading short names on Wikidata (checked 2026-11-02): Abitur is no title;
 # "Ph.D." carries the short name "Dr. phil."; "Dipl.-Ing." carries "M.Sc."; "Candidata
 # oeconomiae" carries "cand. odont."; "Landinspektor" is a Danish degree.
 WIKIDATA_EXCLUDED = frozenset({"Q708387", "Q752297", "Q15206450", "Q55334492",
                                "Q66499193"})
-KINDS = ("akademisch", "adel", "kirchlich", "amt", "ehren")
+KINDS = ("academic", "nobility", "religious", "office", "honorary")  # in the order of the file
+ALL = "all"  # the country of a title in use in all three countries
 
-Row = tuple[str, str, str, str]          # begriff, art, abkuerzung, land
+Row = tuple[str, str, str, str]          # term, kind, abbreviation, country
 
 
 def female(term: str) -> str:
@@ -87,28 +89,28 @@ def curated() -> list[Row]:
         t(kind, country, m, *abbr)
         t(kind, country, f or female(m), *(abbr if abbr_f is None else abbr_f))
 
-    a = "akademisch"
+    a = "academic"
     # doctorates (Germany and in general)
-    mf(a, "alle", "Doktor", "Dr.", f="Doktorin")
+    mf(a, "all", "Doktor", "Dr.", f="Doktorin")
     t(a, "AT", "Doktorin", "Dr.in")
-    t(a, "alle", "Doktoren", "Dres.")
+    t(a, "all", "Doktoren", "Dres.")
     for term, abbr, country in (
-        ("Doktor der Medizin", "Dr. med.", "alle"),
-        ("Doktor der Zahnmedizin", "Dr. med. dent.", "alle"),
-        ("Doktor der Tiermedizin", "Dr. med. vet.", "alle"),
-        ("Doktor der Naturwissenschaften", "Dr. rer. nat.", "alle"),
-        ("Doktor der Philosophie", "Dr. phil.", "alle"),
-        ("Doktor der Rechtswissenschaft", "Dr. iur.", "alle"),
-        ("Doktor der Rechtswissenschaft", "Dr. jur.", "alle"),
-        ("Doktor beider Rechte", "Dr. iur. utr.", "alle"),
-        ("Doktor der Staatswissenschaften", "Dr. rer. pol.", "alle"),
-        ("Doktor der Wirtschaftswissenschaften", "Dr. rer. oec.", "alle"),
-        ("Doktor der Sozialwissenschaften", "Dr. rer. soc.", "alle"),
-        ("Doktor der Theologie", "Dr. theol.", "alle"),
+        ("Doktor der Medizin", "Dr. med.", "all"),
+        ("Doktor der Zahnmedizin", "Dr. med. dent.", "all"),
+        ("Doktor der Tiermedizin", "Dr. med. vet.", "all"),
+        ("Doktor der Naturwissenschaften", "Dr. rer. nat.", "all"),
+        ("Doktor der Philosophie", "Dr. phil.", "all"),
+        ("Doktor der Rechtswissenschaft", "Dr. iur.", "all"),
+        ("Doktor der Rechtswissenschaft", "Dr. jur.", "all"),
+        ("Doktor beider Rechte", "Dr. iur. utr.", "all"),
+        ("Doktor der Staatswissenschaften", "Dr. rer. pol.", "all"),
+        ("Doktor der Wirtschaftswissenschaften", "Dr. rer. oec.", "all"),
+        ("Doktor der Sozialwissenschaften", "Dr. rer. soc.", "all"),
+        ("Doktor der Theologie", "Dr. theol.", "all"),
         ("Doktor der Ingenieurwissenschaften", "Dr.-Ing.", "DE"),
-        ("Doktor der Agrarwissenschaften", "Dr. agr.", "alle"),
+        ("Doktor der Agrarwissenschaften", "Dr. agr.", "all"),
         ("Doktor der Agrarwissenschaften", "Dr. sc. agr.", "DE"),
-        ("Doktor der Erziehungswissenschaften", "Dr. paed.", "alle"),
+        ("Doktor der Erziehungswissenschaften", "Dr. paed.", "all"),
         ("Doktor der Humanbiologie", "Dr. rer. biol. hum.", "DE"),
         ("Doktor der Humanwissenschaften", "Dr. sc. hum.", "DE"),
         ("Doktor der Medizinwissenschaften", "Dr. rer. medic.", "DE"),
@@ -132,37 +134,37 @@ def curated() -> list[Row]:
         ("Doktor der Naturwissenschaften", "Dr. phil. nat.", "CH"),
         ("Doktor der technischen Wissenschaften", "Dr. sc. techn.", "CH"),
         ("Doktor der Wissenschaften", "Dr. sc.", "CH"),
-        ("Ehrendoktor", "Dr. h. c.", "alle"),
-        ("Ehrendoktor", "Dr. h.c.", "alle"),
+        ("Ehrendoktor", "Dr. h. c.", "all"),
+        ("Ehrendoktor", "Dr. h.c.", "all"),
         ("Ehrendoktor der Ingenieurwissenschaften", "Dr.-Ing. E. h.", "DE"),
-        ("mehrfacher Doktor", "Dr. mult.", "alle"),
+        ("mehrfacher Doktor", "Dr. mult.", "all"),
         ("zweifacher Doktor", "DDr.", "AT"),
         ("zweifacher Magister", "MMag.", "AT"),
-        ("habilitierter Doktor", "Dr. habil.", "alle"),
-        ("habilitierter Doktor der Medizin", "Dr. med. habil.", "alle"),
-        ("habilitierter Doktor der Naturwissenschaften", "Dr. rer. nat. habil.", "alle"),
-        ("habilitierter Doktor der Philosophie", "Dr. phil. habil.", "alle"),
-        ("habilitiert", "habil.", "alle"),
-        ("Doctor of Philosophy", "Ph.D.", "alle"), ("Doctor of Philosophy", "PhD", "alle"),
-        ("Doctor of Philosophy", "D.Phil.", "alle"),
-        ("Doctor of Medicine", "M.D.", "alle"), ("Doctor of Medicine", "MD", "alle"),
-        ("Doctor of Dental Surgery", "DDS", "alle"),
-        ("Doctor of Dental Medicine", "DMD", "alle"),
-        ("Doctor of Public Health", "DrPH", "alle"),
-        ("Doctor of Business Administration", "DBA", "alle"),
-        ("Doctor of Science", "D.Sc.", "alle"), ("Juris Doctor", "J.D.", "alle"),
-        ("Doctor of Pharmacy", "Pharm.D.", "alle"),
+        ("habilitierter Doktor", "Dr. habil.", "all"),
+        ("habilitierter Doktor der Medizin", "Dr. med. habil.", "all"),
+        ("habilitierter Doktor der Naturwissenschaften", "Dr. rer. nat. habil.", "all"),
+        ("habilitierter Doktor der Philosophie", "Dr. phil. habil.", "all"),
+        ("habilitiert", "habil.", "all"),
+        ("Doctor of Philosophy", "Ph.D.", "all"), ("Doctor of Philosophy", "PhD", "all"),
+        ("Doctor of Philosophy", "D.Phil.", "all"),
+        ("Doctor of Medicine", "M.D.", "all"), ("Doctor of Medicine", "MD", "all"),
+        ("Doctor of Dental Surgery", "DDS", "all"),
+        ("Doctor of Dental Medicine", "DMD", "all"),
+        ("Doctor of Public Health", "DrPH", "all"),
+        ("Doctor of Business Administration", "DBA", "all"),
+        ("Doctor of Science", "D.Sc.", "all"), ("Juris Doctor", "J.D.", "all"),
+        ("Doctor of Pharmacy", "Pharm.D.", "all"),
     ):
         t(a, country, term, abbr)
     # students and candidates
-    mf(a, "alle", "Kandidat der Medizin", "cand. med.", f="Kandidatin der Medizin")
-    mf(a, "alle", "Kandidat der Zahnmedizin", "cand. med. dent.",
+    mf(a, "all", "Kandidat der Medizin", "cand. med.", f="Kandidatin der Medizin")
+    mf(a, "all", "Kandidat der Zahnmedizin", "cand. med. dent.",
        f="Kandidatin der Zahnmedizin")
-    mf(a, "alle", "Kandidat der Philosophie", "cand. phil.", f="Kandidatin der Philosophie")
-    mf(a, "alle", "Kandidat der Rechtswissenschaft", "cand. iur.",
+    mf(a, "all", "Kandidat der Philosophie", "cand. phil.", f="Kandidatin der Philosophie")
+    mf(a, "all", "Kandidat der Rechtswissenschaft", "cand. iur.",
        f="Kandidatin der Rechtswissenschaft")
-    mf(a, "alle", "Kandidat der Psychologie", "cand. psych.", f="Kandidatin der Psychologie")
-    mf(a, "alle", "Student der Medizin", "stud. med.", f="Studentin der Medizin")
+    mf(a, "all", "Kandidat der Psychologie", "cand. psych.", f="Kandidatin der Psychologie")
+    mf(a, "all", "Student der Medizin", "stud. med.", f="Studentin der Medizin")
     # diploma degrees (Germany, Austria, GDR)
     for m, abbr in (
         ("Diplom-Ingenieur", "Dipl.-Ing."), ("Diplom-Psychologe", "Dipl.-Psych."),
@@ -190,8 +192,8 @@ def curated() -> list[Row]:
         ("Diplom-Betriebswirt (FH)", "Dipl.-Betriebsw. (FH)"),
         ("Diplom-Sozialpädagoge (FH)", "Dipl.-Soz.-Päd. (FH)"),
     ):
-        mf(a, "DE" if "(FH)" in m else "alle", m, abbr)
-    mf(a, "alle", "Diplom-Kaufmann", "Dipl.-Kfm.", abbr_f=("Dipl.-Kffr.", "Dipl.-Kfr."))
+        mf(a, "DE" if "(FH)" in m else "all", m, abbr)
+    mf(a, "all", "Diplom-Kaufmann", "Dipl.-Kfm.", abbr_f=("Dipl.-Kffr.", "Dipl.-Kfr."))
     mf(a, "DE", "Diplom-Kaufmann (FH)", "Dipl.-Kfm. (FH)", abbr_f=("Dipl.-Kffr. (FH)",))
     mf(a, "DE", "Diplom-Mediziner", "Dipl.-Med.")
     mf(a, "DE", "Diplom-Stomatologe", "Dipl.-Stom.")
@@ -219,7 +221,7 @@ def curated() -> list[Row]:
         ("Master of Science in Nursing", ("MScN",)),
         ("Bachelor Professional", ("",)), ("Master Professional", ("",)),
     ):
-        t(a, "alle", term, *abbr)
+        t(a, "all", term, *abbr)
     t(a, "DE", "Magister Artium", "M.A.")
     mf(a, "AT", "Bakkalaureus", "Bakk.", f="Bakkalaurea")
     # Austrian magister degrees
@@ -234,7 +236,7 @@ def curated() -> list[Row]:
         ("Magister (FH)", "Mag. (FH)"),
     ):
         t(a, "AT", term, abbr)
-    t(a, "alle", "Magister der Theologie", "Mag. theol.")
+    t(a, "all", "Magister der Theologie", "Mag. theol.")
     # Swiss degrees and titles
     for term, abbr in (
         ("Lizentiat der Philosophie", "lic. phil."),
@@ -248,11 +250,11 @@ def curated() -> list[Row]:
         ("Facharzttitel FMH", "FMH"),
     ):
         t(a, "CH", term, abbr)
-    t(a, "alle", "Lizentiat der Theologie", "lic. theol.")
+    t(a, "all", "Lizentiat der Theologie", "lic. theol.")
     # academic positions
-    mf(a, "alle", "Professor", "Prof.")
+    mf(a, "all", "Professor", "Prof.")
     t(a, "AT", "Professorin", "Prof.in")
-    mf(a, "alle", "Universitätsprofessor", "Univ.-Prof.")
+    mf(a, "all", "Universitätsprofessor", "Univ.-Prof.")
     t(a, "AT", "Universitätsprofessorin", "Univ.-Prof.in")
     mf(a, "AT", "außerordentlicher Universitätsprofessor", "ao. Univ.-Prof.",
        f="außerordentliche Universitätsprofessorin")
@@ -260,21 +262,21 @@ def curated() -> list[Row]:
        f="ordentliche Universitätsprofessorin")
     mf(a, "DE", "außerplanmäßiger Professor", "apl. Prof.",
        f="außerplanmäßige Professorin")
-    mf(a, "alle", "Honorarprofessor", "Hon.-Prof.")
+    mf(a, "all", "Honorarprofessor", "Hon.-Prof.")
     mf(a, "DE", "Juniorprofessor", "Jun.-Prof.")
-    t(a, "alle", "Professor emeritus", "Prof. em.")
-    mf(a, "alle", "emeritierter Professor", "em. Prof.", f="emeritierte Professorin")
+    t(a, "all", "Professor emeritus", "Prof. em.")
+    mf(a, "all", "emeritierter Professor", "em. Prof.", f="emeritierte Professorin")
     mf(a, "CH", "Titularprofessor", "Tit.-Prof.")
     mf(a, "AT", "Assistenzprofessor", "Ass.-Prof.")
     mf(a, "AT", "assoziierter Professor", "Assoz. Prof.", f="assoziierte Professorin")
-    mf(a, "alle", "Gastprofessor", "Gastprof.")
-    mf(a, "alle", "Privatdozent", "PD", "Priv.-Doz.")
+    mf(a, "all", "Gastprofessor", "Gastprof.")
+    mf(a, "all", "Privatdozent", "PD", "Priv.-Doz.")
     mf(a, "AT", "Universitätsdozent", "Univ.-Doz.")
-    mf(a, "alle", "Dozent", "Doz.")
-    mf(a, "alle", "Rektor", "")
-    mf(a, "alle", "Dekan", "")
+    mf(a, "all", "Dozent", "Doz.")
+    mf(a, "all", "Rektor", "")
+    mf(a, "all", "Dekan", "")
 
-    a = "adel"
+    a = "nobility"
     for m, f, abbr, abbr_f in (
         ("Kaiser", "Kaiserin", "", ""), ("König", "Königin", "", ""),
         ("Erzherzog", "Erzherzogin", "", ""), ("Großherzog", "Großherzogin", "", ""),
@@ -289,16 +291,16 @@ def curated() -> list[Row]:
         ("Reichsfreiherr", "Reichsfreifrau", "", ""), ("Baron", "Baronin", "", ""),
         ("Edler", "Edle", "", ""), ("Ritter", "", "", ""), ("Junker", "", "", ""),
     ):
-        t(a, "alle", m, abbr)
+        t(a, "all", m, abbr)
         if f:
-            t(a, "alle", f, abbr_f)
-    t(a, "alle", "Freiherr", "Frh.")
+            t(a, "all", f, abbr_f)
+    t(a, "all", "Freiherr", "Frh.")
     for term in ("Freiin", "Baronesse", "Komtesse", "Prinzgemahl"):
-        t(a, "alle", term)
+        t(a, "all", term)
     for term, abbr in (("von", "v."), ("zu", "z."), ("von und zu", "v. u. z."),
                        ("vom", ""), ("von der", ""), ("zur", ""), ("zum", ""),
                        ("Edler von", "Edler v."), ("Ritter von", "Ritter v.")):
-        t(a, "alle", term, abbr)
+        t(a, "all", term, abbr)
     for term, abbr in (("Majestät", ""), ("Seine Majestät", "S. M."),
                        ("Ihre Majestät", "I. M."), ("Hoheit", ""),
                        ("Königliche Hoheit", ""), ("Seine Königliche Hoheit", "S. K. H."),
@@ -306,9 +308,9 @@ def curated() -> list[Row]:
                        ("Durchlaucht", ""), ("Seine Durchlaucht", "S. D."),
                        ("Ihre Durchlaucht", "I. D."), ("Erlaucht", ""),
                        ("Hochgeboren", ""), ("Hochwohlgeboren", "")):
-        t(a, "alle", term, abbr)
+        t(a, "all", term, abbr)
 
-    a = "kirchlich"
+    a = "religious"
     for m, f, abbr, abbr_f in (
         ("Kardinal", "", "Kard.", ""), ("Erzbischof", "", "Erzb.", ""),
         ("Bischof", "Bischöfin", "", ""), ("Weihbischof", "", "", ""),
@@ -332,12 +334,12 @@ def curated() -> list[Row]:
         ("Landesrabbiner", "Landesrabbinerin", "", ""), ("Imam", "", "", ""),
         ("Hochwürden", "", "Hw.", ""), ("Ehrwürden", "", "", ""),
     ):
-        t(a, "alle", m, abbr)
+        t(a, "all", m, abbr)
         if f:
-            t(a, "alle", f, abbr_f)
+            t(a, "all", f, abbr_f)
     t(a, "AT", "Kooperator", "Koop.")
 
-    a = "amt"
+    a = "office"
     for m, abbr, country in (
         ("Studienrat", "StR", "DE"), ("Oberstudienrat", "OStR", "DE"),
         ("Studiendirektor", "StD", "DE"), ("Oberstudiendirektor", "OStD", "DE"),
@@ -362,16 +364,16 @@ def curated() -> list[Row]:
         ("Polizeioberkommissar", "POK", "DE"), ("Polizeihauptkommissar", "PHK", "DE"),
         ("Kriminalkommissar", "KK", "DE"), ("Kriminaloberkommissar", "KOK", "DE"),
         ("Kriminalhauptkommissar", "KHK", "DE"),
-        ("Bürgermeister", "Bgm.", "alle"), ("Oberbürgermeister", "OB", "DE"),
-        ("Landrat", "", "DE"), ("Stadtrat", "", "alle"), ("Gemeinderat", "", "alle"),
-        ("Minister", "", "alle"), ("Bundesminister", "", "alle"),
+        ("Bürgermeister", "Bgm.", "all"), ("Oberbürgermeister", "OB", "DE"),
+        ("Landrat", "", "DE"), ("Stadtrat", "", "all"), ("Gemeinderat", "", "all"),
+        ("Minister", "", "all"), ("Bundesminister", "", "all"),
         ("Ministerpräsident", "", "DE"), ("Staatsminister", "", "DE"),
-        ("Senator", "", "DE"), ("Bundeskanzler", "", "alle"),
-        ("Bundespräsident", "", "alle"), ("Nationalrat", "", "AT"),
+        ("Senator", "", "DE"), ("Bundeskanzler", "", "all"),
+        ("Bundespräsident", "", "all"), ("Nationalrat", "", "AT"),
         ("Nationalrat", "", "CH"), ("Ständerat", "", "CH"), ("Bundesrat", "", "CH"),
         ("Landeshauptmann", "LH", "AT"), ("Bezirkshauptmann", "BH", "AT"),
-        ("Botschafter", "", "alle"), ("Generalkonsul", "", "alle"),
-        ("Konsul", "", "alle"), ("Honorarkonsul", "", "alle"),
+        ("Botschafter", "", "all"), ("Generalkonsul", "", "all"),
+        ("Konsul", "", "all"), ("Honorarkonsul", "", "all"),
     ):
         f = (m.replace("Leitender ", "Leitende ").replace("Vorsitzender ", "Vorsitzende ")
              if m.startswith(("Leitender ", "Vorsitzender ")) else m)
@@ -385,15 +387,15 @@ def curated() -> list[Row]:
         t(a, country, f, abbr)
     for term, abbr, country in (
         ("Mitglied des Bundestages", "MdB", "DE"), ("Mitglied des Landtages", "MdL", "DE"),
-        ("Mitglied des Europäischen Parlaments", "MdEP", "alle"),
+        ("Mitglied des Europäischen Parlaments", "MdEP", "all"),
         ("Mitglied des Abgeordnetenhauses", "MdA", "DE"),
         ("Mitglied der Hamburgischen Bürgerschaft", "MdHB", "DE"),
         ("Mitglied der Bremischen Bürgerschaft", "MdBB", "DE"),
         ("Abgeordneter zum Nationalrat", "Abg. z. NR", "AT"),
         ("Abgeordnete zum Nationalrat", "Abg. z. NR", "AT"),
-        ("außer Dienst", "a. D.", "alle"), ("außer Dienst", "a.D.", "alle"),
-        ("im Ruhestand", "i. R.", "alle"), ("im Ruhestand", "i.R.", "alle"),
-        ("emeritus", "em.", "alle"),
+        ("außer Dienst", "a. D.", "all"), ("außer Dienst", "a.D.", "all"),
+        ("im Ruhestand", "i. R.", "all"), ("im Ruhestand", "i.R.", "all"),
+        ("emeritus", "em.", "all"),
         ("Gefreiter", "Gefr.", "DE"), ("Obergefreiter", "", "DE"),
         ("Hauptgefreiter", "", "DE"), ("Stabsgefreiter", "", "DE"),
         ("Unteroffizier", "Uffz.", "DE"), ("Stabsunteroffizier", "", "DE"),
@@ -410,12 +412,12 @@ def curated() -> list[Row]:
         ("Vizeadmiral", "", "DE"), ("Admiral", "", "DE"),
         ("Stabsarzt", "", "DE"), ("Oberstabsarzt", "", "DE"), ("Oberfeldarzt", "", "DE"),
         ("Oberstarzt", "", "DE"), ("Generalstabsarzt", "", "DE"), ("Generalarzt", "", "DE"),
-        ("Exzellenz", "", "alle"), ("Seine Exzellenz", "S. E.", "alle"),
-        ("Ihre Exzellenz", "I. E.", "alle"),
+        ("Exzellenz", "", "all"), ("Seine Exzellenz", "S. E.", "all"),
+        ("Ihre Exzellenz", "I. E.", "all"),
     ):
         t(a, country, term, abbr)
 
-    a = "ehren"
+    a = "honorary"
     for m, abbr, country in (
         ("Sanitätsrat", "SanR", "DE"), ("Justizrat", "JR", "DE"),
         ("Geheimrat", "Geh. Rat", "DE"), ("Geheimer Sanitätsrat", "", "DE"),
@@ -423,7 +425,7 @@ def curated() -> list[Row]:
         ("Kammersänger", "KS", "DE"), ("Kammersänger", "KS", "AT"),
         ("Kammerschauspieler", "", "DE"), ("Kammerschauspieler", "", "AT"),
         ("Kammervirtuose", "", "DE"), ("Kammermusiker", "", "DE"),
-        ("Ehrenbürger", "", "alle"), ("Ehrensenator", "", "alle"),
+        ("Ehrenbürger", "", "all"), ("Ehrensenator", "", "all"),
         ("Hofrat", "HR", "AT"), ("Wirklicher Hofrat", "", "AT"),
         ("Regierungsrat", "RegR", "AT"), ("Kommerzialrat", "KommR", "AT"),
         ("Ökonomierat", "ÖkR", "AT"), ("Medizinalrat", "MR", "AT"),
@@ -462,13 +464,13 @@ def curated() -> list[Row]:
         ("Bachelor of Science in Nursing", "BSN", "CH"),
         ("Bachelor of Science in Nursing", "BScN", "CH"),
         ("Master of Science in Nursing", "MSN", "CH"),
-        ("Medicinae universae doctor", "MUDr.", "alle"),
-        ("Medicinae dentalis doctor", "MDDr.", "alle"),
-        ("Candidatus scientiarum", "CSc", "alle"),
-        ("Doctor scientiarum", "DrSc", "alle"),
-        ("Doctor scientiarum", "DSc", "alle"),
+        ("Medicinae universae doctor", "MUDr.", "all"),
+        ("Medicinae dentalis doctor", "MDDr.", "all"),
+        ("Candidatus scientiarum", "CSc", "all"),
+        ("Doctor scientiarum", "DrSc", "all"),
+        ("Doctor scientiarum", "DSc", "all"),
     ):
-        t("akademisch", country, term, abbr)
+        t("academic", country, term, abbr)
     return z
 
 
@@ -485,19 +487,19 @@ def query(sparql: str, attempts: int = 5) -> list[dict[str, str]]:
             return list(csv.DictReader(io.StringIO(text)))
         except Exception as e:  # noqa: BLE001 - retry on timeouts and 429
             wait_time = 15 * (attempt + 1)
-            print(f"  Versuch {attempt + 1} fehlgeschlagen ({e}); warte {wait_time}s",
+            print(f"  attempt {attempt + 1} failed ({e}); waiting {wait_time}s",
                   file=sys.stderr)
             time.sleep(wait_time)
-    raise RuntimeError("Wikidata-Abfrage wiederholt fehlgeschlagen")
+    raise RuntimeError("Wikidata query failed repeatedly")
 
 
 def wikidata_degrees(known_abbr: set[str]) -> list[Row]:
     """Academic degrees and abbreviations from Wikidata that the curated list lacks."""
-    sparql = """SELECT DISTINCT ?item ?de ?kurz (LANG(?kurz) AS ?sprache) ?land WHERE {
+    sparql = """SELECT DISTINCT ?item ?de ?short (LANG(?short) AS ?lang) ?country WHERE {
   ?item (wdt:P31|wdt:P279)/wdt:P279* wd:Q189533 .
   ?item rdfs:label ?de . FILTER(LANG(?de) = "de")
-  ?item wdt:P1813 ?kurz . FILTER(LANG(?kurz) IN ("de", "la"))
-  OPTIONAL { ?item wdt:P17 ?land }
+  ?item wdt:P1813 ?short . FILTER(LANG(?short) IN ("de", "la"))
+  OPTIONAL { ?item wdt:P17 ?country }
 }"""
     names: dict[str, str] = {}
     short_forms: dict[str, set[str]] = collections.defaultdict(set)
@@ -505,23 +507,54 @@ def wikidata_degrees(known_abbr: set[str]) -> list[Row]:
     for z in query(sparql):
         qid = z["item"].rsplit("/", 1)[-1]
         names[qid] = z["de"].strip()
-        short = z["kurz"].strip()
-        if z["sprache"] == "de" or re.match(r"^(?:Dr\.|Mag\.|lic\.) ", short):
+        short = z["short"].strip()
+        if z["lang"] == "de" or re.match(r"^(?:Dr\.|Mag\.|lic\.) ", short):
             short_forms[qid].add(short)
-        if z["land"]:
-            states[qid].add(z["land"].rsplit("/", 1)[-1])
+        if z["country"]:
+            states[qid].add(z["country"].rsplit("/", 1)[-1])
     lines: list[Row] = []
     for qid, term in sorted(names.items()):
         countries = states[qid]
         if qid in WIKIDATA_EXCLUDED or (countries and not countries <= set(COUNTRIES)):
             continue
-        country = COUNTRIES[next(iter(countries))] if len(countries) == 1 else "alle"
+        country = COUNTRIES[next(iter(countries))] if len(countries) == 1 else ALL
         for short in sorted(short_forms[qid]):
             if (short in known_abbr or not short[:1].isupper()
                     or re.search(r"[A-Z][a-z]*Dr\.$", short)):
                 continue                    # known, or Czech/Slovak forms such as "MVDr."
-            lines.append((term, "akademisch", short, country))
+            lines.append((term, "academic", short, country))
     return lines
+
+
+def ordered(rows: set[Row]) -> list[Row]:
+    """The rows of the file: by kind, then term, country and abbreviation."""
+    return sorted(rows, key=lambda z: (KINDS.index(z[1]), z[0].casefold(), z[3], z[2]))
+
+
+def header_line(today: str) -> str:
+    """The provenance line at the top of the file: sources, licences and date."""
+    return ("# Source: curated list of PseudonyMed (designations and common abbreviations as"
+            " facts, supplemented with the title examples of the GeMTeX annotation guideline,"
+            " version 2, 2025, doi:10.5281/zenodo.15747389) and Wikidata (academic degrees,"
+            " Q189533, with a German short name P1813); Licence: curated list"
+            " AGPL-3.0-or-later like PseudonyMed, Wikidata CC0 1.0; As of: " + today + "\n")
+
+
+def write(target: Path, header: str, unique: list[Row]) -> None:
+    """Write the provenance line, the column names and the rows, gzip-compressed with
+    reproducible bytes."""
+    buffer = io.StringIO()
+    buffer.write(header)
+    w = csv.writer(buffer, lineterminator="\n")
+    w.writerow(HEADER)
+    for term, kind, abbr, country in unique:
+        w.writerow([term, "title", kind, abbr, country])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # no file name and no time stamp in the gzip header, the text compressed in one piece:
+    # reproducible bytes
+    with (open(target, "wb") as raw,
+          gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz):
+        gz.write(buffer.getvalue().encode("utf-8"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -534,33 +567,16 @@ def main(argv: list[str] | None = None) -> int:
     wd: list[Row] = []
     if not args.without_wikidata:
         wd = wikidata_degrees({a for _, _, a, _ in lines if a})
-        print(f"Wikidata: {len(wd)} zusätzliche Grade: "
+        print(f"Wikidata: {len(wd)} additional degrees: "
               + "; ".join(f"{b} ({a})" for b, _, a, _ in wd))
-    unique = sorted(set(lines) | set(wd),
-                    key=lambda z: (KINDS.index(z[1]), z[0].casefold(), z[3], z[2]))
-    today = dt.date.today().isoformat()
-    header = ("# Quelle: kuratierte Liste PseudonyMed (Bezeichnungen und gebräuchliche Abkürzungen"
-              " als Fakten, ergänzt um die Titelbeispiele der GeMTeX-Annotationsleitlinie,"
-              " 2. Version 2025, doi:10.5281/zenodo.15747389) und Wikidata (akademische Grade,"
-              " Q189533, mit deutscher"
-              " Kurzbezeichnung P1813); Lizenz: kuratierte Liste AGPL-3.0-or-later wie PseudonyMed,"
-              " Wikidata CC0 1.0; Stand: " + today + "\n")
+    unique = ordered(set(lines) | set(wd))
     target = Path(args.target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # no file name and no time stamp in the gzip header: reproducible bytes
-    with (open(target, "wb") as raw,
-          gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz,
-          io.TextIOWrapper(gz, encoding="utf-8", newline="") as f):
-        f.write(header)
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow(["begriff", "klasse", "art", "abkuerzung", "land"])
-        for term, kind, abbr, country in unique:
-            w.writerow([term, "Titel", kind, abbr, country])
+    write(target, header_line(dt.date.today().isoformat()), unique)
     per_kind = collections.Counter(kind for _, kind, _, _ in unique)
     terms_per_kind = collections.Counter(kind for _, kind in {(b, a) for b, a, _, _ in unique})
-    print(f"{len(unique)} Zeilen, " + ", ".join(
-        f"{kind} {per_kind[kind]} ({terms_per_kind[kind]} Begriffe)" for kind in KINDS))
-    print(f"geschrieben: {target} ({target.stat().st_size / 1024:.1f} KB)")
+    print(f"{len(unique)} rows, " + ", ".join(
+        f"{kind} {per_kind[kind]} ({terms_per_kind[kind]} terms)" for kind in KINDS))
+    print(f"written: {target} ({target.stat().st_size / 1024:.1f} KB)")
     return 0
 
 

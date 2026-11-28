@@ -18,11 +18,11 @@ EXPECTED = (
     "Seiten: 2    Textebene: nein\n"
     "Zeitpunkt: 2026-01-02T03:04:05+01:00\n"
     "Treffer: 4\n"
-    "  Seite 1: 3  (name.nachname 1, name.vorname 2)\n"
-    "  Seite 2: 1  (muster.email 1)\n"
+    "  Seite 1: 3  (name.first_name 2, name.surname 1)\n"
+    "  Seite 2: 1  (pattern.email 1)\n"
     "Pseudonyme: Patient ABCDE, [geb. 1990]\n"
     "Gegenprobe: NICHT bestanden (1 Resttreffer) – nichts exportiert\n"
-    "  Seite 2: name.nachname (ocr)\n"
+    "  Seite 2: name.surname (ocr)\n"
     "  Anmerkung: Seiten ohne Textebene konnten nicht geprüft werden\n"
     "Hinweise (durchgeführte Schritte):\n"
     "  - Ausgabe gerastert.\n"
@@ -32,8 +32,8 @@ EXPECTED = (
 
 
 def _matches(page: int, rule: str) -> dict[str, Any]:
-    return {"seite": page, "art": "name", "regel": rule, "pseudonym": "X", "rects": [],
-            "quelle": "text"}
+    return {"page": page, "kind": "name", "rule": rule, "pseudonym": "X", "rects": [],
+            "source": "text"}
 
 
 def _report(**fields: Any) -> Report:
@@ -46,11 +46,11 @@ def _report(**fields: Any) -> Report:
 def test_text_stays_verbatim() -> None:
     b = _report(
         text_layer=False,
-        hits=[_matches(2, "muster.email"), _matches(1, "name.vorname"),
-              _matches(1, "name.nachname"), _matches(1, "name.vorname")],
+        hits=[_matches(2, "pattern.email"), _matches(1, "name.first_name"),
+              _matches(1, "name.surname"), _matches(1, "name.first_name")],
         pseudonyms=["Patient ABCDE", "[geb. 1990]"],
-        recheck=Recheck(residual_matches=[{"seite": 2, "regel": "name.nachname",
-                                           "quelle": "ocr"}],
+        recheck=Recheck(residual_matches=[{"page": 2, "rule": "name.surname",
+                                           "source": "ocr"}],
                         remarks=["Seiten ohne Textebene konnten nicht geprüft werden"]),
         notes=["Ausgabe gerastert."], warnings=["Nicht freigegeben: Ausgabe verworfen."],
     )
@@ -72,18 +72,18 @@ def test_recheck_without_run_and_passed() -> None:
     assert rep._recheck_lines(None, DE) == ["Gegenprobe: nicht durchgeführt"]
     assert rep._recheck_lines(Recheck(), DE) == ["Gegenprobe: bestanden"]
     g = Recheck(checked=["Telefon", "E-Mail"],
-                kept_on_purpose=["name.nachname", "muster.email", "name.nachname"],
+                kept_on_purpose=["name.surname", "pattern.email", "name.surname"],
                 remarks=["Notiz"])
     assert rep._recheck_lines(g, DE) == [
         "Gegenprobe: bestanden",
         "  Erneut geprüft nach dem Prüfschritt: Telefon, E-Mail – nichts gefunden",
-        "  Bewusst belassen (im Prüfschritt verworfen): muster.email ×1, name.nachname ×2",
+        "  Bewusst belassen (im Prüfschritt verworfen): name.surname ×2, pattern.email ×1",
         "  Anmerkung: Notiz",
     ]
 
 
 def test_recheck_failed_truncates_the_residual_matches() -> None:
-    rest = [{"seite": i, "regel": "r", "quelle": "text"} for i in range(1, 26)]
+    rest = [{"page": i, "rule": "r", "source": "text"} for i in range(1, 26)]
     lines = rep._recheck_lines(Recheck(residual_matches=rest, remarks=["Notiz"]), DE)
     assert lines[0] == "Gegenprobe: NICHT bestanden (25 Resttreffer) – nichts exportiert"
     shown = rep.RESIDUAL_MATCHES_IN_TEXT

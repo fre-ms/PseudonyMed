@@ -86,14 +86,15 @@ def test_round_trip_via_cli(tmp_path: Path, report_pdf: Path, patient: Patient) 
 
 def test_values_answer_to_their_german_and_their_english_word(
         tmp_path: Path, report_pdf: Path, patient: Patient) -> None:
-    """An option that takes one of a few words takes the English word like the German one."""
+    """An option that takes one of a few words takes the German word like the English one,
+    and the core gets the English one."""
     from pseudonymed.cli import base
 
-    assert base.german("letter", ("hash", "buchstabe")) == "buchstabe"
-    assert base.german("letter", ("a4", "letter")) == "letter"  # a value of its own
-    assert base.german("off", ("aus",)) == "aus" and base.german("x", ("aus",)) == "x"
-    assert base.choice("--datum", "age", ("jahr", "alter")) == "alter"
-    assert base.choice("--datum", "alter", ("jahr", "alter")) == "alter"
+    assert base.canonical("buchstabe", ("hash", "letter")) == "letter"
+    assert base.canonical("letter", ("a4", "letter")) == "letter"
+    assert base.canonical("aus", ("off",)) == "off" and base.canonical("x", ("off",)) == "x"
+    assert base.choice("--datum", "alter", ("year", "age")) == "age"
+    assert base.choice("--datum", "age", ("year", "age")) == "age"
 
     pfile = _patient_file(tmp_path, patient)
     store = tmp_path / "store.sqlite"
@@ -148,7 +149,7 @@ def test_invalid_inputs(tmp_path: Path, report_pdf: Path, patient: Patient) -> N
 
 
 def test_data_folder_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     r = runner.invoke(app, ["konfig"])
     assert r.exit_code == 0 and str(tmp_path / "daten") in r.output
 

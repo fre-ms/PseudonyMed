@@ -81,7 +81,7 @@ def _embed_text_layer(doc: pymupdf.Document, pages: list[PageEntry], rasterised:
             layer, matches = _correction_layer(s, with_pseudonyms)
         else:
             layer = s.ocr
-            matches = [f for f in s.hits if f.source in ("ocr", "manuell")]
+            matches = [f for f in s.hits if f.source in ("ocr", "manual")]
         invisible_text_layer(page, layer, matches, with_pseudonyms=with_pseudonyms, opt=opt)
 
 
@@ -153,7 +153,7 @@ def _ocr_residual_matches(page: pymupdf.Page, s: PageEntry, v: Preparation, rech
                 recheck.kept_on_purpose.append(f.rule)
             continue
         entry = f.without_clear_text()
-        entry["quelle"] = "ocr"
+        entry["source"] = "ocr"
         recheck.residual_matches.append(entry)
 
 
@@ -181,7 +181,7 @@ def _verify_output(v: Preparation, target: Path, text: str,
                         tolerated=v.tolerated, pseudonyms=pseudonyms)
         _recheck_images(control, v, recheck, pseudonyms)
         page_count = len(control)
-        if v.opt.preview == "immer" or (v.opt.preview == "auto" and v.ocr_pages):
+        if v.opt.preview == "always" or (v.opt.preview == "auto" and v.ocr_pages):
             preview = write_preview(control, target_path(v.source, v.opt, "_vorschau"))
     return recheck, page_count, preview
 
@@ -206,7 +206,7 @@ def _report_options(v: Preparation) -> dict[str, object]:
     """The options for the report, with the clean-up applied per page (1-based)."""
     options = v.opt.as_dict()
     if v.cleaned_up:
-        options["aufbereitung"] = {str(n + 1): a.as_dict() for n, a in v.cleaned_up.items()}
+        options["cleaned_up"] = {str(n + 1): a.as_dict() for n, a in v.cleaned_up.items()}
     return options
 
 

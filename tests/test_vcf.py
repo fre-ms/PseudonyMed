@@ -79,7 +79,7 @@ def test_incomplete_cards() -> None:
     assert a.birth_date is None  # no year
     assert a.phones == ["+4989123"]
     b = patient_from_vcard(cards[1])
-    assert b.sex == "w" and b.birth_date is None
+    assert b.sex == "f" and b.birth_date is None
 
 
 def test_parse_bday() -> None:
@@ -95,4 +95,4 @@ def test_file_with_bom_and_crlf(tmp_path: Path, patient: Patient, female_patient
     path.write_bytes(b"\xef\xbb\xbf" + content.encode())
     patients = patients_from_vcf(path)
     assert [p.surname for p in patients] == [patient.surname, female_patient.surname]
-    assert patients[1].sex == "w"
+    assert patients[1].sex == "f"

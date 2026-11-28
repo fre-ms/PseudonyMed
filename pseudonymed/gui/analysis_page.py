@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from pseudonymed.config import Settings, load_settings, save_settings
+from pseudonymed.core import names
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import ner as ner_module
 from pseudonymed.document import docrepro_adapter
@@ -60,8 +61,8 @@ class AnalysisPage(QWidget):
         options = QGroupBox(self.tr("Erkennung der Identifikatoren"))
         form = QFormLayout(options)
         self.date = QComboBox()
-        self.date.addItem(self.tr("Geburtsjahr [geb. 1990]"), "jahr")
-        self.date.addItem(self.tr("Alter [Alter 36]"), "alter")
+        self.date.addItem(self.tr("Geburtsjahr [geb. 1990]"), "year")
+        self.date.addItem(self.tr("Alter [Alter 36]"), "age")
         form.addRow(self.tr("Geburtsdatum als"), self.date)
         self.codes = QCheckBox(self.tr("Barcodes und QR-Codes schwärzen"))
         self.codes.setChecked(True)
@@ -206,7 +207,8 @@ class AnalysisPage(QWidget):
     def _show_vocabulary(self) -> None:
         """Say how many terms are protected and from which sources."""
         fb = terms_module.standard()
-        sources = ", ".join(f"{name} {n}" for name, n in fb.sources)
+        sources = ", ".join(f"{names.label(name, interface_language())} {n}"
+                            for name, n in fb.sources)
         self.vocabulary_info.setText(self.tr(
             "{gesamt} geschützte Begriffe ({quellen}). Ansehen, ergänzen und importieren unter"
             " „3 Fachvokabular“.").format(gesamt=fb.count, quellen=sources))
@@ -216,7 +218,7 @@ class AnalysisPage(QWidget):
         o = self.session.options
         o.date_format = self.date.currentData()
         o.codes = self.codes.isChecked()
-        o.unreadable = "schwaerzen" if self.unreadable.isChecked() else "lassen"
+        o.unreadable = "redact" if self.unreadable.isChecked() else "keep"
         o.ner = self.ner.isChecked()
         o.medical_terms = self.medical_terms.isChecked()
         o.identifiers = self.identifiers.isChecked()
@@ -408,7 +410,7 @@ class AnalysisPage(QWidget):
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.exec()
         if box.clickedButton() is same:
-            return f"gleich:{e.candidates[0].code}"
+            return f"same:{e.candidates[0].code}"
         if box.clickedButton() is new:
-            return "neu"
+            return "new"
         return None

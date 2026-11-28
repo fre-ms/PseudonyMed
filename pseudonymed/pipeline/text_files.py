@@ -73,7 +73,7 @@ class TextPreparation(PreparationBase):
         page.hits = [f for f in page.hits
                      if not (start < f.end and end > f.start)]
         f = Hit(page=number, start=start, end=end, text=self.text[start:end],
-                kind=Kind.MANUAL, rule="manuell", pseudonym=pseudonym, source="manuell")
+                kind=Kind.MANUAL, rule="manual", pseudonym=pseudonym, source="manual")
         page.hits.append(f)
         self.version += 1
         return f
@@ -87,7 +87,7 @@ class TextPreparation(PreparationBase):
         if pseudonym is None:
             pseudonym = self.assignment.identifier("Begriff", self.text[start:end], Kind.TERM)
         f = self.mark(number, start, end, pseudonym)
-        f.kind, f.rule = Kind.TERM, "aufnahme"
+        f.kind, f.rule = Kind.TERM, "taken_up"
         return f
 
     def close(self) -> None:
@@ -107,13 +107,13 @@ def _recognise_text(entry: PageEntry, r: Toolkit, opt: PipelineOptions,
         remember_medical_terms(entry, page, r.medical_terms)
     if opt.fuzzy_text:
         entry.hits += find_fuzzy(page, r.targets, entry.hits, r.medical_terms,
-                                 capitalisation=True, source="unscharf")
+                                 capitalisation=True, source="fuzzy")
     add_matches(page, entry.hits, "text", r, spared)
 
 
 def _fuzzy_note(hits: list[Hit]) -> list[str]:
     """How many hits the fuzzy search contributed, worth a look in the review."""
-    fuzzy_count = sum(1 for f in hits if f.source == "unscharf")
+    fuzzy_count = sum(1 for f in hits if f.source == "fuzzy")
     if not fuzzy_count:
         return []
     return [say(f"Unscharfe Suche: {fuzzy_count} abweichend geschriebene Treffer"
@@ -179,7 +179,7 @@ def recheck_text(
     rest = list(exact)
     if targets is not None:
         rest += find_fuzzy(page, targets, exact, medical_terms, capitalisation=True,
-                           source="unscharf")
+                           source="fuzzy")
     g = Recheck(checked=checked_from(rules))
     for f in rest:
         if in_pseudonym(f.start, f.end, spans):

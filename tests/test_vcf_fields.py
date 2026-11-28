@@ -62,14 +62,14 @@ def test_name_parts(patient: Patient) -> None:
 
 def test_salutation_and_title() -> None:
     assert _salutation_and_title("Herr Dr. med.") == ("m", "Dr. med.")
-    assert _salutation_and_title("Frau Prof. Dr.") == ("w", "Prof. Dr.")
-    assert _salutation_and_title("Mrs, Dr") == ("w", "Dr")
+    assert _salutation_and_title("Frau Prof. Dr.") == ("f", "Prof. Dr.")
+    assert _salutation_and_title("Mrs, Dr") == ("f", "Dr")
     assert _salutation_and_title("Dr. med.") == ("", "Dr. med.")
     assert _salutation_and_title("") == ("", "")
 
 
 def test_sex() -> None:
-    assert _sex(_card("GENDER:F;weiblich"), "") == "w"
+    assert _sex(_card("GENDER:F;weiblich"), "") == "f"
     assert _sex(_card("GENDER:m"), "") == "m"
     assert _sex(_card("GENDER:F"), "m") == "m"  # the salutation wins
     assert _sex(_card("GENDER:O"), "") == ""

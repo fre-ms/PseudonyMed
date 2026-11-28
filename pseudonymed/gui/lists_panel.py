@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pseudonymed.core import names
 from pseudonymed.detection import choice
 from pseudonymed.detection.store_table import own_lists
 from pseudonymed.gui.translation import interface_language, shown_error
@@ -152,12 +153,16 @@ class ListsPanel(QGroupBox):
         self._enable()
 
     def _mark_others(self) -> None:
-        """Say of every list that is not PseudonyMed's own that another program brought it:
-        a terminology may well carry the title of one of PseudonyMed's lists."""
+        """Show PseudonyMed's own lists by their labels in the interface language, and say of
+        every other list that another program brought it: a terminology may well carry the
+        title of one of PseudonyMed's lists."""
         own, items = self._own(), QTreeWidgetItemIterator(self.list)
+        language = interface_language()
         while items.value():
             item = items.value()
-            if str(item.data(0, URL)) not in own:
+            if str(item.data(0, URL)) in own:
+                item.setText(0, names.label(item.text(0), language))
+            else:
                 notes = [self.tr("aus einem anderen Programm"), item.text(4)]
                 item.setText(4, "; ".join(n for n in notes if n))
             items += 1

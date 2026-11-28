@@ -13,7 +13,7 @@ from tests.synthetic import synthetic_patient
 
 
 def _target(tokens: list[str], kind: Kind = Kind.SURNAME) -> Target:
-    return Target(tokens, "[x]", kind, "name.nachname", Role.PATIENT)
+    return Target(tokens, "[x]", kind, "name.surname", Role.PATIENT)
 
 
 # -- targets ---------------------------------------------------------------------------------------
@@ -28,10 +28,10 @@ def test_name_targets_order_and_minimum_length() -> None:
     person = Person(surname="Flantz-Gotthard", first_name="Hildegund Jo", birth_name="Briemer")
     targets = fuzzy._name_targets("name", person, "[P]", Role.PATIENT)
     assert [(z.tokens, z.rule) for z in targets] == [
-        (["Hildegund", "Flantz-Gotthard"], "name.vollname"),
-        (["Flantz-Gotthard"], "name.nachname"), (["Flantz"], "name.nachname"),
-        (["Gotthard"], "name.nachname"), (["Hildegund"], "name.vorname"),
-        (["Briemer"], "name.geburtsname"),
+        (["Hildegund", "Flantz-Gotthard"], "name.full_name"),
+        (["Flantz-Gotthard"], "name.surname"), (["Flantz"], "name.surname"),
+        (["Gotthard"], "name.surname"), (["Hildegund"], "name.first_name"),
+        (["Briemer"], "name.birth_name"),
     ]
     assert {z.pseudonym for z in targets} == {"[P]"} and {z.role for z in targets} == {Role.PATIENT}
     short = Person(surname="Ott", first_name="Jo")
@@ -42,18 +42,18 @@ def test_date_targets_five_spellings() -> None:
     targets = fuzzy._date_targets(dt.date(1959, 7, 1), "[geb. 1959]")
     assert [z.tokens for z in targets] == [["01.07.1959"], ["1.7.1959"], ["01.07.59"],
                                            ["1.", "Juli", "1959"], ["1.", "Jul.", "1959"]]
-    assert all(z.kind is Kind.BIRTH_DATE and z.rule == "datum.geburtsdatum" for z in targets)
+    assert all(z.kind is Kind.BIRTH_DATE and z.rule == "date.birth_date" for z in targets)
 
 
 def test_address_targets_short_street_name_dropped() -> None:
     v = PseudonymAssignment(synthetic_patient(3), "K7Q4MX", secret=bytes(32))
     person = Person(surname="Flantz", street="Am Ring 3", postcode="01234", place="Riesa")
-    targets = fuzzy._address_targets("adresse", person, v, Role.REFERRER)
-    assert [(z.tokens, z.rule) for z in targets] == [(["Riesa"], "adresse.ort"),
-                                                   (["01234", "Riesa"], "adresse.plz_ort")]
+    targets = fuzzy._address_targets("address", person, v, Role.REFERRER)
+    assert [(z.tokens, z.rule) for z in targets] == [
+        (["Riesa"], "address.place"), (["01234", "Riesa"], "address.postcode_place")]
     assert {z.role for z in targets} == {Role.REFERRER}
     long = Person(surname="Flantz", street="Ringstraße 3", place="Ulm")
-    targets = fuzzy._address_targets("adresse", long, v, Role.PATIENT)
+    targets = fuzzy._address_targets("address", long, v, Role.PATIENT)
     assert [z.tokens for z in targets] == [["Ringstraße", "3"], ["Ringstraße"]]
     assert len({z.pseudonym for z in targets}) == 1
 
@@ -63,9 +63,9 @@ def test_targets_for_groups_patient_before_companions() -> None:
     v = PseudonymAssignment(p, "K7Q4MX", secret=bytes(32))
     groups = [z.rule.split(".")[0] for z in fuzzy.targets_for(p, v)]
     first = [g for i, g in enumerate(groups) if g not in groups[:i]]
-    expected = ["name", "adresse", "datum", "versichertennummer", "patienten_id", "email",
-                "aktenzeichen", "angehoerige1", "zuweiser1"]
-    assert first[0] == "name" and first[-1] == "zuweiser1"
+    expected = ["name", "address", "date", "insurance_number", "patient_id", "email",
+                "case_number", "relative1", "referrer1"]
+    assert first[0] == "name" and first[-1] == "referrer1"
     assert first == sorted(first, key=expected.index)
 
 

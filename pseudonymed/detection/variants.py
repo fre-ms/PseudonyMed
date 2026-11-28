@@ -119,7 +119,7 @@ _SENTENCE_STARTS = (
 
 def surname_initial_pattern(surname: str) -> str | None:
     """The surname shortened to its initial after a form of address: "Herr K.", "Frau K.",
-    "Pat. K.".  Only the initial with its full stop is the match (group ``wert``).
+    "Pat. K.".  Only the initial with its full stop is the match (group ``value``).
 
     "Herr K. Meier" is someone else, whose first name begins with K: a capitalised word
     after the initial on the same line rules the match out, unless it is a word that begins
@@ -128,7 +128,7 @@ def surname_initial_pattern(surname: str) -> str | None:
     if not initials:
         return None
     letter = "(?:" + "|".join(sorted(re.escape(i) for i in initials)) + ")"
-    return (rf"{L}{_ADDRESSED}\s+(?P<wert>{letter}\.)"
+    return (rf"{L}{_ADDRESSED}\s+(?P<value>{letter}\.)"
             rf"(?![ \t]*(?!{_SENTENCE_STARTS}{R})[A-ZÄÖÜ][a-zäöüß])")
 
 

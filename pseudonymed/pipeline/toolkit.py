@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from pseudonymed.core import names
 from pseudonymed.core.model import Hit, Kind, Patient
 from pseudonymed.core.text import Text, read_back, say
 from pseudonymed.detection import identifiers as ident_module
@@ -80,10 +81,10 @@ def _medical_warnings(medical: medical_module.MedicalSearch | None) -> list[str]
     """A warning for every chosen medical level whose list is empty."""
     if medical is None:
         return []
-    return [say(f"{category}e schwärzen gewählt, aber die Liste ist leer"
+    return [say(f"{names.label(category, 'de')}e schwärzen gewählt, aber die Liste ist leer"
                 " (Lexikon nicht geladen?); nichts davon geschwärzt.",
-                f"Redacting {read_back(category).lower()}s was chosen, but the list is empty"
-                " (lexicon not loaded?); none of them redacted.")
+                f"Redacting {names.label(category, 'en').lower()}s was chosen, but the list is"
+                " empty (lexicon not loaded?); none of them redacted.")
             for category in medical.missing_lists()]
 
 

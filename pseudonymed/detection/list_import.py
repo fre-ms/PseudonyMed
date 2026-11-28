@@ -1,7 +1,7 @@
 """Reading a word list from a file for the vocabulary and the identifiers tables.
 
 Both steps exchange the same kind of file: a CSV with the term in the first column and an
-optional second column that sorts it (``category`` for the vocabulary, ``category`` for the
+optional second column that sorts it (``category`` for the vocabulary, ``class`` for the
 identifiers), with or without a header line and separated by comma, semicolon or tab; or a
 plain list with one term per line.  Lines that are empty or start with ``#`` are skipped.
 The reader groups the terms by that column, so that the caller inserts each group under
@@ -45,12 +45,13 @@ def _is_header(fields: list[str]) -> bool:
     return fields[0].strip().casefold() in HEADER_WORDS
 
 
-def _column(header: list[str] | None, name: str) -> int:
-    """Index of the sorting column: where the header names it, else the second column."""
-    return header.index(name) if header and name in header else 1
+def _column(header: list[str] | None, names: tuple[str, ...]) -> int:
+    """Index of the sorting column: where the header names it (in English or German), else
+    the second column."""
+    return next((header.index(n) for n in names if header and n in header), 1)
 
 
-def _group(lines: list[str], separator: str, column: str, standard: str) -> ReadResult:
+def _group(lines: list[str], separator: str, column: tuple[str, ...], standard: str) -> ReadResult:
     """Group the terms of CSV rows by their sorting column; an empty or missing column
     value falls back to ``standard``.  Rows without a term are skipped."""
     groups: dict[str, list[str]] = {}
@@ -69,10 +70,11 @@ def _group(lines: list[str], separator: str, column: str, standard: str) -> Read
     return ReadResult(groups, read_in)
 
 
-def read_list(path: Path, column: str, standard: str) -> ReadResult:
-    """Read a CSV (``begriff[,<spalte>]``, header optional, comma, semicolon or tab) or a
-    plain list (one term per line) and group the terms by the sorting column; a plain
-    list and rows without a column value go to ``standard``."""
+def read_list(path: Path, column: tuple[str, ...], standard: str) -> ReadResult:
+    """Read a CSV (``term[,<column>]``, the German ``begriff`` understood as well; header
+    optional, comma, semicolon or tab) or a plain list (one term per line) and group the
+    terms by the sorting column, named in ``column`` in English and German; a plain list
+    and rows without a column value go to ``standard``."""
     lines = _content_lines(read_text_file(path))
     if not lines:
         return ReadResult({}, 0)

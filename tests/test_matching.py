@@ -25,9 +25,9 @@ def _p(surname: str = "Flantz", first_name: str = "Gotthard", born: str = "1959-
 
 
 def _row(p: Patient, code: str = "K7Q4MX") -> dict:
-    return {"kennung": code, "schluessel": p.key(), "nachname": p.surname,
-            "vorname": p.first_name, "geburtsname": p.birth_name,
-            "geburtsdatum": p.birth_date.isoformat()}
+    return {"code": code, "patient_key": p.key(), "surname": p.surname,
+            "first_name": p.first_name, "birth_name": p.birth_name,
+            "birth_date": p.birth_date.isoformat()}
 
 
 def test_dice_and_names() -> None:
@@ -70,9 +70,9 @@ def test_store_links_spelling_variants(store: PseudonymStore) -> None:
     assert res.matching.score >= MATCH_THRESHOLD
     assert store.code_for(variant).code == k  # alias now known exactly
     assert store.mapping(variant.key()) == store.mapping(p.key())
-    assert store.patient_info(variant.key())["kennung"] == k
+    assert store.patient_info(variant.key())["code"] == k
     assert len(store.aliases(p.key())) == 1
-    assert store.find(search="flantzz")[0]["kennung"] == k
+    assert store.find(search="flantzz")[0]["code"] == k
 
 
 def test_uncertain_matching_needs_a_decision(store: PseudonymStore) -> None:
@@ -82,13 +82,13 @@ def test_uncertain_matching_needs_a_decision(store: PseudonymStore) -> None:
     with pytest.raises(UncertainMatch) as e:
         store.code_for(wrong_year)
     assert e.value.candidates[0].code == k
-    new = store.code_for(wrong_year, decision="neu")
+    new = store.code_for(wrong_year, decision="new")
     assert new.new and new.code != k
     other = _p(born="1959-07-22")
-    same = store.code_for(other, decision=f"gleich:{k.lower()}")
+    same = store.code_for(other, decision=f"same:{k.lower()}")
     assert same.code == k and same.linked
     with pytest.raises(ValueError):
-        store.code_for(_p(born="1959-07-23"), decision="gleich:ZZZZZZ")
+        store.code_for(_p(born="1959-07-23"), decision="same:ZZZZZZ")
 
 
 def test_same_canonical_identity(store: PseudonymStore) -> None:
@@ -101,7 +101,7 @@ def test_same_canonical_identity(store: PseudonymStore) -> None:
     assert res.code == ka and res.linked
     # declared different: a variant code of the same identity, never the same code
     c = _p(surname="Maier", first_name="Hannes", born="1960-01-01")
-    kc = store.code_for(c, decision="neu").code
+    kc = store.code_for(c, decision="new").code
     assert kc != ka and len(kc) == 6 and store.code_for(c).code == kc
 
 

@@ -32,8 +32,8 @@ def _settings(monkeypatch: pytest.MonkeyPatch, backend: str, path: str = "",
 
 
 def test_ocrdoc_reads_pseudonymeds_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """ocrdoc reads PseudonyMed's settings anew on every access, "aus" in its spelling."""
-    _settings(monkeypatch, "aus", "/opt/tesseract", "deu+eng")
+    """ocrdoc reads PseudonyMed's settings anew on every access, "off" in its spelling."""
+    _settings(monkeypatch, "off", "/opt/tesseract", "deu+eng")
     s = load_settings()
     assert (s.ocr_backend, s.tesseract_path, s.tesseract_languages) == (
         "none", "/opt/tesseract", "deu+eng")
@@ -43,9 +43,9 @@ def test_ocrdoc_reads_pseudonymeds_settings(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_engines_with_pseudonymeds_names(monkeypatch: pytest.MonkeyPatch) -> None:
-    """"aus" is no engine; an unknown or missing engine is worded for the user in both
+    """"off" is no engine; an unknown or missing engine is worded for the user in both
     languages (ocrdoc's kinds of error)."""
-    assert docrepro_adapter.backend("aus") is None and docrepro_adapter.backend("AUS") is None
+    assert docrepro_adapter.backend("off") is None and docrepro_adapter.backend("OFF") is None
     with pytest.raises(docrepro_adapter.OCRError) as unknown:
         docrepro_adapter.backend("Zauber")
     assert docrepro_adapter.message(unknown.value) == (
@@ -63,7 +63,7 @@ def test_settings_of_the_steps() -> None:
     """PseudonyMed's options become the settings of optdoc and ocrdoc."""
     assert docrepro_adapter.chain_settings() == {
         "clean_up": True, "reader": "auto", "languages": None, "tables": True, "dpi": 300}
-    opt = PipelineOptions(ocr="aus", ocr_languages="deu+eng", ocr_tables=False, clean_up="aus")
+    opt = PipelineOptions(ocr="off", ocr_languages="deu+eng", ocr_tables=False, clean_up="off")
     assert chain_settings(opt) == {"clean_up": False, "reader": "none", "languages": "deu+eng",
                                    "tables": False, "dpi": 300}
 
@@ -99,7 +99,7 @@ def test_unreadable_line_becomes_a_match() -> None:
     matches = docrepro_adapter.unreadable_matches(s)
     assert len(matches) == 1
     r = matches[0]
-    assert (r.pseudonym, r.source, r.rule, r.page) == ("[unlesbar]", "ocr", "ocr.unlesbar", 0)
+    assert (r.pseudonym, r.source, r.rule, r.page) == ("[unlesbar]", "ocr", "ocr.unreadable", 0)
     assert s.text[r.start:r.end] == r.text == "G6ot n e n e i l e 5g"
     assert r.rects and r.font_size > 0
 
@@ -137,7 +137,7 @@ def test_a_person_decides_and_a_step_before_changes(tmp_path: Path, report_pdf: 
     from tests.test_ocr import _scan
 
     scan = _scan(report_pdf, tmp_path / "scan.pdf")
-    chain = DocumentChain.open(scan, chain_settings(PipelineOptions(ocr="aus")))
+    chain = DocumentChain.open(scan, chain_settings(PipelineOptions(ocr="off")))
     ocr_project = chain.ensure("ocrdoc")
     ocr_project.set_regions(0, [])  # a person's areas (a correction would need OCR)
     assert chain.put(chain.bring("ocrdoc")) == []  # nothing to bring: all is current
@@ -158,7 +158,7 @@ def test_one_piece_of_work_on_a_chain_at_a_time(report_pdf: Path) -> None:
     """Work on a chain from two threads (a step of the window, the analysis) takes turns:
     while one holds the chain, the other waits before it opens, puts in place or closes a
     step's project."""
-    chain = DocumentChain.open(report_pdf, chain_settings(PipelineOptions(ocr="aus")))
+    chain = DocumentChain.open(report_pdf, chain_settings(PipelineOptions(ocr="off")))
     done = threading.Event()
     try:
         with chain.lock:

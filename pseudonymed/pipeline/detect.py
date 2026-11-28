@@ -83,7 +83,7 @@ def _recognise_ocr(entry: PageEntry, ocr: PageText, r: Toolkit, opt: PipelineOpt
     ocr_matches = [f for f in entry.hits if f.source == "ocr"]
     add_matches(ocr, ocr_matches, "ocr", r, spared)
     entry.hits = [f for f in entry.hits if f.source != "ocr"] + ocr_matches
-    if opt.unreadable == "schwaerzen":
+    if opt.unreadable == "redact":
         entry.hits += _unreadable_lines(ocr, entry.hits)
     if entry.correction is not None:
         entry.correction_matches = correction_matches(entry, r, opt)
@@ -111,7 +111,7 @@ def correction_matches(entry: PageEntry, r: Toolkit, opt: PipelineOptions) -> li
         matches += find_fuzzy(page, r.targets, matches, r.medical_terms, capitalisation=True)
     add_matches(page, matches, "text", r, ner=False)
     for f in matches:
-        f.source = "korrektur"
+        f.source = "correction"
         f.rects = []
     return matches
 

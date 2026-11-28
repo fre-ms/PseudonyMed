@@ -284,7 +284,7 @@ def _salutation_and_title(prefix: str) -> _Salutation:
         if token.lower() in _SALUTATION_M:
             sex = "m"
         elif token.lower() in _SALUTATION_F:
-            sex = "w"
+            sex = "f"
         else:
             title_parts.append(token)
     return _Salutation(sex, " ".join(title_parts))
@@ -295,7 +295,7 @@ def _sex(card: VCard, from_salutation: str) -> str:
     if from_salutation:
         return from_salutation
     gender = card.value("GENDER").split(";")[0].strip().upper()
-    return {"M": "m", "F": "w"}.get(gender, "")
+    return {"M": "m", "F": "f"}.get(gender, "")
 
 
 def _phone(value: str) -> str:

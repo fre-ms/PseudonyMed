@@ -301,13 +301,13 @@ def analysis_text(text: str, extension: str) -> str:
             if chars[i] != "\n":
                 chars[i] = " "
 
-    muster = [_STAMP]
+    patterns = [_STAMP]
     if extension.lower() in SUBTITLE_EXTENSIONS:
-        muster += [_TIMING, _CUE_NUMBER]
+        patterns += [_TIMING, _CUE_NUMBER]
         if text.startswith("WEBVTT"):
             end = text.find("\n")
             mask_out(0, len(text) if end < 0 else end)
-    for m in muster:
+    for m in patterns:
         for t in m.finditer(text):
             mask_out(t.start(), t.end())
     return "".join(chars)

@@ -16,20 +16,13 @@ import pytest
 from lexcor import Change, Concept, Package, Store, Term
 
 from pseudonymed.detection import identifiers as ident_module
+from pseudonymed.detection import lexicon
 from pseudonymed.detection import medical_terms as terms_module
 from pseudonymed.detection import vocabulary as vocab_mod
 from pseudonymed.detection.store_table import own_lists
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import statistics as stats_mod
-from pseudonymed.pseudonyms.store import PseudonymStore, default_path
-from tests.test_identifiers_move import (
-    SMALL_DELETED,
-    SMALL_STATES,
-    former_lexicon,
-    small_rows,
-    tables_of,
-)
-from tests.test_vocabulary_move import edited_rows, former_table
+from pseudonymed.pseudonyms.store import PseudonymStore
 
 TERMINOLOGY = "http://example.org/fhir/CodeSystem/flantz-10"
 DIRECTORY = "http://example.org/fhir/CodeSystem/flantz-hospitals"
@@ -50,9 +43,10 @@ def terminology() -> Package:
 
 def directory() -> Package:
     """A directory of hospitals as another program installs it in lexident's store, with a
-    town that has a hospital."""
+    town that has a hospital and the title of the bundled list of hospitals."""
     return Package(
-        url=DIRECTORY, version="7", name="FlantzHospitals", title="Kliniken", language="de",
+        url=DIRECTORY, version="7", name="FlantzHospitals", title=lexicon.HOSPITALS,
+        language="de",
         concepts=[Concept("H1", "Flantzklinikum Fremdstadt", "LOCATION_HOSPITAL", "", [
             Term("Flantzklinikum Fremdstadt", "de"), Term("Fremdklinik Flantz", "de")]),
             Concept("Fremdstadt", "Fremdstadt", "hospital-town", "", [Term("Fremdstadt", "de")]),
@@ -76,7 +70,7 @@ def _held(store: Store, url: str) -> What:
 @pytest.fixture
 def folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A data folder of its own with a pseudonym database."""
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     terms_module.standard.cache_clear()
     PseudonymStore().close()
     yield tmp_path / "daten"
@@ -152,26 +146,6 @@ def test_a_terminology_does_not_stand_for_a_bundled_list(folder: Path) -> None:
         assert _held(v.store, TERMINOLOGY) == held
 
 
-def test_the_move_of_the_vocabulary_leaves_a_terminology_alone(folder: Path) -> None:
-    rows = edited_rows()
-    former_table(default_path(), rows)
-    with lexterm.open_store(vocab_mod.default_path()) as store:
-        held = _install(store, terminology(), "F00", "Morbus Flantz")
-    with vocab_mod.Vocabulary() as v:
-        assert sorted((term, category) for term, category, _added in v.all_items()) == \
-            sorted(rows)
-        assert _held(v.store, TERMINOLOGY) == held
-        assert all(change.url != TERMINOLOGY or change in held[1]
-                   for change in v.store.overlay())
-    assert vocab_mod.table_terms(default_path()) is None
-    assert terms_module.standard().is_medical_term("Flantzfieber")  # ticked: it protects
-    with vocab_mod.Vocabulary() as v:
-        v.store.switch(TERMINOLOGY, False)
-    expected = terms_module.MedicalTerms()
-    expected.add(term for term, _category in rows)
-    assert _cover() == (frozenset(expected.cover.single), frozenset(expected.cover.phrases))
-
-
 def test_replacing_the_vocabulary_leaves_a_terminology_alone(folder: Path, tmp_path: Path) -> None:
     with vocab_mod.Vocabulary() as v:
         held = _install(v.store, terminology(), "F00", "Morbus Flantz")
@@ -179,7 +153,7 @@ def test_replacing_the_vocabulary_leaves_a_terminology_alone(folder: Path, tmp_p
         saved = v.all_items()
     archive = backup_mod.export(tmp_path / "s.zip")
     with zipfile.ZipFile(archive) as z:
-        words = z.read("vokabular.csv").decode("utf-8")
+        words = z.read("vocabulary.csv").decode("utf-8")
     assert "Flantzfieber" not in words and len(words.splitlines()) == len(saved) + 1
     with vocab_mod.Vocabulary() as v:
         v.remove(["Sicherungsbegriff", "Kopf"])
@@ -212,7 +186,7 @@ TEXT = ("War im Flantzklinikum Fremdstadt, dann im Klinikum Fremdstadt, Mitglied
 def test_a_directory_of_another_program_holds_no_identifiers(folder: Path) -> None:
     with ident_module.IdentifierTable() as table:
         table.add(["Flantzwerke GmbH"])
-        table.add(["Eigenklinik Flantz"], "Klinik")
+        table.add(["Eigenklinik Flantz"], "hospital")
     before = _identifiers()
     assert _found(TEXT) == ["Flantzwerke GmbH"]
     with ident_module.IdentifierTable() as table:
@@ -224,30 +198,13 @@ def test_a_directory_of_another_program_holds_no_identifiers(folder: Path) -> No
     assert stats_mod.statistics().identifier_lists == []
     with ident_module.IdentifierTable() as table:
         assert table.keys_for("Flantzklinikum Fremdstadt") == []
-        assert table.remove([("Flantzklinikum Fremdstadt", "Klinik", "H1")]) == 0
-        assert table.change(("Flantzklinikum Fremdstadt", "Klinik", "H1"), "Anders") is None
+        assert table.remove([("Flantzklinikum Fremdstadt", "hospital", "H1")]) == 0
+        assert table.change(("Flantzklinikum Fremdstadt", "hospital", "H1"), "Anders") is None
         assert table.remove(table.keys_for("Eigenklinik Flantz")) == 1
         # the towns that form names of hospitals are those of PseudonyMed's own hospitals
-        assert [info.title for info in own_lists(table.store)] == ["Nutzer: Sonstiges"]
+        assert [info.title for info in own_lists(table.store)] == ["user: other"]
         assert table.restore() == 0 and table.deleted() == 0
         assert _held(table.store, DIRECTORY) == held
-
-
-def test_the_move_of_the_identifiers_leaves_a_directory_alone(folder: Path) -> None:
-    former_lexicon(default_path(), small_rows(), SMALL_STATES, SMALL_DELETED)
-    with lexident.open_store(ident_module.default_path()) as store:
-        held = _install(store, directory(), "H1", "Fremdklinik Flantz")
-    with ident_module.IdentifierTable() as table:
-        assert table.count() == 9 and table.deleted() == 2
-        assert "Kliniken" in [info.title for info in own_lists(table.store)]
-        assert _held(table.store, DIRECTORY) == held
-        assert all(change.url != DIRECTORY or change in held[1]
-                   for change in table.store.overlay())
-    assert not {t for t in tables_of(default_path()) if t.startswith("lexikon")}
-    assert "Flantzklinikum Fremdstadt" in _found(TEXT)  # still ticked, so looked for
-    with ident_module.IdentifierTable() as table:
-        table.store.switch(DIRECTORY, False)
-    assert _found(TEXT) == ["Flantzwerke GmbH"]
 
 
 def test_a_backup_of_the_identifiers_leaves_a_directory_alone(folder: Path,
@@ -260,19 +217,19 @@ def test_a_backup_of_the_identifiers_leaves_a_directory_alone(folder: Path,
     with zipfile.ZipFile(archive) as z:
         (tmp_path / "archiv.sqlite").write_bytes(z.read("lexident.sqlite"))
     with lexident.open_store(tmp_path / "archiv.sqlite", readonly=True) as archived:
-        assert [info.title for info in archived.packages()] == ["Nutzer: Sonstiges"]
+        assert [info.title for info in archived.packages()] == ["user: other"]
     with ident_module.IdentifierTable() as table:
         table.remove(table.keys_for("Sicherungseintrag"))
         table.add(["Danacheintrag"])
         table.store.hide(DIRECTORY, "V1", "Fremdverein Flantzdorf", "de")  # the other program
         held = _held(table.store, DIRECTORY)
-    merged = backup_mod.import_file(archive, mode="zusammenfuehren")
+    merged = backup_mod.import_file(archive, mode="merge")
     assert merged.new_identifiers == 1
     with ident_module.IdentifierTable() as table:
         assert _held(table.store, DIRECTORY) == held
     restored = backup_mod.import_file(archive)
     assert restored.identifiers == 2 and _identifiers() == saved
     with lexident.open_store(restored.prior_backups[-1], readonly=True) as aside:
-        assert [info.title for info in aside.packages()] == ["Nutzer: Sonstiges"]
+        assert [info.title for info in aside.packages()] == ["user: other"]
     with ident_module.IdentifierTable() as table:
         assert _held(table.store, DIRECTORY) == held

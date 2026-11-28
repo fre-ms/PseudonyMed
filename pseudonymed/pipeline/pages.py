@@ -68,7 +68,7 @@ class PageEntry:
         """The hits that belong to ``base`` ("text" or "ocr"), manual boxes included
         where they were drawn on that basis; empty spans left out."""
         with_manual = (base == "text") == self.text.has_text_layer
-        sources = (base, "manuell") if with_manual else (base,)
+        sources = (base, "manual") if with_manual else (base,)
         return [f for f in self.hits if f.source in sources and f.end > f.start]
 
 

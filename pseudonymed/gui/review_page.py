@@ -463,7 +463,7 @@ class ReviewPage(QWidget):
         suggestion = v.source.with_name(v.source.stem + state_mod.EXTENSION)
         path, _ = QFileDialog.getSaveFileName(
             self, self.tr("Arbeitsstand speichern"), str(suggestion),
-            self.tr("Arbeitsstand (*.arbeitsstand.json)"))
+            self.tr("Arbeitsstand (*.working-state.json)"))
         if path:
             self.save_working_state(Path(path))
 

@@ -34,21 +34,21 @@ _ID_LABEL = r"(?i:Pat(?:\.|ienten)?\s?-?\s?(?:ID|Nr|Nummer)\.?|Patientennummer)"
 _CASE_NUMBER_LABEL = (r"(?:Aktenzeichen|Fall(?:-|\s)?(?:Nr|Nummer)\.?|Fallzahl|Az\.|AZ"
                       r"|Vorgangs(?:-|\s)?(?:Nr|Nummer)\.?)")
 INSURANCE_NUMBER_WITH_LABEL = re.compile(
-    _START + _KVNR_LABEL + _SEP + r"(?P<wert>[A-Z0-9]{8,12})(?![A-Z0-9])"
+    _START + _KVNR_LABEL + _SEP + r"(?P<value>[A-Z0-9]{8,12})(?![A-Z0-9])"
 )
 PATIENT_ID_WITH_LABEL = re.compile(
-    _START + _ID_LABEL + _SEP + r"(?P<wert>\d[\d\s]{3,14}\d)(?!\d)"
+    _START + _ID_LABEL + _SEP + r"(?P<value>\d[\d\s]{3,14}\d)(?!\d)"
 )
 CASE_NUMBER_WITH_LABEL = re.compile(
     _START + _CASE_NUMBER_LABEL + _SEP
-    + r"(?P<wert>(?=[A-Z0-9/\-.]*\d)[A-Z0-9][A-Z0-9/\-.]{3,24})(?![A-Z0-9/])"
+    + r"(?P<value>(?=[A-Z0-9/\-.]*\d)[A-Z0-9][A-Z0-9/\-.]{3,24})(?![A-Z0-9/])"
 )
 
 GLOBAL_PATTERNS: list[tuple[str, re.Pattern[str], Kind]] = [
-    ("muster.versichertennummer", INSURANCE_NUMBER, Kind.INSURANCE_NUMBER),
-    ("muster.iban", IBAN, Kind.IBAN),
-    ("muster.email", EMAIL, Kind.EMAIL),
-    ("muster.versichertennummer.etikett", INSURANCE_NUMBER_WITH_LABEL, Kind.INSURANCE_NUMBER),
-    ("muster.patienten_id.etikett", PATIENT_ID_WITH_LABEL, Kind.PATIENT_ID),
-    ("muster.aktenzeichen.etikett", CASE_NUMBER_WITH_LABEL, Kind.CASE_NUMBER),
+    ("pattern.insurance_number", INSURANCE_NUMBER, Kind.INSURANCE_NUMBER),
+    ("pattern.iban", IBAN, Kind.IBAN),
+    ("pattern.email", EMAIL, Kind.EMAIL),
+    ("pattern.insurance_number.label", INSURANCE_NUMBER_WITH_LABEL, Kind.INSURANCE_NUMBER),
+    ("pattern.patient_id.label", PATIENT_ID_WITH_LABEL, Kind.PATIENT_ID),
+    ("pattern.case_number.label", CASE_NUMBER_WITH_LABEL, Kind.CASE_NUMBER),
 ]

@@ -103,8 +103,8 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
 
     # 1 patient
     window.patient.fill_in(patient)
-    assert window.patient.f["nachname"].text() == patient.surname
-    assert window.patient.f["hausnummer"].text() and window.patient.f["strasse"].text()
+    assert window.patient.f["surname"].text() == patient.surname
+    assert window.patient.f["house_number"].text() and window.patient.f["street"].text()
     window.patient.adopt()
     assert session.patient is not None and session.patient.full_name == patient.full_name
     assert session.patient.street == patient.street  # street and number joined again
@@ -160,7 +160,7 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     assert window.analyse.ner.isChecked() == ner_module.available()
     before = len(rv.hits())
     assert rv.table.rowCount() == before > 5
-    target = next(f for f in rv.hits() if f.rule == "zuweiser1.name")
+    target = next(f for f in rv.hits() if f.rule == "referrer1.name")
     rv.select_hit(target)
     assert "verwerfen" in rv.discard_button.text()
     rv.discard()
@@ -172,11 +172,11 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     rv.select_hit(target)
     rv.discard()
     rv.box((56, 300, 400, 320), "[Kasten]")
-    assert any(f.source == "manuell" for f in rv.hits())
+    assert any(f.source == "manual" for f in rv.hits())
     rv.mask_mode_button.setChecked(True)
     assert rv.view.mask_mode
     rv.box((56, 330, 400, 345))  # mask mode: no dialog, no label
-    assert any(f.rule == "maske" for f in rv.hits())
+    assert any(f.rule == "mask" for f in rv.hits())
     rv.mask_mode_button.setChecked(False)
     assert rv.table.rowCount() == len(rv.hits())
     # a real mouse drag draws a box with the replacement text from the field, no dialog
@@ -209,11 +209,11 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     window.export.target.setText(str(tmp_path / "aus"))
     window.export.refresh()
     qapp.processEvents()
-    assert window.export.colour in ("gruen", "gelb"), window.export.traffic_light_text.text()
+    assert window.export.colour in ("green", "yellow"), window.export.traffic_light_text.text()
     assert d.precheck_current and window.export.button.isEnabled()
     check_log = window.export.output.toPlainText()
     assert "Erneut geprüft nach dem Prüfschritt" in check_log
-    assert "Bewusst belassen" in check_log and "zuweiser1.name" in check_log
+    assert "Bewusst belassen" in check_log and "referrer1.name" in check_log
     window.export.run_export()
     qapp.processEvents()
     text = window.export.output.toPlainText()
@@ -222,7 +222,7 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     assert (tmp_path / "aus" / "befund_pseudonym.pdf").exists()
     sidecar = (tmp_path / "aus" / "befund_pseudonym.txt").read_text(encoding="utf-8")
     assert "[Kasten]" in sidecar and "[Feld]" in sidecar
-    assert (tmp_path / "aus" / "befund_pseudonym.bericht.json").exists()
+    assert (tmp_path / "aus" / "befund_pseudonym.report.json").exists()
     assert patient.surname not in sidecar
     assert patient.referrers[0].surname in sidecar  # deliberately kept
 
@@ -230,7 +230,7 @@ def test_window_round_trip(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     from pseudonymed.pseudonyms.store import PseudonymStore
 
     with PseudonymStore(tmp_path / "s.sqlite") as sp:
-        assert any(r == "zuweiser1.name" for r, _t in sp.discarded_for(patient))
+        assert any(r == "referrer1.name" for r, _t in sp.discarded_for(patient))
 
     # 7 re-identify
     window.show_page(window.reidentify)
@@ -256,7 +256,7 @@ def test_window_text_file(qapp: QApplication, tmp_path: Path, patient: Patient,
     from pseudonymed.detection import medical_terms as terms_module
     from tests.synthetic import create_transcript, misspelt
 
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     terms_module.standard.cache_clear()
     source = create_transcript(tmp_path / "gespraech.txt", patient)
     session = Session(store_path=tmp_path / "s.sqlite")
@@ -285,9 +285,9 @@ def test_window_text_file(qapp: QApplication, tmp_path: Path, patient: Patient,
     assert rv.tree.topLevelItem(0).child(0).text(0) == "Text"
     assert rv.text_view.toPlainText() == d.preparation.text
     assert rv.table.rowCount() == len(rv.hits()) > 5
-    assert any(f.source == "unscharf" for f in rv.hits())
+    assert any(f.source == "fuzzy" for f in rv.hits())
     assert "Unscharfe Suche" in rv.note.text()
-    fuzzy = next(f for f in rv.hits() if f.source == "unscharf")
+    fuzzy = next(f for f in rv.hits() if f.source == "fuzzy")
     rv.select_hit(fuzzy)
     assert rv.text_view.textCursor().position() == fuzzy.start
     rv.discard()
@@ -301,14 +301,14 @@ def test_window_text_file(qapp: QApplication, tmp_path: Path, patient: Patient,
     cursor.setPosition(a + len("Wörter vergesse"), QTextCursor.MoveMode.KeepAnchor)
     rv.text_view.setTextCursor(cursor)
     rv.mark_selection("[Symptom]")
-    assert any(f.source == "manuell" and f.pseudonym == "[Symptom]" for f in rv.hits())
+    assert any(f.source == "manual" and f.pseudonym == "[Symptom]" for f in rv.hits())
     rv.show_medical_terms.setChecked(False)
     rv.show_medical_terms.setChecked(True)
 
     window.export.target.setText(str(tmp_path / "aus"))
     window.export.refresh()
     qapp.processEvents()
-    assert window.export.colour in ("gruen", "gelb")
+    assert window.export.colour in ("green", "yellow")
     window.export.run_export()
     qapp.processEvents()
     log = window.export.output.toPlainText()
@@ -318,7 +318,7 @@ def test_window_text_file(qapp: QApplication, tmp_path: Path, patient: Patient,
     assert "[Symptom]" in out and misspelt(patient.surname) in out  # discarded = kept
     assert patient.surname not in out and found_plain_data(log, patient) == []
     # the discarded fuzzy hit is a guess, so it went into the vocabulary file …
-    vocabulary = tmp_path / "aus" / "gespraech_pseudonym.vokabular.txt"
+    vocabulary = tmp_path / "aus" / "gespraech_pseudonym.vocabulary.txt"
     assert d.result.target_vocabulary == vocabulary and "Vokabular:" in log
     lines = [z for z in vocabulary.read_text(encoding="utf-8").splitlines()
              if z and not z.startswith("#")]
@@ -367,7 +367,7 @@ def test_english_interface(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) 
     assert translation.determine_language(["--sprache", "en"]) == "en"
     assert translation.determine_language(["--language=EN-GB"]) == "en-gb"
     assert translation.without_language_arguments(["x", "--sprache", "en", "y"]) == ["x", "y"]
-    monkeypatch.setenv("PSEUDONYMED_SPRACHE", "en")
+    monkeypatch.setenv("PSEUDONYMED_LANGUAGE", "en")
     assert translation.determine_language([]) == "en"
     translator = translation.install(qapp, "en_gb")
     assert translator is not None
@@ -378,7 +378,7 @@ def test_english_interface(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) 
                         "5 Prepare", "6 Filters for OCR", "7 Areas", "8 Check the text",
                         "9 Analysis", "10 Visual review", "11 Control", "12 Export",
                         "13 Re-identification", "14 Database"]
-        assert window.patient.f["nachname"].placeholderText() == ""
+        assert window.patient.f["surname"].placeholderText() == ""
         assert window.export.button.text() == "Export"
         # docrepro's panels and wording follow the installed translation
         assert translation.interface_language() == "en"
@@ -490,7 +490,7 @@ def test_window_clean_up(qapp: QApplication, tmp_path: Path, report_pdf: Path,
     window.export.refresh()
     qapp.processEvents()
     # OCR leaves only notes, no warnings
-    assert window.export.colour == "gruen", window.export.traffic_light_text.text()
+    assert window.export.colour == "green", window.export.traffic_light_text.text()
     assert any("Handschrift" in h for h in d.precheck.report.notes)
     assert not d.precheck.report.warnings
     window.export.run_export()
@@ -522,8 +522,8 @@ def test_export_blocked_on_red_light(qapp: QApplication, tmp_path: Path, report_
 
     def failing(v, final=True):
         res = real(v, final)
-        g = Recheck(residual_matches=[{"seite": 1, "art": "name", "regel": "name.nachname",
-                                       "pseudonym": "x", "rects": [], "quelle": "test"}])
+        g = Recheck(residual_matches=[{"page": 1, "kind": "name", "rule": "name.surname",
+                                       "pseudonym": "x", "rects": [], "source": "test"}])
         res.target_pdf = res.target_txt = res.target_md = None
         res.report = create_report(v.source, None, 2, True, res.hits, g)
         return res
@@ -532,7 +532,7 @@ def test_export_blocked_on_red_light(qapp: QApplication, tmp_path: Path, report_
     window.export.target.setText(str(tmp_path / "aus"))
     window.export.refresh()
     qapp.processEvents()
-    assert window.export.colour == "rot" and not window.export.button.isEnabled()
+    assert window.export.colour == "red" and not window.export.button.isEnabled()
     assert "Abbruch" in window.export.status.text()
     assert "nichts exportiert" in window.export.output.toPlainText()
     with pytest.raises(RuntimeError):

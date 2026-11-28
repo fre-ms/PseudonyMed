@@ -1,8 +1,8 @@
-# Deutsche Körperteile, Organe, Knochen, Muskeln, Gefäße, Nerven, Regionen und Lagebezeichnungen,
-# wie sie in Befunden und Gesprächen vorkommen. Ergänzt das Wikidata-Vokabular, dem viele
-# Alltagsformen fehlen (Kopf, Nacken, Oberbauch, Unterschenkel, Wade, Knöchel …).
-# Ein Begriff je Zeile; Beugungen, Bindestrich-Zusammensetzungen und Umschriften erkennt der Abgleich.
-# Kopf und Hals
+# German body parts, organs, bones, muscles, vessels, nerves, regions and terms of position,
+# as they occur in findings and conversations. Supplements the Wikidata vocabulary, which lacks
+# many everyday forms (Kopf, Nacken, Oberbauch, Unterschenkel, Wade, Knöchel …).
+# One term per line; the matching recognises inflected forms, hyphenated compounds and transliterations.
+# Head and neck
 Kopf
 Hinterkopf
 Vorderkopf
@@ -120,7 +120,7 @@ Schlüsselbeingrube
 Halsschlagader
 Drosselvene
 Zungenbein
-# Rumpf
+# Trunk
 Rumpf
 Oberkörper
 Unterkörper
@@ -203,7 +203,7 @@ Damm
 After
 Afterbereich
 Steiß
-# Arme und Hände
+# Arms and hands
 Arm
 Arme
 Oberarm
@@ -249,7 +249,7 @@ Nagelfalz
 Kahnbein
 Mondbein
 Erbsenbein
-# Beine und Füße
+# Legs and feet
 Bein
 Beine
 Oberschenkel
@@ -307,7 +307,7 @@ Zehengrundgelenk
 Zehennagel
 Ballen
 Großzehenballen
-# Innere Organe
+# Internal organs
 Herz
 Herzmuskel
 Herzkammer
@@ -400,7 +400,7 @@ Hypophyse
 Hirnanhangsdrüse
 Zirbeldrüse
 Epiphyse
-# Nervensystem
+# Nervous system
 Gehirn
 Hirn
 Großhirn
@@ -465,7 +465,7 @@ Pyramidenbahn
 Liquorraum
 Nervenwasser
 Liquor
-# Muskeln, Sehnen, Bänder, Knochen, Haut
+# Muscles, tendons, ligaments, bones, skin
 Muskel
 Muskeln
 Muskulatur
@@ -522,7 +522,7 @@ Körperbehaarung
 Talgdrüse
 Schweißdrüse
 Narbe
-# Gefäße und Blut
+# Vessels and blood
 Blutgefäß
 Gefäß
 Gefäße
@@ -557,7 +557,7 @@ Blutplasma
 Blutkörperchen
 Blutplättchen
 Knochenmark
-# Lage und Seite
+# Position and side
 links
 rechts
 linke

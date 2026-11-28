@@ -37,12 +37,12 @@ def key_pair(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_capsule_json_round_trip() -> None:
-    k = capsule_module.Capsule(code="K7Q4MX", patient={"nachname": "Test", "vorname": "Anna",
-                                                       "geschlecht": "w"},
+    k = capsule_module.Capsule(code="K7Q4MX", patient={"surname": "Test", "first_name": "Anna",
+                                                       "sex": "f"},
                                mappings={"Patientin K7Q4MX": "Anna Test"}, kinds={}, source="a.pdf")
     k2 = capsule_module.Capsule.from_json(k.as_json())
     assert k2 == k and "Anna Test" in k.as_json().decode()
-    assert "Test, Anna" in k2.description() and k2.info()["kennung"] == "K7Q4MX"
+    assert "Test, Anna" in k2.description() and k2.info()["code"] == "K7Q4MX"
     with pytest.raises(capsule_module.CapsuleError):
         capsule_module.Capsule.from_json(b'{"foo": 1}')
     with pytest.raises(capsule_module.CapsuleError):
@@ -78,8 +78,8 @@ def test_capsule_round_trip_pipeline(tmp_path: Path, report_pdf: Path, patient: 
     with one_time_store() as sp:
         res = pseudonymise(report_pdf, patient, opt, store=sp)
     assert res.released and res.target_capsule is not None
-    assert res.target_capsule.name == "befund_pseudonym.kapsel.asc"
-    assert res.report.options["empfaenger"] == z.fingerprint
+    assert res.target_capsule.name == "befund_pseudonym.capsule.asc"
+    assert res.report.options["recipient"] == z.fingerprint
     assert any("Schlüsselkapsel" in h for h in res.report.notes)
     raw = res.target_capsule.read_bytes()
     assert raw.startswith(b"-----BEGIN PGP MESSAGE-----")
@@ -87,7 +87,7 @@ def test_capsule_round_trip_pipeline(tmp_path: Path, report_pdf: Path, patient: 
     k = capsule_module.open_file(res.target_capsule, sec)
     assert k.code == res.code and k.recipient == z.fingerprint
     assert k.mappings[f"Patient {res.code}"] == patient.full_name
-    assert k.patient["nachname"] == patient.surname
+    assert k.patient["surname"] == patient.surname
     assert k.as_patient().birth_date == patient.birth_date
     r = reidentify(res.text, k.mappings, k.info(), known_codes=[k.code])
     assert patient.surname in r.text and patient.referrers[0].surname in r.text
@@ -107,8 +107,8 @@ def test_capsule_via_cli(tmp_path: Path, report_pdf: Path, patient: Patient) -> 
     r = runner.invoke(app, ["schluessel", "erzeugen", "--name", "Test", "--email",
                             "t@example.org", "--ziel", str(tmp_path / "k")])
     assert r.exit_code == 0 and "Fingerabdruck" in r.output, r.output
-    pub = tmp_path / "k" / "pseudonymed_oeffentlich.asc"
-    sec = tmp_path / "k" / "pseudonymed_privat.asc"
+    pub = tmp_path / "k" / "pseudonymed_public.asc"
+    sec = tmp_path / "k" / "pseudonymed_private.asc"
     r = runner.invoke(app, ["schluessel", "zeigen", str(pub)])
     assert r.exit_code == 0 and "t@example.org" in r.output
     pfile = _patient_file(tmp_path, patient)
@@ -119,7 +119,7 @@ def test_capsule_via_cli(tmp_path: Path, report_pdf: Path, patient: Patient) -> 
     assert r.exit_code == 0 and "Kapsel:" in r.output and "Empfänger:" in r.output, r.output
     assert not store.exists()  # nothing local in recipient mode
     k = _code(r.output)
-    capsule = tmp_path / "befund_pseudonym.kapsel.asc"
+    capsule = tmp_path / "befund_pseudonym.capsule.asc"
     letter = tmp_path / "brief.txt"
     letter.write_text(f"Patient {k}, [geb. {patient.birth_date.year}], von Dr. Z1 vorgestellt.",
                       encoding="utf-8")
@@ -146,7 +146,7 @@ def test_window_capsule(qapp: QApplication, tmp_path: Path, report_pdf: Path, pa
     from pseudonymed.gui.main_window import MainWindow
     from pseudonymed.gui.session import Session
 
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     pub, sec = key_pair
     session = Session(store_path=tmp_path / "s.sqlite")
     window = MainWindow(session)
@@ -166,10 +166,10 @@ def test_window_capsule(qapp: QApplication, tmp_path: Path, report_pdf: Path, pa
     window.export.target.setText(str(tmp_path / "aus"))
     window.export.refresh()
     qapp.processEvents()
-    assert window.export.colour in ("gruen", "gelb"), window.export.traffic_light_text.text()
+    assert window.export.colour in ("green", "yellow"), window.export.traffic_light_text.text()
     window.export.run_export()
     qapp.processEvents()
-    capsule = tmp_path / "aus" / "befund_pseudonym.kapsel.asc"
+    capsule = tmp_path / "aus" / "befund_pseudonym.capsule.asc"
     assert capsule.exists() and "Schlüsselkapsel" in window.export.output.toPlainText()
     with PseudonymStore(tmp_path / "s.sqlite") as sp:
         assert sp.find() == []  # the local database saw nothing
@@ -231,9 +231,9 @@ def test_gnupg_keyring(tmp_path: Path) -> None:
     home, pub = created
     try:
         z = pgp_module.load_certificate(pub)
-        k = capsule_module.Capsule(code="ABCDEF", patient={"nachname": "Test"},
+        k = capsule_module.Capsule(code="ABCDEF", patient={"surname": "Test"},
                                    mappings={"Patient ABCDEF": "Max Test"})
-        path = capsule_module.write(k, z, tmp_path / "t.kapsel.asc")
+        path = capsule_module.write(k, z, tmp_path / "t.capsule.asc")
         with pytest.raises(pgp_module.PGPError):  # first: afterwards the agent caches it
             capsule_module.open_file(path, None, "falsch", gnupg_home=home)
         k2 = capsule_module.open_file(path, None, "pw", gnupg_home=home)
@@ -246,20 +246,19 @@ def test_gnupg_keyring(tmp_path: Path) -> None:
 
 
 def test_capsule_json_fields() -> None:
-    """Pre-rename capsules open, null fields fall back to the defaults, and a newer
-    version is refused."""
+    """The stored keys are the field names under the capsule mark, null fields fall back to
+    the defaults, and a newer version is refused."""
     import json
 
-    k = capsule_module.Capsule(code="K7Q4MX", patient={"nachname": "Test"},
+    k = capsule_module.Capsule(code="K7Q4MX", patient={"surname": "Test"},
                                mappings={"Patient K7Q4MX": "Test"}, source="a.pdf")
     raw = json.loads(k.as_json())
-    old = {"anonymed_kapsel": raw.pop("pseudonymed_kapsel"), **raw}
-    assert capsule_module.Capsule.from_json(json.dumps(old).encode()) == k
-    with_null = dict(raw, pseudonymed_kapsel=1, arten=None, werkzeug=None, einmalschluessel=None)
+    assert set(raw) == {"pseudonymed_capsule", "code", "patient", "mappings", "kinds",
+                        "recipient", "source", "created", "tool", "one_time_key"}
+    with_null = dict(raw, kinds=None, tool=None, one_time_key=None)
     k2 = capsule_module.Capsule.from_json(json.dumps(with_null).encode())
     assert k2.kinds == {} and k2.tool == k.tool and k2.one_time_key == ""
     with pytest.raises(capsule_module.CapsuleError, match="neuer"):
-        capsule_module.Capsule.from_json(json.dumps(dict(raw, pseudonymed_kapsel=99)).encode())
+        capsule_module.Capsule.from_json(json.dumps(dict(raw, pseudonymed_capsule=99)).encode())
     with pytest.raises(capsule_module.CapsuleError, match="Zuordnungen"):
-        capsule_module.Capsule.from_json(json.dumps(dict(raw, pseudonymed_kapsel=1,
-                                                    zuordnungen=[])).encode())
+        capsule_module.Capsule.from_json(json.dumps(dict(raw, mappings=[])).encode())

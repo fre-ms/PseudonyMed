@@ -11,45 +11,40 @@ deletes terms and exchanges CSV.  What a user deletes is hidden in the store's o
 stays hidden when the package is installed again; what a user adds goes into the store's own
 list of the category.  The store's version counter tells
 :func:`pseudonymed.detection.medical_terms.standard` when to rebuild its matcher.
-
-Until November 2026 the vocabulary was a table of the pseudonym database.  A database that
-still has that table hands its content over on first use (:meth:`Vocabulary.adopt`): the
-store is made to hold exactly the table's terms, the matcher's index over the store is
-compared with the one over the table, and only then is the table dropped.
 """
 
 from __future__ import annotations
 
 import csv
 import gzip
-import sqlite3
 import string
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import closing
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
 import lexterm
-from lexcor import Change, Concept, Cover, Entry, Package, Store, StoreError, Term
+from lexcor import Change, Concept, Cover, Entry, Package, Store, Term
 
 from pseudonymed import environment
+from pseudonymed.core import names
 from pseudonymed.core.text import say
 from pseudonymed.detection import list_import, overlay
 from pseudonymed.detection.choice import applied
 from pseudonymed.detection.store_table import StoreTable, own_lists
 
 DATA = Path(__file__).resolve().parent.parent / "data"
-CATEGORY_MEDICINE = "Medizin (Wikidata)"
-CATEGORY_BODY_PARTS = "Körperteile"
-CATEGORY_FINDINGS = "Befundbegriffe"
-CATEGORY_EPONYMS = "Eponyme"
-CATEGORY_USER = "Nutzervokabular"
+# category names are English (:mod:`pseudonymed.core.names` gives their labels)
+CATEGORY_MEDICINE = "medicine (Wikidata)"
+CATEGORY_BODY_PARTS = "body parts"
+CATEGORY_FINDINGS = "findings terms"
+CATEGORY_EPONYMS = "eponyms"
+CATEGORY_USER = "user vocabulary"
 SEED_LISTS = (
-    (DATA / "fachbegriffe_de.txt.gz", CATEGORY_MEDICINE),
-    (DATA / "koerperteile_de.txt", CATEGORY_BODY_PARTS),
-    (DATA / "befundbegriffe_de.txt", CATEGORY_FINDINGS),
+    (DATA / "medical_terms_de.txt.gz", CATEGORY_MEDICINE),
+    (DATA / "body_parts_de.txt", CATEGORY_BODY_PARTS),
+    (DATA / "findings_terms_de.txt", CATEGORY_FINDINGS),
 )
 BUNDLED = (CATEGORY_MEDICINE, CATEGORY_BODY_PARTS, CATEGORY_FINDINGS, CATEGORY_EPONYMS)
 # whose a bundled category is, and whether it may be passed on
@@ -144,31 +139,6 @@ def _package(category: str, terms: Iterable[str]) -> Package:
         concepts=[Concept(t, t, "", "", [Term(t, LANGUAGE)]) for t in codes])
 
 
-def table_terms(database: Path) -> dict[str, list[str]] | None:
-    """The terms by category of the table a pseudonym database kept the vocabulary in until
-    November 2026 (a row without a category is the user's own); None when the database is
-    not there or has no such table."""
-    if not Path(database).is_file():
-        return None
-    with closing(sqlite3.connect(f"{Path(database).resolve().as_uri()}?mode=ro",
-                                 uri=True)) as connection:
-        if connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
-                              " AND name = 'vokabular'").fetchone() is None:
-            return None
-        groups: dict[str, list[str]] = {}
-        for term, category in connection.execute(
-                "SELECT begriff, kategorie FROM vokabular ORDER BY rowid"):
-            groups.setdefault(category.strip() or CATEGORY_USER, []).append(term)
-    return groups
-
-
-def drop_table(database: Path) -> None:
-    """Remove the former vocabulary table and its counter from a pseudonym database."""
-    with closing(sqlite3.connect(str(database))) as connection:
-        connection.executescript(
-            "DROP TABLE IF EXISTS vokabular; DROP TABLE IF EXISTS vokabular_meta;")
-
-
 @dataclass(frozen=True)
 class _View:
     """The vocabulary as the store shows it at one version: every term of every category
@@ -234,7 +204,7 @@ class Vocabulary(StoreTable):
         database still keeps in a table.  ``readonly`` reads a store that exists and writes
         nothing; lexcor's ``StoreError`` says that there is none."""
         self.path = Path(path) if path else default_path()
-        self._open(lexterm.open_store(self.path, readonly=readonly), seed, path is None)
+        self._open(lexterm.open_store(self.path, readonly=readonly), seed)
 
     # -- reading -----------------------------------------------------------------------------------
     def _view(self) -> _View:
@@ -271,9 +241,10 @@ class Vocabulary(StoreTable):
 
     def all_items(self, search: str = "", category: str = "") -> list[tuple[str, str, str]]:
         """Rows (term, category, added) in alphabetical order, narrowed to terms that
-        contain ``search`` and to one category when given.  The store keeps no day for a
-        term: ``added`` is empty."""
+        contain ``search`` and to one category when given (its German name understood).
+        The store keeps no day for a term: ``added`` is empty."""
         wanted = _key(search)
+        category = names.category_name(category) if category else ""
         return [(term, k, "") for key, term, k in self._view().rows
                 if (not category or k == category) and wanted in key]
 
@@ -347,7 +318,7 @@ class Vocabulary(StoreTable):
         by_key = self._view().by_key
         new = [t for t in _clean(terms) if _key(t) not in by_key]
         if new:
-            self._put(category.strip() or CATEGORY_USER, new)
+            self._put(names.category_name(category) or CATEGORY_USER, new)
         return len(new)
 
     def remove(self, terms: Iterable[str]) -> int:
@@ -372,7 +343,7 @@ class Vocabulary(StoreTable):
     def set_category(self, terms: Iterable[str], category: str) -> int:
         """Move the given terms to a category (the user's when empty); returns how many
         terms were found."""
-        category = category.strip() or CATEGORY_USER
+        category = names.category_name(category) or CATEGORY_USER
         found = self._found(terms)
         moving = [item for item in found if item[0] != category]
         if moving:
@@ -382,26 +353,27 @@ class Vocabulary(StoreTable):
 
     # -- CSV ---------------------------------------------------------------------------------------
     def export_csv(self, path: Path, category: str = "") -> int:
-        """Write ``begriff,kategorie`` rows (comma, UTF-8, header line)."""
+        """Write ``term,category`` rows (comma, UTF-8, header line)."""
         lines = self.all_items(category=category)
         with Path(path).open("w", encoding="utf-8", newline="") as f:
             w = csv.writer(f, lineterminator="\n")
-            w.writerow(["begriff", "kategorie"])
+            w.writerow(["term", "category"])
             w.writerows((b, k) for b, k, _a in lines)
         return len(lines)
 
     def import_csv(self, path: Path, category: str = CATEGORY_USER) -> tuple[int, int]:
-        """Read a CSV (``begriff[,kategorie]``, header optional, comma, semicolon or tab) or a
-        plain list (one term per line); returns (new, read).  A category column in the
-        file wins over ``category``."""
-        read_in = list_import.read_list(path, "kategorie", category)
+        """Read a CSV (``term[,category]``, the German ``begriff[,kategorie]`` as well; header
+        optional, comma, semicolon or tab) or a plain list (one term per line); returns
+        (new, read).  A category column in the file wins over ``category``; a German name
+        of a bundled category in it is read as the English one."""
+        read_in = list_import.read_list(path, ("category", "kategorie"), category)
         new = sum(self.add(terms, cat) for cat, terms in read_in.groups.items())
         return new, read_in.lines
 
     def replace_from_csv(self, path: Path) -> int:
         """Make the vocabulary exactly what a CSV written by :meth:`export_csv` says
         (:meth:`replace`); returns how many terms it holds."""
-        read_in = list_import.read_list(path, "kategorie", CATEGORY_USER)
+        read_in = list_import.read_list(path, ("category", "kategorie"), CATEGORY_USER)
         self.replace(read_in.groups)
         return read_in.lines
 
@@ -455,11 +427,11 @@ class Vocabulary(StoreTable):
     def _by_list(self, groups: Mapping[str, Iterable[str]]) -> dict[str, list[str]]:
         """Terms by the name of the store's own list they go to: the store tells lists
         apart by their names without case, and a category without a name is the user's."""
-        names = {self.store.local_url(category): category for category in bundled()}
+        by_url = {self.store.local_url(category): category for category in bundled()}
         wanted: dict[str, list[str]] = {}
         for category, terms in groups.items():
-            category = category.strip() or CATEGORY_USER
-            name = names.setdefault(self.store.local_url(category), category)
+            category = names.category_name(category) or CATEGORY_USER
+            name = by_url.setdefault(self.store.local_url(category), category)
             wanted[name] = _exact([*wanted.get(name, []), *terms])
         return wanted
 
@@ -489,24 +461,3 @@ class Vocabulary(StoreTable):
         overlay.hide(self.store, [Change(url, code, "hide") for code in codes
                                   if code not in keep and code not in hides])
 
-    def adopt(self, database: Path) -> int | None:
-        """Take over the vocabulary of a pseudonym database that still keeps it in a table:
-        the store is made to hold exactly the table's terms (:meth:`replace`, which checks
-        the result), then the table is dropped.  An empty table was never filled and is
-        only dropped.  Returns how many terms moved, None when there is no table.  Whatever
-        stops the take-over is a :class:`VocabularyError`: nobody is to go on with another
-        vocabulary while the user's own waits in the table."""
-        groups = table_terms(database)
-        if groups is None:
-            return None
-        try:
-            if groups:
-                self.replace(groups)
-            drop_table(database)
-        except (StoreError, sqlite3.Error, OSError) as error:
-            raise VocabularyError(say(
-                "Das Fachvokabular ließ sich nicht aus der Pseudonym-Datenbank in die Ablage"
-                f" von lexterm übernehmen ({error}). Die Tabelle bleibt erhalten.",
-                "The vocabulary could not be taken over from the pseudonym database into"
-                f" lexterm's store ({error}). The table stays as it is.")) from error
-        return sum(len(terms) for terms in groups.values())

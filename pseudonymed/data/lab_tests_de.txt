@@ -1,8 +1,8 @@
-# Laborparameter und ihre üblichen Abkürzungen in deutschen Befunden (Blut, Urin, Liquor),
-# einschließlich neurologischer und psychiatrischer Diagnostik. Ergänzt die wenigen
-# Wikidata-Einträge mit LOINC-Kennung und deutscher Bezeichnung. Kuratiert für PseudonyMed,
-# Stand 2.11.2026. Ein Begriff je Zeile; Abkürzungen bewusst aufgenommen.
-# Blutbild
+# Laboratory parameters and their usual abbreviations in German findings (blood, urine, CSF),
+# including neurological and psychiatric diagnostics. Supplements the few
+# Wikidata items with a LOINC code and a German label. Curated for PseudonyMed,
+# as of 2026-11-02. One term per line; abbreviations included on purpose.
+# Blood count
 Blutbild
 Differentialblutbild
 Hämoglobin
@@ -24,7 +24,7 @@ Eosinophile
 Basophile
 Blutsenkung
 BSG
-# Elektrolyte und Säure-Basen-Haushalt
+# Electrolytes and acid-base balance
 Natrium
 Kalium
 Calcium
@@ -41,7 +41,7 @@ pO2
 Laktat
 Osmolalität
 Anionenlücke
-# Niere
+# Kidney
 Kreatinin
 Harnstoff
 eGFR
@@ -54,7 +54,7 @@ Proteinurie
 Mikroalbuminurie
 Urinstatus
 Urinsediment
-# Leber, Galle, Pankreas
+# Liver, bile, pancreas
 GOT
 GPT
 AST
@@ -73,7 +73,7 @@ Ammoniak
 Albumin
 Gesamteiweiß
 Eiweißelektrophorese
-# Gerinnung
+# Coagulation
 Quick
 INR
 aPTT
@@ -84,7 +84,7 @@ D-Dimere
 Antithrombin
 Faktor VIII
 Anti-Xa
-# Entzündung und Infektion
+# Inflammation and infection
 CRP
 C-reaktives Protein
 Procalcitonin
@@ -94,7 +94,7 @@ IL-6
 Blutkultur
 Blutkulturen
 Urinkultur
-# Stoffwechsel und Lipide
+# Metabolism and lipids
 Glukose
 Nüchternglukose
 HbA1c
@@ -109,7 +109,7 @@ Triglyzeride
 Triglyceride
 Lipoprotein(a)
 Homocystein
-# Herz und Muskel
+# Heart and muscle
 Troponin
 hs-Troponin
 Troponin T
@@ -121,7 +121,7 @@ Myoglobin
 LDH
 NT-proBNP
 BNP
-# Schilddrüse, Hormone
+# Thyroid, hormones
 TSH
 fT3
 fT4
@@ -141,7 +141,7 @@ Insulin
 C-Peptid
 Wachstumshormon
 IGF-1
-# Vitamine, Spurenelemente, Eisen
+# Vitamins, trace elements, iron
 Vitamin B12
 Holotranscobalamin
 Folsäure
@@ -156,7 +156,7 @@ Eisen
 Zink
 Kupfer
 Coeruloplasmin
-# Tumormarker
+# Tumour markers
 PSA
 CEA
 AFP
@@ -166,7 +166,7 @@ CA 15-3
 NSE
 S100
 Chromogranin A
-# Immunologie und Autoantikörper
+# Immunology and autoantibodies
 ANA
 ANCA
 anti-dsDNA
@@ -196,7 +196,7 @@ Anti-Ri
 LGI1-Antikörper
 CASPR2-Antikörper
 GAD-Antikörper
-# Liquordiagnostik
+# CSF diagnostics
 Liquor
 Liquorzellzahl
 Liquoreiweiß
@@ -226,7 +226,7 @@ NfL
 GFAP
 14-3-3-Protein
 RT-QuIC
-# Medikamentenspiegel und Toxikologie
+# Drug levels and toxicology
 Medikamentenspiegel
 Lithiumspiegel
 Valproinsäurespiegel
@@ -241,7 +241,7 @@ Drogenscreening
 Ethanol
 CDT
 Ethylglucuronid
-# Infektionsserologie
+# Infection serology
 HIV-Test
 Hepatitis-Serologie
 HBsAg
@@ -254,7 +254,7 @@ Borrelien-Serologie
 Borrelien-Antikörper
 Quantiferon
 SARS-CoV-2-PCR
-# Genetik
+# Genetics
 Genanalyse
 Exomsequenzierung
 Genomsequenzierung

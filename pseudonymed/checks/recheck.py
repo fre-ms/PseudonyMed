@@ -93,9 +93,9 @@ def pseudonym_spans_tolerant(text: str, pseudonyms: Iterable[str]) -> list[tuple
     spans = pseudonym_spans(text, pseudonyms)
     codes = {m.group(0) for p in pseudonyms for m in _CODE.finditer(p)}
     for code in codes:
-        muster = exact_pattern(code)
-        if muster:
-            spans += [(m.start(), m.end()) for m in re.finditer(muster, text)]
+        pattern = exact_pattern(code)
+        if pattern:
+            spans += [(m.start(), m.end()) for m in re.finditer(pattern, text)]
     return spans
 
 
@@ -115,8 +115,8 @@ class _SearchTargets:
 
 def _plain_text_match(page: int, rule: Rule, source: str) -> dict[str, Any]:
     """Report entry for a hit in plain text, which has no rectangles to point at."""
-    return {"seite": page, "art": str(rule.kind), "regel": rule.id,
-            "pseudonym": rule.pseudonym, "rects": [], "quelle": source}
+    return {"page": page, "kind": str(rule.kind), "rule": rule.id,
+            "pseudonym": rule.pseudonym, "rects": [], "source": source}
 
 
 def _check_text_layer(targets: _SearchTargets, page: PageText, result: Recheck,
@@ -161,7 +161,7 @@ def _check_extra_text(targets: _SearchTargets, number: int, text: str, result: R
     for a, b, rule in find_in_text(text, targets.rules):
         if targets.is_tolerated(rule.id, text[a:b]) or in_pseudonym(a, b, spans):
             continue
-        result.residual_matches.append(_plain_text_match(0, rule, f"zusatztext{number}"))
+        result.residual_matches.append(_plain_text_match(0, rule, f"companion_text{number}"))
 
 
 def _metadata_harmless(field_name: str, value: str | None) -> bool:

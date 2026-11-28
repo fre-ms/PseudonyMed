@@ -53,11 +53,10 @@ class StoreTable(ABC):
     path: Path
     store: Store
 
-    def _open(self, store: Store, seed: bool, default: bool) -> None:
+    def _open(self, store: Store, seed: bool) -> None:
         """Keep the opened store.  One that may be written is restricted to its owner, and
-        with ``seed`` it gets what first use owes it: what a pseudonym database still keeps
-        (only the default store takes that over, ``default``, from the default database),
-        then the bundled lists.  A store that cannot be prepared is closed again."""
+        with ``seed`` it gets the bundled lists.  A store that cannot be prepared is closed
+        again."""
         self.store = store
         if store.readonly:
             return
@@ -68,19 +67,10 @@ class StoreTable(ABC):
         if not seed:
             return
         try:
-            if default:
-                from pseudonymed.pseudonyms.store import default_path as database
-
-                self.adopt(database())
             self.seed()
         except BaseException:
             self.close()
             raise
-
-    @abstractmethod
-    def adopt(self, database: Path) -> int | None:
-        """Take over what a pseudonym database still keeps in tables; returns how much
-        moved, None when there is no such table."""
 
     @abstractmethod
     def seed(self) -> dict[str, int]:

@@ -14,7 +14,7 @@ import datetime as dt
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, NamedTuple
+from typing import NamedTuple
 
 import pymupdf
 from ocrdoc.pagetext import Box, PageText, read_text_layer
@@ -43,7 +43,7 @@ BLACK = (0.0, 0.0, 0.0)
 
 def is_mask(f: Hit) -> bool:
     """A region the user blacked out: no pseudonym is written into it."""
-    return f.rule == "maske"
+    return f.rule == "mask"
 
 
 @dataclass
@@ -52,11 +52,6 @@ class RedactionOptions:
     the base font and its smallest size, MuPDF's treatment of images and line art
     under a box, the metadata note, optional rasterising with its resolution, and
     whether scans get an invisible text layer."""
-
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "fill_colour": "fuellfarbe", "text_colour": "textfarbe", "font": "schrift",
-        "min_font_size": "min_schrift", "images": "bilder", "graphics": "grafik",
-        "notice": "vermerk", "rasterise": "rastern", "text_layer": "textebene"}
 
     fill_colour: tuple[float, float, float] = (0.88, 0.88, 0.88)
     text_colour: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -323,7 +318,7 @@ class _RedactionPlan:
 def _is_drawn(f: Hit, page: PageText | None) -> bool:
     """True for a box the user drew over text: its rects are the text spans per line,
     followed by the box itself."""
-    return f.source == "manuell" and f.end > f.start and page is not None
+    return f.source == "manual" and f.end > f.start and page is not None
 
 
 def _text_band(page: PageText, f: Hit, rect: pymupdf.Rect) -> _RemovalBand:
@@ -356,7 +351,7 @@ def _removal_band(
     and by a padded box for OCR and code hits."""
     if page is not None and (f.source == "text" or drawn):
         return _text_band(page, f, rect)
-    if f.source == "manuell":
+    if f.source == "manual":
         return _RemovalBand(pymupdf.Rect(rect), pymupdf.Rect(rect) & pdf_page.rect, True)
     return _image_band(pdf_page, rect, ink if f.source == "ocr" else None)
 
@@ -450,7 +445,7 @@ def _layout_kept(
     place.  Only a page with a text layer that a hit or a box touched is checked."""
     if page is None:
         return True
-    matches = [f for f in hits if f.source in ("text", "manuell")]
+    matches = [f for f in hits if f.source in ("text", "manual")]
     if not matches and not plan.without_layout_check:
         return True
     return layout_intact(page, read_text_layer(pdf_page, page.number), matches,

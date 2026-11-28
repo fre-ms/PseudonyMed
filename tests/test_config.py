@@ -13,8 +13,8 @@ import pytest
 
 from pseudonymed import config, environment
 
-_NAMES = ("OCR", "TESSERACT", "SPRACHE", "CARDDAV_URL", "CARDDAV_BENUTZER", "CARDDAV_ADRESSBUCH",
-          "CARDDAV_PASSWORT")
+_NAMES = ("OCR", "TESSERACT", "LANGUAGE", "CARDDAV_URL", "CARDDAV_USER", "CARDDAV_ADDRESS_BOOK",
+          "CARDDAV_PASSWORD")
 _VARIABLES = [n for name in _NAMES for n in environment.names(name)]
 ACCOUNT = config.CardDAVConfig(url="https://cloud.example.org", user="dr",
                                password_in_file="aus-datei")
@@ -39,19 +39,19 @@ def _settings() -> config.Settings:
 
 
 def test_settings_round_trip(tmp_path: Path) -> None:
-    path = tmp_path / "ordner" / "konfig.toml"  # the folder is created on the way
+    path = tmp_path / "ordner" / "config.toml"  # the folder is created on the way
     e = _settings()
     assert config.save_settings(e, path) == path
     assert config.load_settings(path) == e
     text = path.read_text(encoding="utf-8")
-    assert text.index("[carddav]") < text.index("[ocr]") < text.index("[kontrolle]")
+    assert text.index("[carddav]") < text.index("[ocr]") < text.index("[control]")
     if os.name == "posix":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_carddav_and_settings_stay_separate(tmp_path: Path) -> None:
     """Each writer keeps the other's sections as they are."""
-    path = tmp_path / "konfig.toml"
+    path = tmp_path / "config.toml"
     k = config.CardDAVConfig(url="https://cloud.example.org", user="dr",
                              address_book="patienten", password_in_file="app-pw")
     config.save_config(k, path)
@@ -61,32 +61,61 @@ def test_carddav_and_settings_stay_separate(tmp_path: Path) -> None:
                        path)
     assert config.load_settings(path) == _settings()
     text = path.read_text(encoding="utf-8")
-    assert "passwort" not in text and 'url = "https://neu.example.org"' in text
+    assert "password" not in text and 'url = "https://neu.example.org"' in text
 
 
 def test_without_file_the_defaults(tmp_path: Path) -> None:
     missing = tmp_path / "nein.toml"
     assert config.load_config(missing) == config.CardDAVConfig()
     assert config.load_settings(missing) == config.Settings()
-    (tmp_path / "k.toml").write_text('[kontrolle]\nreferenzpopulation = 0\n[ocr]\nbackend = ""\n',
+    (tmp_path / "k.toml").write_text('[control]\nreference_population = 0\n[ocr]\nbackend = ""\n',
                                      encoding="utf-8")
     e = config.load_settings(tmp_path / "k.toml")
     assert e.reference_population == 83_600_000 and e.ocr_backend == "auto"
 
 
+def test_german_names_are_read_english_ones_written(tmp_path: Path) -> None:
+    """A file written by hand with the German section and key names is understood; saving
+    it again writes the English names only."""
+    path = tmp_path / "config.toml"
+    path.write_text('[carddav]\nurl = "https://cloud.example.org"\nbenutzer = "dr"\n'
+                    'adressbuch = "patienten"\npasswort = "app-pw"\n'
+                    '[ocr]\nsprachen = "deu"\n[gui]\nsprache = "en"\n'
+                    '[empfaenger]\nschluessel = "k.asc"\nfingerabdruck = "ABCD"\n'
+                    '[pgp]\nprivater_schluessel = "s.asc"\n'
+                    '[speicher]\ndatenbank = "p.sqlite"\nschluessel = "p.txt"\n'
+                    '[adressbuch]\nlokal = "karten.vcf"\nmac_adressbuecher = ["A1"]\n'
+                    '[kontrolle]\nreferenzpopulation = 9000\neigene_orte = "Musterstadt"\n',
+                    encoding="utf-8")
+    k = config.load_config(path)
+    assert (k.user, k.address_book, k.password_in_file) == ("dr", "patienten", "app-pw")
+    e = config.load_settings(path)
+    assert e == config.Settings(
+        tesseract_languages="deu", gui_language="en", recipient_key="k.asc",
+        recipient_fingerprint="ABCD", pgp_private_key="s.asc", store_database="p.sqlite",
+        store_key="p.txt", local_address_book="karten.vcf", mac_address_books=["A1"],
+        reference_population=9000, own_places="Musterstadt")
+    config.save_settings(e, path)
+    text = path.read_text(encoding="utf-8")
+    assert config.load_config(path) == k and config.load_settings(path) == e
+    for german in ("benutzer", "adressbuch", "passwort", "sprache", "empfaenger", "schluessel",
+                   "speicher", "datenbank", "lokal", "kontrolle", "referenzpopulation"):
+        assert german not in text, german
+
+
 def test_environment_overrides_the_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    path = tmp_path / "konfig.toml"
+    path = tmp_path / "config.toml"
     config.save_config(config.CardDAVConfig(url="https://alt.example.org", user="alt",
                                             address_book="a"), path)
     config.save_settings(_settings(), path)
     monkeypatch.setenv("PSEUDONYMED_CARDDAV_URL", " https://neu.example.org ")
-    monkeypatch.setenv("ANONYMED_CARDDAV_BENUTZER", "neu")  # the former name still counts
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_ADRESSBUCH", "")
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_BENUTZER", "neu")  # the German name counts too
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_ADDRESS_BOOK", "")
     k = config.load_config(path)
     assert (k.url, k.user, k.address_book) == ("https://neu.example.org", "neu", "")
     monkeypatch.setenv("PSEUDONYMED_OCR", " ")  # blank: back to auto
-    monkeypatch.setenv("ANONYMED_TESSERACT", "/usr/bin/tesseract")
-    monkeypatch.setenv("PSEUDONYMED_SPRACHE", "de")
+    monkeypatch.setenv("PSEUDONYMED_TESSERACT", "/usr/bin/tesseract")
+    monkeypatch.setenv("PSEUDONYMED_LANGUAGE", "de")
     e = config.load_settings(path)
     assert (e.ocr_backend, e.tesseract_path, e.gui_language) == ("auto", "/usr/bin/tesseract", "de")
     assert e.tesseract_languages == "deu+eng"  # no variable for it: stays as in the file
@@ -124,16 +153,19 @@ def keyring_backend(monkeypatch: pytest.MonkeyPatch) -> dict[tuple[str, str], st
 
 def test_password_order(keyring_backend: dict[tuple[str, str], str],
                         monkeypatch: pytest.MonkeyPatch) -> None:
-    """Environment before keyring, current service before the former one, file last."""
+    """Environment before keyring, keyring before the file."""
     assert config.load_password(ACCOUNT) == "aus-datei"
     assert config.save_password(ACCOUNT, "neu")
     assert keyring_backend == {(config.SERVICE, "dr@cloud.example.org"): "neu"}
-    keyring_backend[(config.FORMER_SERVICE, "dr@cloud.example.org")] = "alt"
     assert config.load_password(ACCOUNT) == "neu"
-    del keyring_backend[(config.SERVICE, "dr@cloud.example.org")]
-    assert config.load_password(ACCOUNT) == "alt"
-    monkeypatch.setenv("ANONYMED_CARDDAV_PASSWORT", "aus-umgebung")
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORT", "aus-umgebung")  # the German name
     assert config.load_password(ACCOUNT) == "aus-umgebung"
+    monkeypatch.setenv(config.PASSWORD_ENV_VAR, "from-environment")  # the English one first
+    assert config.load_password(ACCOUNT) == "from-environment"
+    del keyring_backend[(config.SERVICE, "dr@cloud.example.org")]
+    monkeypatch.delenv(config.PASSWORD_ENV_VAR)
+    monkeypatch.delenv("PSEUDONYMED_CARDDAV_PASSWORT")
+    assert config.load_password(ACCOUNT) == "aus-datei"
 
 
 def test_keyring_error_falls_back_to_file(monkeypatch: pytest.MonkeyPatch) -> None:

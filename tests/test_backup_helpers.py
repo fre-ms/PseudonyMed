@@ -1,7 +1,7 @@
 """Unit tests for the helpers behind backup, restore and relocation.  The round trips
 live in ``test_backup.py``; here are the branches those only reach by accident:
-archive naming, decryption guards, manifest checks, key validation, relocation refusals
-and merging an archive that predates a table."""
+archive naming, decryption guards, manifest checks, key validation and relocation
+refusals."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from pseudonymed.core.text import in_language
 from pseudonymed.pseudonyms import backup as backup_mod
 from pseudonymed.pseudonyms import pgp as pgp_module
 from pseudonymed.pseudonyms import statistics as stats_mod
@@ -30,26 +31,33 @@ def _zip(files: dict[str, bytes]) -> bytes:
 
 def _manifest(files: dict[str, bytes]) -> bytes:
     return json.dumps({backup_mod._MARK: backup_mod.VERSION, "version": backup_mod.VERSION,
-                       "dateien": {n: {"sha256": backup_mod._sha(d), "bytes": len(d)}
-                                   for n, d in files.items()}}).encode()
+                       "files": {n: {"sha256": backup_mod._sha(d), "bytes": len(d)}
+                                 for n, d in files.items()}}).encode()
 
 
 def test_statistics_lines_order() -> None:
+    """The stored (English) names of classes, categories and lists are shown by their
+    labels; a name of the user's own as it is."""
     st = stats_mod.Statistics(
         path=Path("/x/p.sqlite"), exists=True, per_category=[("Patient", 1)], discarded=2,
-        discarded_per_rule=[("ner.person", 2)], vocabulary_categories=[("Test", 1)],
-        identifier_categories=[("Klinik", 5), ("Beruf", 7)],
-        identifier_lists=[("Kliniken AT", 3, "2026-11-12 0123abcd")], config_present=True)
+        discarded_per_rule=[("ner.person", 2)],
+        vocabulary_categories=[("body parts", 2), ("Test", 1)],
+        identifier_categories=[("hospital", 5), ("occupation", 7)],
+        identifier_lists=[("hospitals AT (BMASGPK)", 3, "2026-11-12 0123abcd")],
+        config_present=True)
     assert [k for k, _ in st.lines()] == [
         "Datenbank", "Vorhanden", "Größe", "Schema", "Schlüsseldatei", "Schlüssel vorhanden",
         "Schlüssel-Kennung", "Patienten", "Verknüpfte Schreibweisen", "Zuordnungen gesamt",
         "    Patient", "Gemerkte Verwerfungen", "    ner.person", "Erster Eintrag",
-        "Letzter Eintrag", "Integrität", "Seiten / frei", "Vokabular (Begriffe)", "    Test",
-        "Identifikatoren (Einträge)", "    Klinik", "    Beruf",
+        "Letzter Eintrag", "Integrität", "Seiten / frei", "Vokabular (Begriffe)",
+        "    Körperteile", "    Test", "Identifikatoren (Einträge)", "    Klinik", "    Beruf",
         "Zusatzdaten (selbst geladen)", "Konfiguration"]
     values = dict(st.lines())
     assert values["Identifikatoren (Einträge)"] == "12" and values["Schema"] == "–"
-    assert values["Zusatzdaten (selbst geladen)"] == "Kliniken AT: 3 Einträge, 2026-11-12"
+    assert values["Zusatzdaten (selbst geladen)"] == (
+        "Kliniken AT (BMASGPK): 3 Einträge, 2026-11-12")
+    english = [in_language(k, "en") for k, _ in st.lines()]
+    assert "    Body parts" in english and "    Hospital" in english and "    Test" in english
     assert "Identifikatoren (Einträge)" not in dict(
         stats_mod.Statistics(path=Path("/x")).lines())
 
@@ -58,7 +66,7 @@ def test_archive_path(tmp_path: Path) -> None:
     folder = tmp_path / "s"
     folder.mkdir()
     p = backup_mod._archive_path(folder, encrypted=False)
-    assert p.parent == folder and p.name.startswith("pseudonymed_sicherung_") and p.suffix == ".zip"
+    assert p.parent == folder and p.name.startswith("pseudonymed_backup_") and p.suffix == ".zip"
     assert backup_mod._archive_path(tmp_path / "ohne", encrypted=True).name.endswith(".zip.gpg")
     gpg = tmp_path / "a.zip.gpg"
     assert backup_mod._archive_path(tmp_path / "a.zip", encrypted=True) == gpg
@@ -90,9 +98,9 @@ def test_manifest_from() -> None:
     newer = json.dumps({backup_mod._MARK: 1, "version": backup_mod.VERSION + 1}).encode()
     with pytest.raises(backup_mod.BackupError, match="neueren"):
         backup_mod._manifest_from(newer)
-    old = json.dumps({backup_mod._FORMER_MARK: 1, "version": 1, "patienten": 3,
-                      "unbekannt": "x"}).encode()
-    m = backup_mod._manifest_from(old)
+    known = json.dumps({backup_mod._MARK: 1, "version": 1, "patients": 3,
+                        "unknown": "x"}).encode()  # a key the manifest does not know is left out
+    m = backup_mod._manifest_from(known)
     assert m.patients == 3 and m.version == 1 and not m.config
 
 
@@ -134,7 +142,7 @@ def test_relocate_key(tmp_path: Path) -> None:
         backup_mod._relocate_key(old, new, "s")
     new.write_bytes(b"00ff")  # the same key, other whitespace: accepted
     aside = backup_mod._relocate_key(old, new, "s")
-    assert aside == tmp_path / "alt" / "k.txt.verlegt-s" and aside.exists()
+    assert aside == tmp_path / "alt" / "k.txt.moved-s" and aside.exists()
     assert not old.exists() and new.read_bytes() == b"00ff\n"
 
 
@@ -142,7 +150,7 @@ def _database_with_patient(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     v = sqlite3.connect(path)
     v.executescript(_SCHEMA)
-    v.execute("INSERT INTO patienten (schluessel, kennung, angelegt) VALUES ('s1', 'K1', 't')")
+    v.execute("INSERT INTO patients (patient_key, code, created) VALUES ('s1', 'K1', 't')")
     v.commit()
     v.close()
 
@@ -167,19 +175,7 @@ def test_relocate_database(tmp_path: Path) -> None:
     assert old.exists()  # a refusal moves nothing
     new = tmp_path / "neu" / "tief" / "p.sqlite"
     aside = backup_mod._relocate_database(old, new, "s")
-    assert aside == old.with_name("p.sqlite.verlegt-s") and aside.exists()
-    assert not old.exists() and _count(new, "patienten") == 1
+    assert aside == old.with_name("p.sqlite.moved-s") and aside.exists()
+    assert not old.exists() and _count(new, "patients") == 1
 
 
-def test_adopt_entries_tolerates_missing_tables(tmp_path: Path) -> None:
-    archive = tmp_path / "archiv.sqlite"
-    _database_with_patient(archive)
-    v = sqlite3.connect(archive)
-    v.executescript("DROP TABLE restrisiko; DROP TABLE restrisiko_dokumente;")
-    v.close()
-    local = tmp_path / "lokal.sqlite"
-    counter = backup_mod._adopt_entries(local, archive)
-    assert counter["patienten"] == 1 and counter["restrisiko"] == 0
-    assert counter["restrisiko_dokumente"] == 0 and _count(local, "patienten") == 1
-    assert "vokabular" not in counter  # the vocabulary is no table of the database
-    assert backup_mod._adopt_entries(local, archive)["patienten"] == 0  # idempotent

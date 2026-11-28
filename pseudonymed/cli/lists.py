@@ -9,16 +9,18 @@ import typer
 from lexcor import Store
 
 from pseudonymed.cli.base import (
+    LANGUAGE,
     abort,
     add_group,
+    canonical,
     command,
     error_message,
     flags,
-    german,
     list_metavar,
     value_name,
     w,
 )
+from pseudonymed.core import names
 
 medical_terms_app = typer.Typer(
     help=w("Medizinisches Fachvokabular, das NER und unscharfe OCR-Suche nicht anfassen dürfen.",
@@ -39,7 +41,7 @@ def medical_terms_status() -> None:
     fb = terms_module.standard()
     typer.echo(w(f"{fb.count} geschützte Begriffe", f"{fb.count} protected terms"))
     for name, n in fb.sources:
-        typer.echo(f"  {n:>7}  {name}")
+        typer.echo(f"  {n:>7}  {names.label(name, LANGUAGE)}")
     path = vocab_mod.default_path()
     typer.echo(w(f"Ablage {path} (Schritt „3 Fachvokabular“,"
                  " 'fachbegriffe hinzufuegen|entfernen|exportieren|importieren')",
@@ -60,7 +62,9 @@ def _show_lists(store: Store) -> None:
 
     for item in choice.listing(store):
         whose = "" if item.own else w("  (aus einem anderen Programm)", "  (from another program)")
-        typer.echo(f"{'✓' if item.ticked else ' '} {item.info.title or item.info.url}"
+        title = item.info.title or item.info.url
+        shown = names.label(title, LANGUAGE) if item.own else title
+        typer.echo(f"{'✓' if item.ticked else ' '} {shown}"
                    f"  {item.info.terms}{whose}  {item.info.url}")
 
 
@@ -121,7 +125,7 @@ def add_medical_terms(
     category: Annotated[str, typer.Option(*flags("--kategorie"),
                                           help=w("Kategorie des Vokabulars.",
                                                  "Category of the vocabulary."))]
-    = "Nutzervokabular",
+    = names.label("user vocabulary", LANGUAGE),
 ) -> None:
     """Add terms to the vocabulary under a category."""
     from pseudonymed.detection import medical_terms as terms_module
@@ -130,7 +134,8 @@ def add_medical_terms(
     with vocab_mod.Vocabulary() as v:
         n = v.add(begriffe, category)
     terms_module.standard.cache_clear()
-    typer.echo(w(f"{n} neue Begriffe ({category}).", f"{n} new term(s) ({category})."))
+    shown = names.label(names.category_name(category), LANGUAGE)
+    typer.echo(w(f"{n} neue Begriffe ({shown}).", f"{n} new term(s) ({shown})."))
 
 
 @command(medical_terms_app, "entfernen", "remove",
@@ -152,8 +157,8 @@ def remove_medical_terms(
 
 
 @command(medical_terms_app, "exportieren", "export",
-                           help=w("Das Vokabular als CSV (begriff,kategorie) schreiben.",
-                                  "Write the vocabulary as CSV (begriff,kategorie)."))
+                           help=w("Das Vokabular als CSV (term,category) schreiben.",
+                                  "Write the vocabulary as CSV (term,category)."))
 def export_medical_terms(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"),
                                          help=w("Zieldatei (.csv).", "Target file (.csv)."))],
@@ -196,8 +201,8 @@ def check_medical_terms(
 def merge_medical_terms(
     file: Annotated[Path, typer.Argument(
         metavar=w("datei", "file"), exists=True,
-        help=w("Liste, ein Begriff je Zeile, z. B. eine <name>_pseudonym.vokabular.txt.",
-               "List with one term per line, e.g. a <name>_pseudonym.vokabular.txt."))],
+        help=w("Liste, ein Begriff je Zeile, z. B. eine <name>_pseudonym.vocabulary.txt.",
+               "List with one term per line, e.g. a <name>_pseudonym.vocabulary.txt."))],
     name: Annotated[str, typer.Option("--name",
                                       help=w("Kategorie, in die die Begriffe kommen.",
                                              "Category the terms go to."))]
@@ -228,7 +233,7 @@ def import_medical_terms(
                                              "Category the terms go to."))],
     format_: Annotated[str, typer.Option("--format", help=w("liste, csv oder mesh-xml.",
                                                             "list, csv or mesh-xml."))]
-    = value_name("liste"),
+    = value_name("list"),
     column: Annotated[int, typer.Option(*flags("--spalte"),
                                         help=w("Spalte (0-basiert) bei csv.",
                                                "Column (0-based) for csv."))] = 0,
@@ -241,7 +246,7 @@ def import_medical_terms(
     from pseudonymed.detection import medical_terms as terms_module
 
     try:
-        target, n = terms_module.import_file(file, name, german(format_, ("liste",)), column,
+        target, n = terms_module.import_file(file, name, canonical(format_, ("list",)), column,
                                              delimiter)
     except (ValueError, OSError) as e:
         abort(error_message(e), cause=e)
@@ -270,7 +275,7 @@ def identifiers_status() -> None:
         typer.echo(w(f"{ident.count()} Identifikatoren in {ident.path}",
                      f"{ident.count()} identifiers in {ident.path}"))
         for category, n in ident.categories():
-            typer.echo(f"  {n:>7}  {category}")
+            typer.echo(f"  {n:>7}  {names.label(category, LANGUAGE)}")
         if ident.deleted():
             typer.echo(w(f"  {ident.deleted():>7}  gelöschte mitgelieferte Einträge",
                          f"  {ident.deleted():>7}  deleted bundled entries"))
@@ -323,16 +328,17 @@ def add_identifiers(
     category: Annotated[str, typer.Option(
         *flags("--klasse"), help=w("Klinik, Beruf, Studie, Titel oder Sonstiges (eigene Klassen wie"
                                    " Sonstiges: überall geschwärzt).",
-                                   "Klinik, Beruf, Studie, Titel or Sonstiges (own classes such as"
-                                   " Sonstiges: redacted everywhere)."))] = "Sonstiges",
+                                   "hospital, occupation, study, title or other (own classes such"
+                                   " as other: redacted everywhere)."))]
+    = names.label("other", LANGUAGE),
 ) -> None:
     """Add identifiers of one class to the user's own."""
     from pseudonymed.detection import identifiers as ident_module
 
     with ident_module.IdentifierTable() as ident:
         n = ident.add(begriffe, category)
-    typer.echo(w(f"{n} neue Identifikatoren ({category}).",
-                 f"{n} new identifier(s) ({category})."))
+    shown = names.label(names.class_name(category), LANGUAGE)
+    typer.echo(w(f"{n} neue Identifikatoren ({shown}).", f"{n} new identifier(s) ({shown})."))
 
 
 @command(identifiers_app, "entfernen", "remove", help=w(
@@ -354,8 +360,8 @@ def remove_identifiers(
 
 
 @command(identifiers_app, "exportieren", "export", help=w(
-    "Die Identifikatoren als CSV (begriff,klasse,quelle,angaben) schreiben.",
-    "Write the identifiers as CSV (begriff,klasse,quelle,angaben)."))
+    "Die Identifikatoren als CSV (term,class,source,details) schreiben.",
+    "Write the identifiers as CSV (term,class,source,details)."))
 def export_identifiers(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"),
                                          help=w("Zieldatei (.csv).", "Target file (.csv)."))],
@@ -376,12 +382,14 @@ def export_identifiers(
     "Import identifiers from a CSV or a list."))
 def import_identifiers(
     file: Annotated[Path, typer.Argument(metavar=w("datei", "file"), exists=True,
-                                         help=w("CSV (begriff[,klasse]) oder Liste.",
-                                                "CSV (begriff[,klasse]) or a list."))],
+                                         help=w("CSV (term[,class], auch begriff[,klasse])"
+                                                " oder Liste.",
+                                                "CSV (term[,class], begriff[,klasse] as well)"
+                                                " or a list."))],
     category: Annotated[str, typer.Option(*flags("--klasse"),
                                           help=w("Klasse ohne Klassenspalte.",
                                                  "Class where there is no class column."))]
-    = "Sonstiges",
+    = names.label("other", LANGUAGE),
 ) -> None:
     """Import identifiers from a CSV file or a plain list."""
     from pseudonymed.detection import identifiers as ident_module
@@ -414,4 +422,5 @@ def check_identifiers(
             t = Path(t).read_text(encoding="utf-8", errors="replace")
         matches = recogniser.candidates(t)
         typer.echo(w(f"{len(matches)} Treffer", f"{len(matches)} hit(s)") + "".join(
-            f"\n  {ident_module.category_of(k.classes)}: {t[k.start:k.end]}" for k in matches))
+            f"\n  {names.label(ident_module.category_of(k.classes), LANGUAGE)}:"
+            f" {t[k.start:k.end]}" for k in matches))

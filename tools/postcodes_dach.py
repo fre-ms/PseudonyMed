@@ -1,11 +1,11 @@
-"""Build ``pseudonymed/daten/plz_dach.csv.gz``: postcode -> municipality -> district, DACH.
+"""Build ``pseudonymed/data/postcodes_dach.csv.gz``: postcode -> municipality -> district, DACH.
 
 The residual-risk check estimates the catchment area of the practice (the districts its
 patients come from) locally from the postcodes in the address book.  This file maps every
 postcode of Germany, Austria and Switzerland to the municipalities it covers, with the
 district of each municipality and the estimated share of the postcode's residents living
 there.  The keys match identicalc's ``municipalities_de.csv.gz`` and
-``demografie_dach.csv.gz``.
+``demographics_dach.csv.gz``.
 
 Sources and licences
 --------------------
@@ -38,13 +38,13 @@ Landestopografie swisstopo" compulsory
 (https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten-und-geodienste).
 Districts and mergers from the BFS "Amtliches Gemeindeverzeichnis der Schweiz" (REST service
 https://www.agvchapp.bfs.admin.ch; BFS terms OPEN BY).  Municipalities are written in the
-territorial state of ``demografie_dach.csv.gz`` (STATPOP reference date), so that every key
+territorial state of ``demographics_dach.csv.gz`` (STATPOP reference date), so that every key
 can be joined: an address of a commune merged since then goes to the former commune named
 like its postal locality, else to the surviving former commune, else to all former communes
 by population.
 
 Share (``share``)
-------------------
+-----------------
 For a postcode P and a municipality G the residents of P living in G are estimated as
 ``population(G) * units(P, G) / units(G)``: the population of the municipality, spread over
 its postcodes in proportion to its residential units.  Units are residential addresses in AT
@@ -57,18 +57,19 @@ municipality of P has residents and residential units, all addresses (DE: street
 population are used, then unweighted addresses, then the fallback weights (DE seat
 postcodes: population; CH perimeter-only postcodes: swisstopo address share).
 Populations: DE identicalc's ``municipalities_de.csv.gz``, AT and CH municipality totals of
-``demografie_dach.csv.gz``.
+``demographics_dach.csv.gz``.
 
 Output
 ------
-A comment line ``# Quelle: ...; Lizenz: ...; Stand: ...``, then the columns
-``land,plz,ort,gemeinde_kennung,gemeinde_name,kreis_kennung,anteil``.  ``gemeinde_kennung``
-is the 12-digit ARS (DE), the 5-digit Gemeindekennziffer (AT, Vienna by district) or the BFS
-number (CH); ``kreis_kennung`` the 5-digit AGS of the Kreis (DE), the 3-digit political
-district (AT) or the BFS district number (CH).  ``place`` is the most frequent postal locality
-of the pair (DE: OSM locality, AT: Zustellort, CH: locality of the postcode label).  gzip
-without time stamp, so equal downloads give a byte-identical file.  Because the German rows
-are derived from OpenStreetMap, the file as a whole is distributed under the ODbL 1.0.
+A comment line ``# Source: ...; Licence: ...; As of: ...``, then the columns
+``country,postcode,place,municipality_code,municipality_name,district_code,share``.
+``municipality_code`` is the 12-digit ARS (DE), the 5-digit Gemeindekennziffer (AT, Vienna by
+district) or the BFS number (CH); ``district_code`` the 5-digit AGS of the Kreis (DE), the
+3-digit political district (AT) or the BFS district number (CH).  ``place`` is the most
+frequent postal locality of the pair (DE: OSM locality, AT: Zustellort, CH: locality of the
+postcode label).  gzip without time stamp, so equal downloads give a byte-identical file.
+Because the German rows are derived from OpenStreetMap, the file as a whole is distributed
+under the ODbL 1.0.
 
 Usage: python -I tools/postcodes_dach.py [--raw FOLDER] [--target FILE]
 
@@ -102,10 +103,11 @@ from pathlib import Path
 import identicalc.data
 
 DATA = Path(__file__).resolve().parent.parent / "pseudonymed" / "data"
-TARGET = DATA / "plz_dach.csv.gz"
+TARGET = DATA / "postcodes_dach.csv.gz"
 MUNICIPALITIES_DE = identicalc.data.MUNICIPALITIES  # Destatis, as identicalc ships it
-DEMOGRAPHICS = DATA / "demografie_dach.csv.gz"
-HEADER = ["land", "plz", "ort", "gemeinde_kennung", "gemeinde_name", "kreis_kennung", "anteil"]
+DEMOGRAPHICS = DATA / "demographics_dach.csv.gz"
+HEADER = ["country", "postcode", "place", "municipality_code", "municipality_name",
+          "district_code", "share"]
 AGENT = {"User-Agent": "PseudonyMed build script (https://github.com/fre-ms/PseudonyMed)"}
 SCALE = 10_000  # shares are written in units of 1/10,000
 
@@ -161,7 +163,7 @@ class Country:
 
 def _fetch(url: str, raw: Path | None, file: str, attempts: int = 3,
            timeout: int = 900) -> bytes:
-    """Return the body of ``url``, cached as ``roh/datei`` if a folder is given."""
+    """Return the body of ``url``, cached as ``raw/file`` if a folder is given."""
     path = raw / file if raw else None
     if path and path.exists():
         return path.read_bytes()
@@ -174,19 +176,19 @@ def _fetch(url: str, raw: Path | None, file: str, attempts: int = 3,
         except urllib.error.URLError as error:
             if isinstance(error.reason, ssl.SSLCertVerificationError):
                 raise SystemExit(
-                    f"{url}: Zertifikat nicht prüfbar ({error.reason.verify_message}). Dem"
-                    " CA-Bündel dieser Python-Installation fehlt vermutlich die Wurzel (z. B."
-                    " HARICA TLS RSA Root CA 2021 bei data.bev.gv.at); SSL_CERT_FILE auf ein"
-                    " aktuelles Bündel setzen oder die Datei selbst nach ORDNER/<quelle>/"
-                    f"{file} laden und mit --raw ORDNER bauen.") from error
+                    f"{url}: certificate cannot be verified ({error.reason.verify_message})."
+                    " The CA bundle of this Python installation probably lacks the root (e.g."
+                    " HARICA TLS RSA Root CA 2021 for data.bev.gv.at); point SSL_CERT_FILE at a"
+                    " current bundle, or download the file yourself to FOLDER/<source>/"
+                    f"{file} and build with --raw FOLDER.") from error
             if attempt == attempts:
                 raise
-            print(f"  {url}: {error}; neuer Versuch in {20 * attempt} s", file=sys.stderr)
+            print(f"  {url}: {error}; next attempt in {20 * attempt} s", file=sys.stderr)
             time.sleep(20 * attempt)
         except OSError as error:
             if attempt == attempts:
                 raise
-            print(f"  {url}: {error}; neuer Versuch in {20 * attempt} s", file=sys.stderr)
+            print(f"  {url}: {error}; next attempt in {20 * attempt} s", file=sys.stderr)
             time.sleep(20 * attempt)
     if path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,8 +203,8 @@ def _csv(z: zipfile.ZipFile, name: str, separator: str = ";") -> Iterator[dict[s
                                   delimiter=separator)
 
 
-def _xlsx_lines(content: bytes, muster: str) -> Iterator[dict[str, str]]:
-    """Rows ``{column letter: text}`` of the first sheet whose name contains ``muster``."""
+def _xlsx_lines(content: bytes, pattern: str) -> Iterator[dict[str, str]]:
+    """Rows ``{column letter: text}`` of the first sheet whose name contains ``pattern``."""
     z = zipfile.ZipFile(io.BytesIO(content))
     strings: list[str] = []
     if "xl/sharedStrings.xml" in z.namelist():
@@ -210,7 +212,7 @@ def _xlsx_lines(content: bytes, muster: str) -> Iterator[dict[str, str]]:
         strings = ["".join(t.text or "" for t in si.iter(f"{{{NS['m']}}}t"))
                    for si in ss.findall("m:si", NS)]
     sheets = ET.fromstring(z.read("xl/workbook.xml")).find("m:sheets", NS)
-    rid = next(b.get(REL_ID) for b in sheets if muster in (b.get("name") or "").lower())
+    rid = next(b.get(REL_ID) for b in sheets if pattern in (b.get("name") or "").lower())
     rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
     target = next(r.get("Target", "") for r in rels if r.get("Id") == rid)
     path = target.lstrip("/") if target.startswith("/") else f"xl/{target}"
@@ -235,18 +237,18 @@ def _most_frequent(counter: Counter[str]) -> str:
 
 def _demographics() -> tuple[dict[tuple[str, str, str], int], dict[tuple[str, str, str], str],
                              dict[str, str]]:
-    """Population and name per (land, ebene, kennung) of districts and municipalities."""
+    """Population and name per (country, level, code) of districts and municipalities."""
     sum_total: dict[tuple[str, str, str], int] = defaultdict(int)
     names: dict[tuple[str, str, str], str] = {}
     reference_date: dict[str, str] = {}
     with gzip.open(DEMOGRAPHICS, "rt", encoding="utf-8", newline="") as f:
         next(f)
         for r in csv.DictReader(f):
-            if r["ebene"] in ("kreis", "gemeinde"):
-                key = (r["land"], r["ebene"], r["kennung"])
-                sum_total[key] += int(r["anzahl"])
+            if r["level"] in ("district", "municipality"):
+                key = (r["country"], r["level"], r["code"])
+                sum_total[key] += int(r["count"])
                 names[key] = r["name"]
-                reference_date[r["land"]] = r["stichtag"]
+                reference_date[r["country"]] = r["reference_date"]
     return sum_total, names, reference_date
 
 
@@ -265,16 +267,16 @@ def _successors_de(raw: Path | None, from_year: int) -> Successors:
         if int(part[:4]) >= from_year:
             parts[part[:4]] = max(parts.get(part[:4], ""), part)  # latest list per year
     if not parts:
-        raise SystemExit("DE: keine Listen der Gebietsänderungen gefunden")
+        raise SystemExit("DE: no lists of territorial changes found")
     successors: Successors = defaultdict(list)
     for part in sorted(parts.values()):
         page = _fetch(DE_CHANGES + f"{part}.html", raw, f"{part}.html").decode(
             "utf-8", "replace")
         reference = re.search(r'href="([^"]*Namens-Grenz-Aenderung/[^"]*\.xlsx[^"]*)"', page)
         if not reference:
-            raise SystemExit(f"DE: keine Tabelle der Gebietsänderungen {part} gefunden")
+            raise SystemExit(f"DE: no table of territorial changes {part} found")
         url = "https://www.destatis.de" + html.unescape(reference.group(1))
-        for z in _xlsx_lines(_fetch(url, raw, f"aenderungen_{part}.xlsx"), "nderung"):
+        for z in _xlsx_lines(_fetch(url, raw, f"changes_{part}.xlsx"), "nderung"):
             # Columns: B unit type, D old AGS, F kind (1 dissolution, 3 new key), G area,
             # H residents moved (empty for a new key), J new AGS.
             old, new = z.get("D", ""), z.get("J", "")
@@ -308,9 +310,8 @@ def germany(raw: Path | None, raw_changes: Path | None) -> Country:
     with gzip.open(MUNICIPALITIES_DE, "rt", encoding="utf-8", newline="") as f:
         header = f.readline()
         municipalities = list(csv.DictReader(f))
-    territory_date = re.search(r"Gebietsstand (\d{4}-\d{2}-\d{2})", header)
-    country.state = (f"OSM-Auszug {date} (openplzapi.data {sha[:7]}), Gebietsstand"
-                     f" {territory_date.group(1) if territory_date else '?'}")
+    territory_date = re.search(r"(?:Gebietsstand|territory as of) (\d{4}-\d{2}-\d{2})", header)
+    country.state = state_de(date, sha, territory_date.group(1) if territory_date else "?")
     ars = {g["ars"][:5] + g["ars"][9:]: g["ars"] for g in municipalities}
     for g in municipalities:
         country.population[g["ars"]] = int(g["population"])
@@ -353,13 +354,14 @@ def germany(raw: Path | None, raw_changes: Path | None) -> Country:
         country.replacement[pair] = max(int(g["population"]), 1)
         country.places[pair][g["name"]] += 1
     country.notes += [
-        f"{sum(rekeyed.values())} Straßen aus {len(rekeyed)} geänderten"
-        f" Gemeindeschlüsseln nachgeführt ({', '.join(sorted(rekeyed))})",
-        f"{sum(pending.values())} Straßen ohne bekannte Gemeinde verworfen"
-        f" ({', '.join(sorted(pending)) or 'keine'})",
-        f"{len(without)} bewohnte Gemeinden ohne OSM-Straße mit der PLZ des Gemeindesitzes"
-        f" ergänzt ({sum(int(g['population']) for g in without)} Einwohner)",
-        f"{len({g['plz'] for g in seats})} PLZ von Gemeindesitzen ohne OSM-Gebiet ergänzt",
+        f"{sum(rekeyed.values())} streets of {len(rekeyed)} changed municipality keys"
+        f" carried forward ({', '.join(sorted(rekeyed))})",
+        f"{sum(pending.values())} streets without a known municipality dropped"
+        f" ({', '.join(sorted(pending)) or 'none'})",
+        f"{len(without)} inhabited municipalities without an OSM street added at the postcode"
+        f" of their seat ({sum(int(g['population']) for g in without)} residents)",
+        f"{len({g['postcode'] for g in seats})} postcodes of municipal seats without an OSM"
+        " area added",
     ]
     return country
 
@@ -375,7 +377,7 @@ def austria(raw: Path | None, demo: tuple) -> Country:
     date = re.search(r"(\d{2})\.(\d{2})\.(\d{4})",
                      z.read("Aktualitaetsstand.txt").decode("utf-8", "replace"))
     if not date:
-        raise SystemExit("AT: Stichtag des Adressregisters nicht gefunden")
+        raise SystemExit("AT: reference date of the address register not found")
     country.state = f"{date.group(3)}-{date.group(2)}-{date.group(1)}"
     residential_addresses = {r["ADRCD"] for r in _csv(z, "GEBAEUDE.csv")
                              if r["EIGENSCHAFT"] in AT_RESIDENTIAL}
@@ -392,7 +394,7 @@ def austria(raw: Path | None, demo: tuple) -> Country:
         place = delivery_place.get(r["SKZ"]) or locality.get((r["GKZ"], r["OKZ"]), "")
         country.places[pair][place] += 1
     for (ctry, layer, code), n in sum_total.items():
-        if ctry == "AT" and layer == "gemeinde":
+        if ctry == "AT" and layer == "municipality":
             country.population[code] = n
             country.names[code] = names[(ctry, layer, code)]
             country.district[code] = code[:3]
@@ -436,7 +438,7 @@ def switzerland(raw_addresses: Path | None, raw_localities: Path | None, raw_agv
             f"correspondances_{begin}_{end}.csv").decode("utf-8-sig"))):
         predecessors[r["TerminalCode"]].append(r["InitialCode"])
     for (ctry, layer, code), n in sum_total.items():
-        if ctry == "CH" and layer == "gemeinde":
+        if ctry == "CH" and layer == "municipality":
             country.population[code] = n
             country.names[code] = names[(ctry, layer, code)]
     decomposition: dict[tuple[str, str], list[tuple[str, float]]] = {}
@@ -486,12 +488,12 @@ def switzerland(raw_addresses: Path | None, raw_localities: Path | None, raw_agv
             country.replacement[(postcode, municipality)] += share * weight
             country.places[(postcode, municipality)][r["Ortschaftsname"]] += 1
     country.notes += [
-        f"Ortschaftenverzeichnis: {len(in_directory)} PLZ, davon ohne Adresse"
-        f" {len(in_directory - with_addresses)}; PLZ nur im Adressverzeichnis:"
-        f" {sorted(with_addresses - in_directory) or 'keine'}",
-        "zusammengelegte Gemeinden seit dem Stichtag der Demografie: "
+        f"Ortschaftenverzeichnis: {len(in_directory)} postcodes, of which without an address"
+        f" {len(in_directory - with_addresses)}; postcodes only in the address directory:"
+        f" {sorted(with_addresses - in_directory) or 'none'}",
+        "municipalities merged since the reference date of the demographics: "
         + (", ".join(f"{t} <- {'+'.join(sorted(v))}" for t, v in sorted(predecessors.items()))
-           or "keine"),
+           or "none"),
     ]
     return country
 
@@ -499,7 +501,7 @@ def switzerland(raw_addresses: Path | None, raw_localities: Path | None, raw_agv
 # --------------------------------------------------------------------------- shares
 
 def _round_shares(shares: dict[str, float]) -> dict[str, int]:
-    """Shares in units of 1/STELLEN summing to STELLEN; shares that round to 0 are dropped."""
+    """Shares in units of 1/SCALE summing to SCALE; shares that round to 0 are dropped."""
     large = {g: a for g, a in shares.items() if a * SCALE >= 0.5}
     total = sum(large.values())
     n = {g: round(a / total * SCALE) for g, a in large.items()}
@@ -525,8 +527,8 @@ def lines(country: Country) -> tuple[list[list[str]], Counter[str], int, int]:
         per_postcode[p][g] = (pop * w / units_res[g] if units_res[g] else 0.0,
                               pop * a / units_all[g] if units_all[g] else 0.0,
                               a, country.replacement.get(pair, 0.0))
-    stages = ["Einwohner x Wohneinheiten", "Einwohner x alle Adressen", "alle Adressen",
-              "Ersatzgewicht"]
+    stages = ["residents x residential units", "residents x all addresses", "all addresses",
+              "fallback weight"]
     used: Counter[str] = Counter()
     out: list[list[str]] = []
     discarded = without_residents = 0
@@ -557,27 +559,31 @@ def check(all_lines: list[list[str]], demo: tuple, countries: dict[str, Country]
         postcode = {z[1] for z in own}
         lo, hi = EXPECTED[code]
         if not lo <= len(postcode) <= hi:
-            problems.append(f"{code}: {len(postcode)} PLZ außerhalb {lo}-{hi}")
-        expected_districts = {k for (ctry, e, k) in sum_total if ctry == code and e == "kreis"}
+            problems.append(f"{code}: {len(postcode)} postcodes outside {lo}-{hi}")
+        expected_districts = {k for (ctry, e, k) in sum_total
+                              if ctry == code and e == "district"}
         districts = {z[5] for z in own}
         municipalities = {z[3] for z in own}
         coverage = len(districts & expected_districts) / len(expected_districts)
-        print(f"{code}: {len(postcode)} PLZ, {len(own)} Zeilen, {len(municipalities)} Gemeinden,"
-              f" Kreise mit PLZ {len(districts & expected_districts)} von {len(expected_districts)}"
-              f" ({coverage:.1%}); ohne PLZ: {sorted(expected_districts - districts) or 'keine'}")
+        print(f"{code}: {len(postcode)} postcodes, {len(own)} rows, {len(municipalities)}"
+              f" municipalities, districts with a postcode {len(districts & expected_districts)}"
+              f" of {len(expected_districts)} ({coverage:.1%}); without a postcode:"
+              f" {sorted(expected_districts - districts) or 'none'}")
         if coverage < MIN_COVERAGE:
-            problems.append(f"{code}: nur {coverage:.1%} der Kreise mit PLZ")
+            problems.append(f"{code}: only {coverage:.1%} of the districts with a postcode")
         foreign_districts = districts - expected_districts
         if foreign_districts:
-            problems.append(f"{code}: Kreise nicht in der Demografie: {sorted(foreign_districts)}")
+            problems.append(f"{code}: districts not in the demographics:"
+                            f" {sorted(foreign_districts)}")
         known = set(country.names) if code == "DE" else {
-            k for (ctry, e, k) in sum_total if ctry == code and e == "gemeinde"}
+            k for (ctry, e, k) in sum_total if ctry == code and e == "municipality"}
         if municipalities - known:
-            problems.append(f"{code}: unbekannte Gemeinden: {sorted(municipalities - known)[:10]}")
+            problems.append(f"{code}: unknown municipalities:"
+                            f" {sorted(municipalities - known)[:10]}")
         multiple = Counter(z[1] for z in own)
-        print(f"  PLZ mit mehreren Gemeinden: {sum(1 for n in multiple.values() if n > 1)};"
-              f" Gemeinden mit mehreren PLZ:"
-              f" {sum(1 for n in Counter(z[3] for z in own).values() if n > 1)}")
+        print(f"  postcodes with several municipalities:"
+              f" {sum(1 for n in multiple.values() if n > 1)}; municipalities with several"
+              f" postcodes: {sum(1 for n in Counter(z[3] for z in own).values() if n > 1)}")
         for note in country.notes:
             print(f"  {note}")
     sums: dict[tuple[str, str], int] = defaultdict(int)
@@ -585,40 +591,49 @@ def check(all_lines: list[list[str]], demo: tuple, countries: dict[str, Country]
         sums[(z[0], z[1])] += round(float(z[6]) * SCALE)
     wrong = [k for k, v in sums.items() if v != SCALE]
     if wrong:
-        problems.append(f"Anteile summieren sich nicht zu 1: {wrong[:10]}")
+        problems.append(f"shares do not sum to 1: {wrong[:10]}")
     for (code, postcode), district in SAMPLES.items():
         matches = [z for z in all_lines if z[0] == code and z[1] == postcode]
-        print(f"  Stichprobe {code} {postcode}: "
-              + "; ".join(f"{z[2]} -> {z[3]} {z[4]}, Kreis {z[5]}, {z[6]}" for z in matches))
+        print(f"  sample {code} {postcode}: "
+              + "; ".join(f"{z[2]} -> {z[3]} {z[4]}, district {z[5]}, {z[6]}" for z in matches))
         if not matches or matches[0][5] != district:
-            problems.append(f"Stichprobe {code} {postcode}: Kreis {district} erwartet")
+            problems.append(f"sample {code} {postcode}: district {district} expected")
     return problems
 
 
 # --------------------------------------------------------------------------- output
 
+def state_de(date: str, sha: str, territory_date: str) -> str:
+    """The state of the German rows: date and commit of the OSM extract, territorial state."""
+    return (f"OSM extract {date} (openplzapi.data {sha[:7]}), territory as of"
+            f" {territory_date}")
+
+
 def header_line(countries: dict[str, Country]) -> str:
+    """The provenance line at the top of the file: sources, licences and states."""
     at = countries["AT"].state.split("-")
     return (
-        "# Quelle: DE: © OpenStreetMap-Mitwirkende, Straßenverzeichnis der OpenPLZ API"
-        " (https://github.com/openpotato/openplzapi.data), Gemeindeschlüssel und Einwohner:"
-        " Statistisches Bundesamt (Destatis), Gemeindeverzeichnis GV-ISys und Gebietsänderungen"
-        " | AT: BEV - Bundesamt für Eich- und Vermessungswesen, © Österreichisches"
-        f" Adressregister, Stichtagsdaten vom {at[2]}.{at[1]}.{at[0]}; Einwohner: Statistik"
-        " Austria - data.statistik.gv.at | CH: Bundesamt für Landestopografie swisstopo,"
-        " Amtliches Gebäudeadressverzeichnis und Amtliches Ortschaftenverzeichnis; Bundesamt"
-        " für Statistik (BFS), Amtliches Gemeindeverzeichnis der Schweiz"
-        " (https://www.agvchapp.bfs.admin.ch) und STATPOP"
-        " | zusammengeführt, umgeformt und Anteile geschätzt von PseudonyMed;"
-        " Lizenz: Datei: Open Database License (ODbL) 1.0"
-        " (https://opendatacommons.org/licenses/odbl/1-0/), weil die DE-Zeilen aus"
-        " OpenStreetMap abgeleitet sind; Einzelquellen: DE: OSM/OpenPLZ ODbL 1.0, Destatis"
+        "# Source: DE: © OpenStreetMap contributors, street directory of the OpenPLZ API"
+        " (https://github.com/openpotato/openplzapi.data), municipality keys and population:"
+        " Statistisches Bundesamt (Destatis), Gemeindeverzeichnis GV-ISys (municipality"
+        " directory) and Gebietsänderungen (territorial changes) | AT: BEV - Bundesamt für"
+        " Eich- und Vermessungswesen, © Österreichisches Adressregister, Stichtagsdaten vom"
+        f" {at[2]}.{at[1]}.{at[0]}; population: Statistik Austria - data.statistik.gv.at | CH:"
+        " Bundesamt für Landestopografie swisstopo, Amtliches Gebäudeadressverzeichnis"
+        " (official building address directory) and Amtliches Ortschaftenverzeichnis"
+        " (official directory of localities); Bundesamt für Statistik (BFS), Amtliches"
+        " Gemeindeverzeichnis der Schweiz (official register of Swiss municipalities,"
+        " https://www.agvchapp.bfs.admin.ch) and STATPOP | merged, reshaped and shares"
+        " estimated by PseudonyMed; Licence: file: Open Database License (ODbL) 1.0"
+        " (https://opendatacommons.org/licenses/odbl/1-0/), because the DE rows are derived"
+        " from OpenStreetMap; individual sources: DE: OSM/OpenPLZ ODbL 1.0, Destatis"
         " Datenlizenz Deutschland - Namensnennung - 2.0 (https://www.govdata.de/dl-de/by-2-0)"
         " | AT: CC BY 4.0"
-        " (https://creativecommons.org/licenses/by/4.0/) | CH: swisstopo OGD, Quellenangabe"
-        " Pflicht; BFS OPEN BY;"
-        f" Stand: DE {countries['DE'].state}, AT {countries['AT'].state},"
-        f" CH {countries['CH'].state} (Gemeinden im Gebietsstand der Demografie-Datei)\n"
+        " (https://creativecommons.org/licenses/by/4.0/) | CH: swisstopo OGD, attribution"
+        " compulsory; BFS OPEN BY;"
+        f" As of: DE {countries['DE'].state}, AT {countries['AT'].state},"
+        f" CH {countries['CH'].state} (municipalities in the territorial state of the"
+        " demographics file)\n"
     )
 
 
@@ -629,10 +644,12 @@ def write(all_lines: list[list[str]], countries: dict[str, Country], target: Pat
     w.writerow(HEADER)
     w.writerows(all_lines)
     target.parent.mkdir(parents=True, exist_ok=True)
+    # no file name and no time stamp in the gzip header, the text compressed in one piece:
+    # reproducible bytes
     with (open(target, "wb") as raw,
           gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz):
         gz.write(buffer.getvalue().encode("utf-8"))
-    print(f"{len(all_lines)} Zeilen nach {target} geschrieben"
+    print(f"{len(all_lines)} rows written to {target}"
           f" ({target.stat().st_size / 1e6:.2f} MB)")
 
 
@@ -646,23 +663,25 @@ def main(argv: list[str]) -> int:
         return args.raw / name if args.raw else None
 
     demo = _demographics()
-    print("DE: lade OpenPLZ-Straßen und Destatis-Gebietsänderungen", file=sys.stderr)
-    countries = {"DE": germany(folder("openplz"), folder("destatis_aenderungen"))}
-    print("AT: lade BEV-Adressregister", file=sys.stderr)
-    countries["AT"] = austria(folder("bev_adressregister"), demo)
-    print("CH: lade swisstopo-Verzeichnisse und BFS-Gemeindestand", file=sys.stderr)
-    countries["CH"] = switzerland(folder("swisstopo_adressen"), folder("swisstopo"),
+    print("DE: loading the OpenPLZ streets and the Destatis territorial changes",
+          file=sys.stderr)
+    countries = {"DE": germany(folder("openplz"), folder("destatis_changes"))}
+    print("AT: loading the BEV address register", file=sys.stderr)
+    countries["AT"] = austria(folder("bev_address_register"), demo)
+    print("CH: loading the swisstopo directories and the BFS municipality state",
+          file=sys.stderr)
+    countries["CH"] = switzerland(folder("swisstopo_addresses"), folder("swisstopo"),
                                   folder("bfs_agv"), demo)
     all_lines: list[list[str]] = []
     for country in countries.values():
         z, used, without_residents, discarded = lines(country)
-        country.notes.append(f"Gewichtung je PLZ: {dict(used)}; Paare ohne geschätzte"
-                             f" Einwohner: {without_residents}; Anteil unter 0,00005 verworfen:"
+        country.notes.append(f"weighting per postcode: {dict(used)}; pairs without estimated"
+                             f" residents: {without_residents}; shares below 0.00005 dropped:"
                              f" {discarded}")
         all_lines += z
     problems = check(all_lines, demo, countries)
     if problems:
-        print(f"{len(problems)} Probleme, nichts geschrieben:", *problems[:30], sep="\n  ")
+        print(f"{len(problems)} problems, nothing written:", *problems[:30], sep="\n  ")
         return 1
     write(all_lines, countries, args.target)
     return 0

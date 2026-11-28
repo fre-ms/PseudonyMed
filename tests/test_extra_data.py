@@ -15,6 +15,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from typer.testing import CliRunner
 
+from pseudonymed.core import names
 from pseudonymed.detection import extra_data as extra
 from pseudonymed.detection import lexicon
 from pseudonymed.detection.identifiers import IdentifierTable
@@ -86,17 +87,24 @@ def test_workbook_is_read_and_mapped(tmp_path: Path) -> None:
         assert report.state == "2026-09-18"
         z = _concepts(table)
         assert set(z) == {"AT:K901.1", "AT:K901.2", "AT:K902", "AT:K903"}
-        assert z["AT:K901.1"]["gemeinde"] == "10101"
-        assert z["AT:K901.2"]["gemeinde"] == "10901"  # second site, own municipality
-        assert z["AT:K902"]["gemeinde"] == "10901" and z["AT:K902"]["typ"] == "reha"
-        assert z["AT:K903"]["gemeinde"] == "92301" and z["AT:K903"]["typ"] == "psychiatrie"
+        assert z["AT:K901.1"]["municipality"] == "10101"
+        assert z["AT:K901.2"]["municipality"] == "10901"  # second site, own municipality
+        assert z["AT:K902"]["municipality"] == "10901"
+        assert z["AT:K902"]["type"] == "rehabilitation"
+        assert z["AT:K903"]["municipality"] == "92301" and z["AT:K903"]["type"] == "psychiatry"
+        assert z["AT:K901.1"] == {
+            "type": "hospital", "place": "Eisenstadt", "postcode": "7000",
+            "municipality": "10101", "country": "AT", "state": "Burgenland", "beds": "120",
+            "provider": "Musterträger GmbH"}
         (source, count, state), = table.loaded()
         assert (source, count) == (extra.SOURCE_HOSPITALS_AT, 4) and state.startswith("2026-09-18 ")
         info = table.store.info(table.store.local_url(extra.SOURCE_HOSPITALS_AT))
-        assert info.copyright == extra.CLINICS_AT_NOTE and not info.redistributable
-        assert {e.category for e in table.all_items()} == {"Klinik"} and table.count() == 4
+        # the store keeps the English form of the note; the German one is shown in German
+        assert info.copyright == extra.CLINICS_AT_NOTE.en and not info.redistributable
+        assert {e.category for e in table.all_items()} == {"hospital"} and table.count() == 4
+        assert {e.source for e in table.all_items()} == {"hospitals AT (BMASGPK)"}
         towns = {e.term for e in table.store.entries() if e.cls == "hospital-town"}
-        assert towns == {z[code]["ort"] for code in z}
+        assert towns == {z[code]["place"] for code in z}
         # loaded again, the list takes the place of the one before
         extra.load_clinics_at(table, file=workbook(tmp_path / "KA-Verzeichnis 2026-09-18.xlsx"))
         assert table.count() == 4 and len(table.loaded()) == 1
@@ -113,13 +121,13 @@ def test_find_workbook_on_the_page() -> None:
 
 def test_survives_reloading_the_bundled_data(tmp_path: Path,
                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PSEUDONYMED_LEXIKON", "1")
-    titles = next(q for q in lexicon.SOURCES if q.name == "Titel")  # a small bundled source
+    monkeypatch.setenv("PSEUDONYMED_LEXICON", "1")
+    titles = next(q for q in lexicon.SOURCES if q.name == "titles")  # a small bundled source
     monkeypatch.setattr(lexicon, "SOURCES", (titles,))
     with IdentifierTable(tmp_path / "lexident.sqlite") as table:
         extra.load_clinics_at(table, file=workbook(tmp_path / "m.xlsx"))
-        assert table.seed(force=True).keys() == {"Titel"}
-        assert len(_concepts(table)) == 4 and dict(table.categories())["Klinik"] == 4
+        assert table.seed(force=True).keys() == {"titles"}
+        assert len(_concepts(table)) == 4 and dict(table.categories())["hospital"] == 4
 
 
 def test_window_loads_from_the_ministry(qapp: QApplication, tmp_path: Path,  # noqa: F811
@@ -127,7 +135,7 @@ def test_window_loads_from_the_ministry(qapp: QApplication, tmp_path: Path,  # n
     from pseudonymed.gui.main_window import MainWindow
     from pseudonymed.gui.session import Session
 
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     data = workbook(tmp_path / "m.xlsx").read_bytes()
     fetches: list[str] = []
 
@@ -144,14 +152,15 @@ def test_window_loads_from_the_ministry(qapp: QApplication, tmp_path: Path,  # n
     assert report is not None and report.count == 4 and len(fetches) == 2
     assert "4 Einträge geladen" in page.extra_status.text()
     lines = dict(page.refresh().lines())
+    # the list by its label in the interface language, not by its stored name
     assert lines["Zusatzdaten (selbst geladen)"].startswith(
-        f"{extra.SOURCE_HOSPITALS_AT}: 4 Einträge")
+        f"{names.label(extra.SOURCE_HOSPITALS_AT, 'de')}: 4 Einträge")
 
 
 def test_command_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pseudonymed.cli import app
 
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     result = CliRunner().invoke(app, ["datenbank", "zusatzdaten", "kliniken-at", "--datei",
                                       str(workbook(tmp_path / "m.xlsx"))])
     assert result.exit_code == 0, result.output
@@ -232,16 +241,18 @@ def test_municipality_without_code_is_derived() -> None:
 
 def test_tables_from_lines() -> None:
     """Only Austrian rows count; the postcode keeps the Gemeinde with the largest share."""
-    demographics = [{"land": "AT", "ebene": "kreis", "kennung": "612", "name": "Liezen"},
-                    {"land": "AT", "ebene": "gemeinde", "kennung": "61207", "name": "Bad Aussee"},
-                    {"land": "AT", "ebene": "staat", "kennung": "AT", "name": "Österreich"},
-                    {"land": "DE", "ebene": "gemeinde", "kennung": "09761000", "name": "Augsburg"}]
+    demographics = [
+        {"country": "AT", "level": "district", "code": "612", "name": "Liezen"},
+        {"country": "AT", "level": "municipality", "code": "61207", "name": "Bad Aussee"},
+        {"country": "AT", "level": "country", "code": "AT", "name": "Österreich"},
+        {"country": "DE", "level": "municipality", "code": "09761000", "name": "Augsburg"}]
     assert extra._at_names(iter(demographics)) == ({"61207": "Bad Aussee"}, {"612": "Liezen"})
-    postcode = [{"land": "AT", "plz": "8990", "gemeinde_kennung": "61207", "anteil": "0.4"},
-                {"land": "AT", "plz": "8990", "gemeinde_kennung": "61235", "anteil": "0.6"},
-                {"land": "AT", "plz": "8991", "gemeinde_kennung": "61235", "anteil": "x"},
-                {"land": "AT", "plz": "8991", "gemeinde_kennung": "61207", "anteil": "0.1"},
-                {"land": "DE", "plz": "8990", "gemeinde_kennung": "0", "anteil": "1"}]
+    postcode = [
+        {"country": "AT", "postcode": "8990", "municipality_code": "61207", "share": "0.4"},
+        {"country": "AT", "postcode": "8990", "municipality_code": "61235", "share": "0.6"},
+        {"country": "AT", "postcode": "8991", "municipality_code": "61235", "share": "x"},
+        {"country": "AT", "postcode": "8991", "municipality_code": "61207", "share": "0.1"},
+        {"country": "DE", "postcode": "8990", "municipality_code": "0", "share": "1"}]
     assert extra._at_postcode_municipalities(iter(postcode)) == {"8990": "61235", "8991": "61207"}
 
 
@@ -262,9 +273,9 @@ def test_sites_from_raw_data() -> None:
 
 
 def test_fields_of_a_hospital() -> None:
-    assert extra._hospital_type("Rehabilitation", "", "Haus") == "reha"
-    assert extra._hospital_type("Akut", "", "Zentrum für Psychosomatik") == "psychiatrie"
-    assert extra._hospital_type("Akut", "Allgemein", "Haus") == "krankenhaus"
+    assert extra._hospital_type("Rehabilitation", "", "Haus") == "rehabilitation"
+    assert extra._hospital_type("Akut", "", "Zentrum für Psychosomatik") == "psychiatry"
+    assert extra._hospital_type("Akut", "Allgemein", "Haus") == "hospital"
     assert (extra._beds("12.0"), extra._beds(""), extra._beds("viele")) == (12, None, None)
     assert extra._postcode_place("Weg 1, 8990 Bad Aussee") == ("8990", "Bad Aussee")
     assert extra._postcode_place("ohne Postleitzahl") == ("", "")
@@ -272,3 +283,12 @@ def test_fields_of_a_hospital() -> None:
     assert (columns.num, columns.name, columns.owner) == (1, 2, 10)
     with pytest.raises(extra.ExtraDataError):
         extra._header_columns(["Bundesland", "Name"])
+
+
+def test_the_load_report_names_the_list_by_its_label() -> None:
+    report = extra.LoadReport(extra.SOURCE_HOSPITALS_AT, 4, 1, "2026-09-18", "mappe.xlsx")
+    assert report.description("de") == (
+        "Kliniken AT (BMASGPK): 4 Einträge geladen, 1 ohne Gemeinde"
+        " (Stand 2026-09-18, mappe.xlsx).")
+    assert report.description("en_GB").startswith(
+        "Hospitals AT (BMASGPK): 4 entries loaded, 1 without a municipality")

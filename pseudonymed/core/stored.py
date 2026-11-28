@@ -1,11 +1,9 @@
-"""The keys of the files PseudonyMed writes and reads again.
+"""The files PseudonyMed writes and reads again: dataclasses as plain JSON-ready mappings.
 
-Patient files, reports, working states, capsules and backup manifests keep their German
-keys: people write patient files by hand, another copy of PseudonyMed reads a capsule or a
-backup, and files written earlier must stay readable.  The dataclasses behind them have
-English field names.  A class lists the fields whose stored key differs in
-``STORED_KEYS`` (field name → stored key); the two functions here translate in both
-directions.
+Patient files, reports, working states, capsules, backup manifests and the options keep the
+English field names of their dataclasses as keys.  Where people write a file by hand (the
+patient file, the configuration) the German names are understood as well; that lives with
+those readers, not here.
 """
 
 from __future__ import annotations
@@ -16,19 +14,12 @@ from collections.abc import Mapping
 from typing import Any
 
 
-def keys_of(cls: type) -> Mapping[str, str]:
-    """The ``STORED_KEYS`` table of a class, empty when it has none."""
-    keys: Mapping[str, str] = getattr(cls, "STORED_KEYS", {})
-    return keys
-
-
 def as_stored(value: Any) -> Any:
-    """Like :func:`dataclasses.asdict`, with the fields of every dataclass under their
-    stored keys (recursively); containers are rebuilt, other values deep-copied."""
+    """Like :func:`dataclasses.asdict`, keeping texts that carry their English form (a
+    German ``Text`` with ``en``) as they are; containers are rebuilt, other values
+    deep-copied."""
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        keys = keys_of(type(value))
-        return {keys.get(f.name, f.name): as_stored(getattr(value, f.name))
-                for f in dataclasses.fields(value)}
+        return {f.name: as_stored(getattr(value, f.name)) for f in dataclasses.fields(value)}
     return _rebuilt(value)
 
 
@@ -44,8 +35,7 @@ def _rebuilt(value: Any) -> Any:
 
 
 def field_values(cls: type, stored: Mapping[str, Any]) -> dict[str, Any]:
-    """The entries of a stored mapping that are fields of the dataclass ``cls``, under
-    the field names; keys the class does not know are left out."""
-    keys = keys_of(cls)
-    names = {keys.get(f.name, f.name): f.name for f in dataclasses.fields(cls)}
-    return {names[k]: v for k, v in stored.items() if k in names}
+    """The entries of a stored mapping that are fields of the dataclass ``cls``; keys the
+    class does not know are left out."""
+    names = {f.name for f in dataclasses.fields(cls)}
+    return {k: v for k, v in stored.items() if k in names}

@@ -27,7 +27,7 @@ class Rule:
     """
 
     id: str
-    muster: re.Pattern[str]
+    pattern: re.Pattern[str]
     kind: Kind
     pseudonym: str
     priority: int = 0
@@ -38,38 +38,38 @@ RuleMatch = tuple[int, int, Rule]
 
 
 # -- the rule families ----------------------------------------------------------------------------
-def _rule(id_: str, muster: str | None, kind: Kind, pseudonym: str, priority: int,
+def _rule(id_: str, pattern: str | None, kind: Kind, pseudonym: str, priority: int,
           role: Role | None) -> list[Rule]:
     """The compiled rule as a one-element list, empty when the pattern builder refused
     the input as too short to be safe.  The pseudonym is handed in ready-made, so the
     assignment has recorded it even when no rule results."""
-    if not muster:
+    if not pattern:
         return []
-    return [Rule(id_, re.compile(muster), kind, pseudonym, priority, role)]
+    return [Rule(id_, re.compile(pattern), kind, pseudonym, priority, role)]
 
 
 def _name_rules(prefix: str, person: Person, pseudonym: str, role: Role) -> list[Rule]:
     """Full name, surname, the surname shortened to its initial after a form of address,
     parts of a compound surname, first names and the birth name."""
-    rules = _rule(f"{prefix}.vollname", v.full_name_pattern(person.first_names, person.surname),
+    rules = _rule(f"{prefix}.full_name", v.full_name_pattern(person.first_names, person.surname),
                   Kind.NAME, pseudonym, 30, role)
-    rules += _rule(f"{prefix}.nachname", v.name_pattern(person.surname), Kind.SURNAME,
+    rules += _rule(f"{prefix}.surname", v.name_pattern(person.surname), Kind.SURNAME,
                    pseudonym, 20, role)
-    rules += _rule(f"{prefix}.nachname.initial", v.surname_initial_pattern(person.surname),
+    rules += _rule(f"{prefix}.surname.initial", v.surname_initial_pattern(person.surname),
                    Kind.SURNAME, pseudonym, 5, role)
     for part in v.surname_parts(person.surname):
-        rules += _rule(f"{prefix}.nachname.teil", v.name_pattern(part), Kind.SURNAME, pseudonym,
+        rules += _rule(f"{prefix}.surname.part", v.name_pattern(part), Kind.SURNAME, pseudonym,
                        10, role)
     for first_name in person.first_names:
         if len(first_name) >= 3:
-            rules += _rule(f"{prefix}.vorname", v.name_pattern(first_name), Kind.FIRST_NAME,
+            rules += _rule(f"{prefix}.first_name", v.name_pattern(first_name), Kind.FIRST_NAME,
                            pseudonym,
                            10, role)
     if person.birth_name:
-        rules += _rule(f"{prefix}.geburtsname.vollname",
+        rules += _rule(f"{prefix}.birth_name.full_name",
                        v.full_name_pattern(person.first_names, person.birth_name), Kind.NAME,
                        pseudonym, 30, role)
-        rules += _rule(f"{prefix}.geburtsname", v.name_pattern(person.birth_name),
+        rules += _rule(f"{prefix}.birth_name", v.name_pattern(person.birth_name),
                        Kind.BIRTH_NAME, pseudonym, 20, role)
     return rules
 
@@ -78,7 +78,7 @@ def _birth_date_rule(patient: Patient, assignment: PseudonymAssignment) -> list[
     """The birth date in every common spelling; nothing when the date is unknown."""
     if not patient.birth_date:
         return []
-    return _rule("datum.geburtsdatum", v.date_pattern(patient.birth_date), Kind.BIRTH_DATE,
+    return _rule("date.birth_date", v.date_pattern(patient.birth_date), Kind.BIRTH_DATE,
                  assignment.birth_date(), 20, Role.PATIENT)
 
 
@@ -87,13 +87,13 @@ def _address_rules(prefix: str, person: Person, role: Role,
     """Street, postcode with town, and the town on its own, each with its own code."""
     rules: list[Rule] = []
     if person.street:
-        rules += _rule(f"{prefix}.strasse", v.address_pattern(person.street), Kind.ADDRESS,
+        rules += _rule(f"{prefix}.street", v.address_pattern(person.street), Kind.ADDRESS,
                        assignment.street(person), 20, role)
     if person.place:
-        rules += _rule(f"{prefix}.plz_ort", v.postcode_place_pattern(person.postcode, person.place),
-                       Kind.PLACE,
+        rules += _rule(f"{prefix}.postcode_place",
+                       v.postcode_place_pattern(person.postcode, person.place), Kind.PLACE,
                        assignment.postcode_place(person), 20, role)
-        rules += _rule(f"{prefix}.ort", v.place_pattern(person.place), Kind.PLACE,
+        rules += _rule(f"{prefix}.place", v.place_pattern(person.place), Kind.PLACE,
                        assignment.place(person),
                        15, role)
     return rules
@@ -104,19 +104,19 @@ def _number_rules(patient: Patient, assignment: PseudonymAssignment) -> list[Rul
     file numbers."""
     rules: list[Rule] = []
     for t in patient.phones:
-        rules += _rule("telefon", v.phone_pattern(t), Kind.PHONE, assignment.phone(), 20,
+        rules += _rule("phone", v.phone_pattern(t), Kind.PHONE, assignment.phone(), 20,
                        Role.PATIENT)
     for e in patient.emails:
         rules += _rule("email", v.email_pattern(e), Kind.EMAIL, assignment.email(), 20,
                        Role.PATIENT)
     if patient.insurance_number:
-        rules += _rule("versichertennummer", v.exact_pattern(patient.insurance_number),
+        rules += _rule("insurance_number", v.exact_pattern(patient.insurance_number),
                        Kind.INSURANCE_NUMBER, assignment.insurance_number(), 25, Role.PATIENT)
     if patient.patient_id:
-        rules += _rule("patienten_id", v.number_pattern(patient.patient_id), Kind.PATIENT_ID,
+        rules += _rule("patient_id", v.number_pattern(patient.patient_id), Kind.PATIENT_ID,
                        assignment.patient_id(), 25, Role.PATIENT)
     for a in patient.case_numbers:
-        rules += _rule("aktenzeichen", v.exact_pattern(a), Kind.CASE_NUMBER,
+        rules += _rule("case_number", v.exact_pattern(a), Kind.CASE_NUMBER,
                        assignment.case_numbers(), 25, Role.PATIENT)
     return rules
 
@@ -126,7 +126,7 @@ def _contact_rules(prefix: str, person: Person, role: Role) -> list[Rule]:
     placeholder each and get no code of their own."""
     rules: list[Rule] = []
     for t in person.phones:
-        rules += _rule(f"{prefix}.telefon", v.phone_pattern(t), Kind.PHONE, "[Telefon]", 20,
+        rules += _rule(f"{prefix}.phone", v.phone_pattern(t), Kind.PHONE, "[Telefon]", 20,
                        role)
     for e in person.emails:
         rules += _rule(f"{prefix}.email", v.email_pattern(e), Kind.EMAIL, "[E-Mail]", 20, role)
@@ -138,7 +138,7 @@ def _relative_rules(patient: Patient, assignment: PseudonymAssignment) -> list[R
     rules: list[Rule] = []
     for i, person in enumerate(patient.relatives, 1):
         pseudonym = assignment.relatives(i, person)
-        prefix = f"angehoerige{i}"
+        prefix = f"relative{i}"
         rules += _name_rules(prefix, person, pseudonym, Role.RELATIVE)
         rules += _address_rules(prefix, person, Role.RELATIVE, assignment)
         rules += _contact_rules(prefix, person, Role.RELATIVE)
@@ -151,11 +151,11 @@ def _referrer_rules(patient: Patient, assignment: PseudonymAssignment) -> list[R
     rules: list[Rule] = []
     for i, person in enumerate(patient.referrers, 1):
         pseudonym = assignment.referrers(i, person)
-        prefix = f"zuweiser{i}"
+        prefix = f"referrer{i}"
         rules += _rule(f"{prefix}.name", v.title_name_pattern(person.first_names, person.surname),
                        Kind.NAME, pseudonym, 30, Role.REFERRER)
         for part in v.surname_parts(person.surname):
-            rules += _rule(f"{prefix}.nachname.teil", v.name_pattern(part), Kind.SURNAME,
+            rules += _rule(f"{prefix}.surname.part", v.name_pattern(part), Kind.SURNAME,
                            pseudonym, 10, Role.REFERRER)
         rules += _address_rules(prefix, person, Role.REFERRER, assignment)
         rules += _contact_rules(prefix, person, Role.REFERRER)
@@ -166,7 +166,7 @@ def _term_rules(patient: Patient, assignment: PseudonymAssignment) -> list[Rule]
     """The user's own terms (employer, nursing service, …), numbered in order."""
     rules: list[Rule] = []
     for i, b in enumerate(patient.terms, 1):
-        rules += _rule("begriff", v.term_pattern(b), Kind.TERM, assignment.term(i, b), 15,
+        rules += _rule("term", v.term_pattern(b), Kind.TERM, assignment.term(i, b), 15,
                        None)
     return rules
 
@@ -174,8 +174,8 @@ def _term_rules(patient: Patient, assignment: PseudonymAssignment) -> list[Rule]
 def _global_rules(assignment: PseudonymAssignment) -> list[Rule]:
     """The patient-independent patterns (insurance number, IBAN, e-mail, labelled values)
     with the lowest priority, so that a patient rule wins at equal length."""
-    return [Rule(id_, muster, kind, assignment.generic(kind), 5, None)
-            for id_, muster, kind in GLOBAL_PATTERNS]
+    return [Rule(id_, pattern, kind, assignment.generic(kind), 5, None)
+            for id_, pattern, kind in GLOBAL_PATTERNS]
 
 
 def rules_for(patient: Patient, assignment: PseudonymAssignment) -> list[Rule]:
@@ -189,7 +189,7 @@ def rules_for(patient: Patient, assignment: PseudonymAssignment) -> list[Rule]:
     return [
         *_name_rules("name", patient, main_person, Role.PATIENT),
         *_birth_date_rule(patient, assignment),
-        *_address_rules("adresse", patient, Role.PATIENT, assignment),
+        *_address_rules("address", patient, Role.PATIENT, assignment),
         *_number_rules(patient, assignment),
         *_relative_rules(patient, assignment),
         *_referrer_rules(patient, assignment),
@@ -203,8 +203,8 @@ def _match_span(text: str, rule: Rule, m: re.Match[str]) -> tuple[int, int]:
     """The span a match stands for: the ``value`` group of a labelled pattern (the value
     behind "KVNR", not the label), otherwise the whole match; trimmed of the whitespace
     a pattern may have swallowed at either end."""
-    if "wert" in rule.muster.groupindex and m.group("wert"):
-        a, b = m.span("wert")
+    if "value" in rule.pattern.groupindex and m.group("value"):
+        a, b = m.span("value")
     else:
         a, b = m.start(), m.end()
     part = text[a:b]
@@ -216,7 +216,7 @@ def _candidates(text: str, rules: list[Rule]) -> list[RuleMatch]:
     """Every non-empty match of every rule, in rule order; overlaps not yet resolved."""
     candidates: list[RuleMatch] = []
     for rule in rules:
-        for m in rule.muster.finditer(text):
+        for m in rule.pattern.finditer(text):
             a, b = _match_span(text, rule, m)
             if b > a:
                 candidates.append((a, b, rule))
@@ -346,7 +346,7 @@ def _box_without_text(page: PageText, box: Box, pseudonym: str, source: str) -> 
 
 def box_to_hits(
     page: PageText, rect: tuple[float, float, float, float], pseudonym: str = "[geschwärzt]",
-    source: str = "manuell",
+    source: str = "manual",
 ) -> list[Hit]:
     """A box drawn by the user becomes hits with text spans where the page has text.
 

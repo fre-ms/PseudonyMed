@@ -37,9 +37,9 @@ from tests.test_gui import qapp  # noqa: F401
 @pytest.fixture
 def data_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     folder = tmp_path / "daten"
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(folder))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(folder))
     monkeypatch.delenv("PSEUDONYMED_CARDDAV_URL", raising=False)
-    monkeypatch.delenv("PSEUDONYMED_CARDDAV_PASSWORT", raising=False)
+    monkeypatch.delenv("PSEUDONYMED_CARDDAV_PASSWORD", raising=False)
     return folder
 
 
@@ -82,7 +82,7 @@ def test_separators_birthdays_and_the_home_address(monkeypatch: pytest.MonkeyPat
                    Labelled(HOME, Address("Gartenstraße 2\nHinterhaus", "Wohnort", "22222"))])
     p = patient_from_vcard(mac_contacts.vcard(contact, fake))
     assert (p.surname, p.first_name) == ("Muster; Beispiel", "Anna, Maria Luise")
-    assert (p.sex, p.title, p.birth_date) == ("w", "Prof.", None)
+    assert (p.sex, p.title, p.birth_date) == ("f", "Prof.", None)
     assert (p.street, p.postcode, p.place) == ("Gartenstraße 2", "22222", "Wohnort")
     assert p.notes == ["Beruf: Lehrerin"]
     contact.born = Day(3, 4, 1961)

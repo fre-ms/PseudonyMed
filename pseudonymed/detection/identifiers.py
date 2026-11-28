@@ -17,27 +17,27 @@ hit is a suggestion that the visual review may discard.
 A bare dictionary match would redact half of every letter ("Bauer", "Leiter", "CARE"),
 so each class has a rule of context, which is lexident's (it was written here):
 
-* hospitals (``Klinik``): the official name, or its main part, wherever it stands, and
+* hospitals (``hospital``): the official name, or its main part, wherever it stands, and
   "Klinikum <town>" for a town that has a listed hospital;
-* professions (``Beruf``): only next to a cue such as "arbeitet als", "von Beruf",
+* professions (``occupation``): only next to a cue such as "arbeitet als", "von Beruf",
   "gelernte", or in a social-history paragraph;
-* studies (``Studie``): registry numbers (NCT, DRKS, ISRCTN, EU CT, EudraCT) always;
+* studies (``study``): registry numbers (NCT, DRKS, ISRCTN, EU CT, EudraCT) always;
   acronyms only in a registered spelling and with a study cue nearby;
-* titles (``Titel``): only directly before or after a person the analysis found already
+* titles (``title``): only directly before or after a person the analysis found already
   (patient, relatives, referrers, NER).  This pass runs after the NER;
-* every other class, including the user's own (``Sonstiges``): wherever it stands.
+* every other class, including the user's own (``other``): wherever it stands.
 
 lexident gives a place every class whose rule holds there.  PseudonyMed names a place by
 one class, for its pseudonym and its rule (:func:`category_of`): a hospital before a
-profession before a study before a class of the user's own (by name) before ``Sonstiges``.
+profession before a study before a class of the user's own (by name) before ``other``.
 The place is redacted whichever class names it.  An
 employment status (berentet, arbeitslos) is no PROFESSION in GeMTeX and stays.  Identifier
 hits are guesses like the NER's: they are dashed in the review and are not part of the
 final re-check.
 
-Until November 2026 the identifiers were rows of the table ``lexikon`` of the pseudonym
-database.  A database that still has the table hands them over on first use
-(:meth:`IdentifierTable.adopt`).
+Classes are stored in English (:mod:`pseudonymed.core.names` gives their labels and reads
+a German class name typed or imported); the word in a pseudonym is in the language of the
+document ("[Klinik <code>]").
 """
 
 from __future__ import annotations
@@ -59,8 +59,8 @@ from lexident.types import HOSPITAL_TOWN, ID, LOCATION_HOSPITAL, OTHER, PROFESSI
 from ocrdoc.pagetext import PageText
 
 from pseudonymed import environment
+from pseudonymed.core import names
 from pseudonymed.core.model import Hit, Kind
-from pseudonymed.core.text import say
 from pseudonymed.detection import identifier_lists as lists
 from pseudonymed.detection import lexicon, list_import, overlay
 from pseudonymed.detection.choice import applied
@@ -68,12 +68,14 @@ from pseudonymed.detection.identifier_lists import CATEGORY_HOSPITAL, CATEGORY_O
 from pseudonymed.detection.store_table import StoreTable, own_lists
 from pseudonymed.pseudonyms.assignment import PseudonymAssignment
 
-CATEGORY_PROFESSION = "Beruf"
+CATEGORY_PROFESSION = "occupation"
 CATEGORY_STUDY = lists.CATEGORY_STUDY
-CATEGORY_TITLE = "Titel"
+CATEGORY_TITLE = "title"
 CATEGORIES = (CATEGORY_HOSPITAL, CATEGORY_PROFESSION, CATEGORY_STUDY, CATEGORY_TITLE,
               CATEGORY_OTHER)
-PREFIX = {CATEGORY_OTHER: "Identifikator"}
+# the word in the pseudonym of a bundled class, in the language of the documents
+PREFIX = {CATEGORY_HOSPITAL: "Klinik", CATEGORY_PROFESSION: "Beruf", CATEGORY_STUDY: "Studie",
+          CATEGORY_TITLE: "Titel", CATEGORY_OTHER: "Identifikator"}
 STORE_NAME = "lexident.sqlite"
 MIN_LENGTH = 3
 # the class a place is named by when it carries several: these first, in this order (the
@@ -82,13 +84,7 @@ MIN_LENGTH = 3
 _RANK = (LOCATION_HOSPITAL, PROFESSION, ID)
 _PERSON_KINDS = (Kind.NAME, Kind.FIRST_NAME, Kind.SURNAME, Kind.BIRTH_NAME)
 Recogniser = lexident.Recogniser
-Written = dict[str, list[Row]]  # the rows taken over into each list, by the list's URL
 Key = tuple[str, str, str]  # term, class, identifier
-
-
-class IdentifierError(ValueError):
-    """The store does not hold the identifiers it was to take over; the message is for the
-    user."""
 
 
 def default_path() -> Path:
@@ -98,13 +94,15 @@ def default_path() -> Path:
 
 
 def rule_name(category: str) -> str:
-    """Rule id of a class: ``identifier.hospital``, ``identifier.sonstiges`` …"""
-    return "identifikator." + (re.sub(r"\W+", "_", norm(category)).strip("_") or "sonstiges")
+    """Rule id of a class: ``identifier.hospital``, ``identifier.other`` …; a class of the
+    user's own by its name."""
+    word = category if category in CATEGORIES else re.sub(r"\W+", "_", norm(category)).strip("_")
+    return "identifier." + (word or CATEGORY_OTHER)
 
 
 def prefix(category: str) -> str:
-    """The word in the pseudonym of a class: ``[Klinik <code>]``, ``[Identifikator <code>]``
-    for the user's own class."""
+    """The word in the pseudonym of a class: ``[Klinik <code>]`` for a hospital, a class of
+    the user's own by its name, ``[Identifikator <code>]`` for one without a name."""
     return PREFIX.get(category, category.strip() or PREFIX[CATEGORY_OTHER])
 
 
@@ -190,6 +188,12 @@ class Entry:
         description = _DETAILS.get(self.category)
         return description(self) if description else ""
 
+    def details_in(self, language: str) -> str:
+        """The description in the interface language: the kind of a title by its label."""
+        if self.category != CATEGORY_TITLE:
+            return self.details
+        return " · ".join(names.label(part, language) for part in self.details.split(" · "))
+
 
 def _hospital_details(e: Entry) -> str:
     """Town and country from a hospital's JSON addition; empty without one."""
@@ -199,7 +203,7 @@ def _hospital_details(e: Entry) -> str:
         z = json.loads(e.extra)
     except ValueError:
         return ""
-    return f"{z.get('ort', '')} ({z.get('land', '')})".replace(" ()", "").strip()
+    return f"{z.get('place', '')} ({z.get('country', '')})".replace(" ()", "").strip()
 
 
 def _study_details(e: Entry) -> str:
@@ -208,10 +212,10 @@ def _study_details(e: Entry) -> str:
 
 
 def _title_details(e: Entry) -> str:
-    """The fields of a title from its ``|``-separated id, "alle" (every field) left out."""
+    """The fields of a title from its ``|``-separated id, "all" (every country) left out."""
     if "|" not in e.code:
         return ""
-    return " · ".join(t for t in e.code.split("|") if t and t != "alle")
+    return " · ".join(t for t in e.code.split("|") if t and t != "all")
 
 
 def _profession_details(e: Entry) -> str:
@@ -339,11 +343,10 @@ class IdentifierTable(StoreTable):
                  readonly: bool = False) -> None:
         """Open the store in the file ``path`` (default: ``lexident.sqlite`` in the folder
         of the lex stores).  With ``seed`` the bundled lists whose data changed are
-        installed, and before that the default store takes over the identifiers a pseudonym
-        database still keeps in tables.  ``readonly`` reads a store that exists and writes
+        installed.  ``readonly`` reads a store that exists and writes
         nothing; lexcor's ``StoreError`` says that there is none."""
         self.path = Path(path) if path else default_path()
-        self._open(lexident.open_store(self.path, readonly=readonly), seed, path is None)
+        self._open(lexident.open_store(self.path, readonly=readonly), seed)
 
     # -- reading -------------------------------------------------------------------------------
     def count(self) -> int:
@@ -356,7 +359,9 @@ class IdentifierTable(StoreTable):
         return sorted(counts.items(), key=lambda kn: (-kn[1], kn[0]))
 
     def all_items(self, category: str = "") -> list[Entry]:
-        """The entries in alphabetical order, of one class when given."""
+        """The entries in alphabetical order, of one class when given (its German name
+        understood)."""
+        category = names.class_name(category) if category else ""
         return [entry for entry in _view(self.store).entries
                 if not category or entry.category == category]
 
@@ -374,6 +379,7 @@ class IdentifierTable(StoreTable):
     def keys_for(self, term: str, category: str = "") -> list[Key]:
         """Keys of the entries with this term (case-insensitive), in one class or all."""
         wanted = lists.key(" ".join(term.split()))
+        category = names.class_name(category) if category else ""
         return [entry.key for entry in _view(self.store).entries
                 if lists.key(entry.term) == wanted and (not category
                                                         or entry.category == category)]
@@ -425,8 +431,9 @@ class IdentifierTable(StoreTable):
             self.store.add_package(lists.towns_package(towns))
 
     def add(self, terms: Iterable[str], category: str = CATEGORY_OTHER) -> int:
-        """Insert the user's own identifiers; returns how many were new."""
-        category = category.strip() or CATEGORY_OTHER
+        """Insert the user's own identifiers; returns how many were new.  A class typed in
+        German or as its label is the English one (``Klinik`` is ``hospital``)."""
+        category = names.class_name(category) or CATEGORY_OTHER
         return self.add_rows(Row(" ".join(str(b).split()), category) for b in terms)
 
     def add_rows(self, rows: Iterable[Row]) -> int:
@@ -477,7 +484,8 @@ class IdentifierTable(StoreTable):
         """Term and class an entry is to have after a change; None when the result is too
         short, is the entry as it stands or exists already."""
         new_term = " ".join((e.term if term is None else term).split())
-        new_category = (e.category if category is None else category).strip() or CATEGORY_OTHER
+        new_category = (e.category if category is None
+                        else names.class_name(category)) or CATEGORY_OTHER
         if len(new_term) < MIN_LENGTH or (new_term, new_category) == (e.term, e.category):
             return None
         same_row = (new_term.casefold(), new_category) == (e.term.casefold(), e.category)
@@ -537,19 +545,20 @@ class IdentifierTable(StoreTable):
 
     # -- CSV -------------------------------------------------------------------------------------
     def export_csv(self, path: Path, category: str = "") -> int:
-        """Write ``begriff,klasse,quelle,angaben`` rows (comma, UTF-8, header line)."""
+        """Write ``term,class,source,details`` rows (comma, UTF-8, header line)."""
         lines = self.all_items(category)
         with Path(path).open("w", encoding="utf-8", newline="") as f:
             w = csv.writer(f, lineterminator="\n")
-            w.writerow(["begriff", "klasse", "quelle", "angaben"])
+            w.writerow(["term", "class", "source", "details"])
             w.writerows((e.term, e.category, e.source, e.details) for e in lines)
         return len(lines)
 
     def import_csv(self, path: Path, category: str = CATEGORY_OTHER) -> tuple[int, int]:
-        """Read a CSV (``begriff[,klasse]``, header optional, comma, semicolon or tab) or a
-        plain list (one term per line); returns (new, read).  A class column in the file
-        wins over ``category``."""
-        read_in = list_import.read_list(path, "klasse", category)
+        """Read a CSV (``term[,class]``, the German ``begriff[,klasse]`` as well; header
+        optional, comma, semicolon or tab) or a plain list (one term per line); returns
+        (new, read).  A class column in the file wins over ``category``; a German class
+        name in it is read as the English one."""
+        read_in = list_import.read_list(path, ("class", "klasse"), category)
         return sum(self.add(b, k) for k, b in read_in.groups.items()), read_in.lines
 
     # -- bundled lists ---------------------------------------------------------------------------
@@ -567,99 +576,13 @@ class IdentifierTable(StoreTable):
             if force or held.get(self.store.local_url(q.name)) != state:
                 rows = lists.visible(((b, k, code, extra)
                                       for b, k, _r, code, extra in lexicon.rows_of(q)),
-                                     studies=q.name == "Studien")
+                                     studies=q.name == lexicon.STUDIES)
                 loaded[q.name] = self.store.add_package(
                     lists.package(q.name, rows, state, lexicon.note(q))).terms
         if loaded:
             self._settle_towns()
         return loaded
 
-    # -- the former tables -----------------------------------------------------------------------
-    def adopt(self, database: Path) -> int | None:
-        """Take over the identifiers of a pseudonym database that still keeps them in
-        tables: the store is made to hold exactly the tables' rows, the result is compared
-        with them (every term with its class and what its row says, the deletions, the
-        towns), then the tables are dropped.  Tables never filled are only dropped.
-        Returns how many rows moved, None when there is no table.  Whatever stops the
-        take-over is an :class:`IdentifierError`: nobody is to go on with other lists while
-        the user's own wait in the tables."""
-        former = lists.former_tables(database)
-        if former is None:
-            return None
-        try:
-            if former.rows:
-                self._take_over(former)
-            lists.drop_tables(database)
-        except (StoreError, sqlite3.Error, OSError) as error:
-            raise IdentifierError(say(
-                "Die Identifikatoren ließen sich nicht aus der Pseudonym-Datenbank in die"
-                f" Ablage von lexident übernehmen ({error}). Die Tabellen bleiben erhalten.",
-                "The identifiers could not be taken over from the pseudonym database into"
-                f" lexident's store ({error}). The tables stay as they are.")) from error
-        return sum(len(rows) for rows in former.rows.values())
-
-    def _take_over(self, former: lists.Former) -> None:
-        """Make the store's own lists hold exactly the rows of the former tables: a list
-        for every source and class (the user's own entries as lists of their own), the
-        towns of the hospitals, the deletions as hidden terms.  A list of the user's own
-        entries the tables do not have (a copy the former hand-over left) goes; whatever
-        else is in force in the store's own lists is hidden.  Packages of other programs
-        are neither compared nor touched."""
-        written: Written = {}
-        for source, rows in former.rows.items():
-            for name, part in _lists_of(source, rows).items():
-                url = self.store.add_package(lists.package(
-                    name, part, former.states.get(source, ""), _note(source))).url
-                written[url] = part
-        towns = sorted({lists.town_of(row.addition) for part in written.values()
-                        for row in part if row.category == CATEGORY_HOSPITAL} - {""})
-        mine = {*written, self.store.add_package(lists.towns_package(towns)).url}
-        self._forget(mine)
-        overlay.hide(self.store, self._hidden(former.deleted, written, mine), known=False)
-        self._check(written, towns)
-
-    def _forget(self, mine: set[str]) -> None:
-        """Before the deletions of the former tables are written: remove the lists of the
-        user's own entries that are not among those just written, and forget what the
-        overlay hides in any of them."""
-        # the hand-over named the user's entries of a single class by the source alone
-        stale = (_user_urls(self.store) | {self.store.local_url(lexicon.USER)}) - mine
-        for url in stale:
-            self.store.remove_package(url)
-        for line in self.store.overlay():
-            if line.action == "hide" and line.url in mine | stale:
-                self.store.undo(line)
-
-    def _hidden(self, deleted: list[lists.Deletion], written: Written,
-                mine: set[str]) -> list[Change]:
-        """The lines that hide what the former tables did not hold: what the user deleted,
-        in every list of its class that is not the user's own, and whatever else is in
-        force in the store's own lists."""
-        own = _user_urls(self.store)
-        lines = [Change(url, code or term, "hide", term, lists.LANGUAGE)
-                 for term, category, code in deleted for url, part in written.items()
-                 if url not in own and part[0].category == category]
-        return lines + [Change(e.system, e.code, "hide", e.term, e.language)
-                        for e in self.store.entries(_urls(self.store)) if e.system not in mine]
-
-    def _check(self, written: Written, towns: list[str]) -> None:
-        """What is in force in the store's own lists must be the rows that were to be taken
-        over: every term with its class and what its row says, and the towns of the
-        hospitals."""
-        wanted = Counter((row.term, lists.cls_of(row.category), tuple(sorted(
-            row.addition.items()))) for part in written.values() for row in part)
-        said = _said(self.store, written)
-        entries = list(self.store.entries(_urls(self.store)))
-        found = Counter(
-            (e.term, e.cls, tuple(sorted(lists.unfold(said.get((e.system, e.code), {}),
-                                                      e.term).items())))
-            for e in entries if e.cls != HOSPITAL_TOWN)
-        if found != wanted or sorted(e.term for e in entries if e.cls == HOSPITAL_TOWN) != towns:
-            raise IdentifierError(say(
-                "Die Identifikatoren in der Ablage von lexident stimmen nicht mit den Tabellen"
-                " der Pseudonym-Datenbank überein. Die Tabellen bleiben erhalten.",
-                "The identifiers in lexident's store do not agree with the tables of the"
-                " pseudonym database. The tables stay as they are."))
 
 
 def copy_lists(source: Store, target: Store) -> int:
@@ -684,29 +607,6 @@ def copy_lists(source: Store, target: Store) -> int:
     return len(urls)
 
 
-def _note(source: str) -> str:
-    """What a list says of where it comes from: the first line of a bundled file, the
-    ministry's terms for its list of hospitals."""
-    from pseudonymed.detection import extra_data
-
-    if source == extra_data.SOURCE_HOSPITALS_AT:
-        return extra_data.CLINICS_AT_NOTE
-    return next((lexicon.note(q) for q in lexicon.available((source,))), "")
-
-
-def _lists_of(source: str, rows: list[Row]) -> dict[str, list[Row]]:
-    """The rows of one source as lists by name: one list for a source of one class, one for
-    each class of a source of several, and always one for each class of the user's own."""
-    by_class: dict[str, list[Row]] = {}
-    for row in rows:
-        by_class.setdefault(row.category, []).append(row)
-    if source == lexicon.USER:
-        return {_own_name(category): part for category, part in by_class.items()}
-    if len(by_class) == 1:
-        return {source: rows}
-    return {f"{source}: {category}": part for category, part in by_class.items()}
-
-
 # of the store read last: its state with the lists searched, and the recogniser
 _recognisers: dict[str, tuple[tuple[int, int, tuple[str, ...]], Recogniser]] = {}
 
@@ -725,9 +625,8 @@ def _recogniser(store: Store) -> Recogniser:
 
 def standard() -> Recogniser:
     """lexident's recogniser over the lists the store has ticked, built again only when
-    the store or the ticks have changed; without a usable store it knows the registry numbers only.
-    Identifiers that could not be taken over from the pseudonym database are no such case:
-    that error is passed on."""
+    the store or the ticks have changed; without a usable store it knows the registry numbers
+    only."""
     try:
         with IdentifierTable() as table:
             return _recogniser(table.store)

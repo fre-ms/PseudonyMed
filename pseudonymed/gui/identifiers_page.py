@@ -22,11 +22,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from pseudonymed.core import names
 from pseudonymed.detection import choice
 from pseudonymed.detection import identifiers as ident_module
 from pseudonymed.gui.list_page import CellIndex, ListModel, ListPage
 from pseudonymed.gui.lists_panel import Lists
-from pseudonymed.gui.translation import shown_error
+from pseudonymed.gui.translation import interface_language, shown_error
 
 
 class IdentifiersModel(ListModel):
@@ -50,10 +51,12 @@ class IdentifiersModel(ListModel):
         return 0 if parent is not None and parent.isValid() else len(self.entries)
 
     def _cell(self, line: int, column: int) -> str:
-        """Term, class, details or source; the user's own rows show "eigene" as source."""
+        """Term, class, details or source, class and source by their labels in the interface
+        language; the user's own rows show "eigene" as source."""
         e = self.entries[line]
-        return (e.term, e.category, e.details,
-                self.tr("eigene") if e.own else e.source)[column]
+        language = interface_language()
+        return (e.term, names.label(e.category, language), e.details_in(language),
+                self.tr("eigene") if e.own else names.label(e.source, language))[column]
 
     def _apply_edit(self, line: int, column: int, value: str) -> bool:
         """Hand the edit to the page and, when it took, show the row as the store now
@@ -119,8 +122,9 @@ class IdentifiersPage(ListPage):
         self.new_term.returnPressed.connect(self.add)
         self.new_category = QComboBox()
         self.new_category.setEditable(True)
-        self.new_category.addItems(list(ident_module.CATEGORIES))
-        self.new_category.setCurrentText(ident_module.CATEGORY_OTHER)
+        language = interface_language()
+        self.new_category.addItems([names.label(k, language) for k in ident_module.CATEGORIES])
+        self.new_category.setCurrentText(names.label(ident_module.CATEGORY_OTHER, language))
         new_button = QPushButton(self.tr("Hinzufügen"))
         new_button.clicked.connect(self.add)
         new.addWidget(self.new_term, 2)
@@ -172,10 +176,12 @@ class IdentifiersPage(ListPage):
         """Refill the class filter (with counts) and the class box for new entries,
         keeping what was chosen in each."""
         self._refill_filter(self.category_filter, categories)
-        current = self.new_category.currentText() or ident_module.CATEGORY_OTHER
+        language = interface_language()
+        current = self.new_category.currentText() or names.label(ident_module.CATEGORY_OTHER,
+                                                                 language)
         self.new_category.clear()
-        self.new_category.addItems(list(dict.fromkeys(
-            list(ident_module.CATEGORIES) + [k for k, _n in categories])))
+        self.new_category.addItems([names.label(k, language) for k in dict.fromkeys(
+            list(ident_module.CATEGORIES) + [k for k, _n in categories])])
         self.new_category.setCurrentText(current)
 
     def _apply_filter(self) -> None:

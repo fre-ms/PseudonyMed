@@ -98,7 +98,7 @@ def _match_lines(b: Report, w: _Words) -> list[str]:
     by the pseudonyms that were issued (a dash when there were none)."""
     per_page: dict[int, Counter[str]] = {}
     for f in b.hits:
-        per_page.setdefault(f["seite"], Counter())[f["regel"]] += 1
+        per_page.setdefault(f["page"], Counter())[f["rule"]] += 1
     lines = [_page_line(page, per_page[page], w) for page in sorted(per_page)]
     lines.append(w("Pseudonyme: ", "Pseudonyms: ")
                  + (", ".join(b.pseudonyms) if b.pseudonyms else "–"))
@@ -143,7 +143,7 @@ def _residual_match_lines(g: Recheck, w: _Words) -> list[str]:
     n = len(g.residual_matches)
     lines = [w(f"Gegenprobe: NICHT bestanden ({n} Resttreffer) – nichts exportiert",
                f"Re-check: NOT passed ({n} residual hits) – nothing exported")]
-    lines.extend(f"  {w('Seite', 'Page')} {r['seite']}: {r['regel']} ({r['quelle']})"
+    lines.extend(f"  {w('Seite', 'Page')} {r['page']}: {r['rule']} ({r['source']})"
                  for r in g.residual_matches[:RESIDUAL_MATCHES_IN_TEXT])
     return lines
 
@@ -169,7 +169,7 @@ def _section(title: str, entries: list[str], w: _Words) -> list[str]:
 
 def save_report(b: Report, path: Path, language: str = "de") -> None:
     """Write the report as indented UTF-8 JSON with a trailing newline to ``path``; umlauts
-    stay unescaped so the file reads well by eye.  The keys are those of the stored format;
+    stay unescaped so the file reads well by eye.  The keys are the report's field names;
     the messages (warnings, notes, re-check remarks and kinds, residual-risk wording) are in
     ``language``."""
     path.write_text(json.dumps(as_dict(b, language), ensure_ascii=False, indent=2) + "\n",
@@ -181,13 +181,13 @@ def as_dict(b: Report, language: str = "de") -> dict[str, Any]:
     d = b.as_dict()
     if not english(language):
         return d
-    d["warnungen"] = [in_language(x, language) for x in b.warnings]
-    d["hinweise"] = [in_language(x, language) for x in b.notes]
+    d["warnings"] = [in_language(x, language) for x in b.warnings]
+    d["notes"] = [in_language(x, language) for x in b.notes]
     if b.recheck is not None:
-        d["gegenprobe"]["anmerkungen"] = [in_language(x, language) for x in b.recheck.remarks]
-        d["gegenprobe"]["geprueft"] = [in_language(x, language) for x in b.recheck.checked]
+        d["recheck"]["remarks"] = [in_language(x, language) for x in b.recheck.remarks]
+        d["recheck"]["checked"] = [in_language(x, language) for x in b.recheck.checked]
     if b.residual_risk:
         from pseudonymed.checks.residual_risk import from_stored, stored
 
-        d["restrisiko"] = stored(from_stored(b.residual_risk), language)
+        d["residual_risk"] = stored(from_stored(b.residual_risk), language)
     return d

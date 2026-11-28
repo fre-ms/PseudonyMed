@@ -14,7 +14,8 @@ from typing import Any
 from lexcor import StoreError
 
 from pseudonymed.config import config_path
-from pseudonymed.core.text import say
+from pseudonymed.core import names
+from pseudonymed.core.text import read_back, say
 from pseudonymed.detection.identifiers import IdentifierTable
 from pseudonymed.detection.vocabulary import Vocabulary
 from pseudonymed.pseudonyms.store import default_key_path, default_path, key_path_for
@@ -30,13 +31,13 @@ CATEGORIES = [  # pseudonym prefix -> label (first match wins)
     ("[Identifikator", "Identifikator"), ("[Medikament", "Medikament"),
     ("[Dosierung", "Dosierung"), ("[Laborwert", "Laborwert"), ("[Messwert", "Messwert"),
 ]
-_KIND_LABELS = {
-    "name": "Name", "vorname": "Name", "nachname": "Name", "geburtsname": "Geburtsname",
-    "geburtsdatum": "Geburtsdatum", "adresse": "Adresse", "ort": "Ort", "telefon": "Telefon",
-    "email": "E-Mail", "versichertennummer": "Versichertennummer",
-    "patienten_id": "Patienten-ID", "aktenzeichen": "Aktenzeichen", "iban": "IBAN",
-    "begriff": "Begriff", "manuell": "Manuell", "identifikator": "Identifikator",
-    "medizin": "Medizinischer Inhalt",
+_KIND_LABELS = {  # kind -> label, as the statistics show it in German (read back in English)
+    "name": "Name", "first_name": "Name", "surname": "Name", "birth_name": "Geburtsname",
+    "birth_date": "Geburtsdatum", "address": "Adresse", "place": "Ort", "phone": "Telefon",
+    "email": "E-Mail", "insurance_number": "Versichertennummer",
+    "patient_id": "Patienten-ID", "case_number": "Aktenzeichen", "iban": "IBAN",
+    "term": "Begriff", "manual": "Manuell", "identifier": "Identifikator",
+    "medical": "Medizinischer Inhalt",
 }
 _YES = say("ja", "yes")
 _NO = say("nein", "no")
@@ -128,14 +129,23 @@ class Statistics:
                         str(sum(n for _k, n in self.identifier_categories))))
             out += _indented(self.identifier_categories)
         out += [(say("Zusatzdaten (selbst geladen)", "Extra data (fetched yourself)"),
-                 say(f"{q}: {n} Einträge, {g[:10]}", f"{q}: {n} entries, {g[:10]}"))
+                 say(f"{names.label(q, 'de')}: {n} Einträge, {g[:10]}",
+                     f"{names.label(q, 'en')}: {n} entries, {g[:10]}"))
                 for q, n, g in self.identifier_lists]
         return out
 
 
 def _indented(pairs: Iterable[tuple[str, int]]) -> list[tuple[str, str]]:
-    """Sub-rows of a count, indented under their total."""
-    return [(f"    {k}", str(n)) for k, n in pairs]
+    """Sub-rows of a count, indented under their total, in both languages: a stored class
+    or list by its label, a German word by its English form, a rule id as it is."""
+    return [(say(f"    {names.label(k, 'de')}", f"    {_in_english(k)}"), str(n))
+            for k, n in pairs]
+
+
+def _in_english(name: str) -> str:
+    """The English form of a sub-row's name: its label, else the English of a German word."""
+    label = names.label(name, "en")
+    return label if label != name else read_back(name)
 
 
 def _mb(n: int) -> str:
@@ -229,15 +239,15 @@ def _all_rows(v: sqlite3.Connection, sql: str) -> list[tuple[Any, ...]]:
 
 def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
     """Fill counts, categories, time span and integrity from an open connection."""
-    st.patients = _one(v, "SELECT COUNT(*) FROM patienten")
-    st.aliases = _one(v, "SELECT COUNT(*) FROM aliasse")
-    st.mappings = _one(v, "SELECT COUNT(*) FROM zuordnungen")
-    st.discarded = _one(v, "SELECT COUNT(*) FROM verworfen")
+    st.patients = _one(v, "SELECT COUNT(*) FROM patients")
+    st.aliases = _one(v, "SELECT COUNT(*) FROM aliases")
+    st.mappings = _one(v, "SELECT COUNT(*) FROM mappings")
+    st.discarded = _one(v, "SELECT COUNT(*) FROM discarded")
     st.schema = ", ".join(sorted(r[0] for r in _all_rows(v,
-                                                         "SELECT DISTINCT schema FROM patienten")))
+                                                         "SELECT DISTINCT scheme FROM patients")))
     st.per_category = _per_category(v)
     st.discarded_per_rule = [(r, n) for r, n in _all_rows(
-        v, "SELECT regel, COUNT(*) FROM verworfen GROUP BY regel ORDER BY COUNT(*) DESC, regel")]
+        v, "SELECT rule, COUNT(*) FROM discarded GROUP BY rule ORDER BY COUNT(*) DESC, rule")]
     st.first_entry, st.last_entry = _time_span(v)
     st.integrity = str(_one(v, "PRAGMA integrity_check", "?"))
     st.pages = _one(v, "PRAGMA page_count")
@@ -247,15 +257,15 @@ def _count_contents(v: sqlite3.Connection, st: Statistics) -> None:
 def _per_category(v: sqlite3.Connection) -> list[tuple[str, int]]:
     """Mappings per human category, the most frequent first, ties by name."""
     counter = Counter(category(pseudonym, kind or "")
-                      for pseudonym, kind in _all_rows(v, "SELECT pseudonym, art FROM zuordnungen"))
+                      for pseudonym, kind in _all_rows(v, "SELECT pseudonym, kind FROM mappings"))
     return sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
 def _time_span(v: sqlite3.Connection) -> tuple[str, str]:
     """First and last entry as ``YYYY-MM-DD HH:MM:SS``; two empty strings for an empty store."""
-    times = [t for t in (_one(v, "SELECT MIN(angelegt) FROM patienten", None),
-                         _one(v, "SELECT MAX(geaendert) FROM zuordnungen", None),
-                         _one(v, "SELECT MAX(angelegt) FROM patienten", None)) if t]
+    times = [t for t in (_one(v, "SELECT MIN(created) FROM patients", None),
+                         _one(v, "SELECT MAX(changed) FROM mappings", None),
+                         _one(v, "SELECT MAX(created) FROM patients", None)) if t]
     if not times:
         return "", ""
     return min(times)[:19].replace("T", " "), max(times)[:19].replace("T", " ")

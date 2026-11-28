@@ -71,7 +71,7 @@ def set_up(
                " configuration file (readable by the user only)."))] = False,
 ) -> None:
     """Check the CardDAV access, store the app password and save the configuration."""
-    password = (environment.variable("CARDDAV_PASSWORT")
+    password = (environment.variable("CARDDAV_PASSWORD")
                 or typer.prompt(w("App-Passwort", "App password"), hide_input=True))
     k = CardDAVConfig(url=url.strip(), user=user.strip(), address_book=address_book.strip())
     try:
@@ -249,12 +249,12 @@ def run_search(
     with open_store(store) as sp:
         for i, p in enumerate(patients, 1):
             info = sp.patient_info(p.key())
-            typer.echo(patient_line(i, p, info["kennung"] if info else None))
+            typer.echo(patient_line(i, p, info["code"] if info else None))
 
 
 def _patient_text(p: Patient) -> str:
     """The derived identifiers of a contact as labelled lines."""
-    sexes = {"m": w("Herr", "Mr"), "w": w("Frau", "Ms")}
+    sexes = {"m": w("Herr", "Mr"), "f": w("Frau", "Ms")}
     fields = [
         (w("Name", "Name"), f"{p.surname}, {p.first_name}"),
         (w("Anrede/Geschlecht", "Salutation/sex"), sexes.get(p.sex, w("unbekannt", "unknown"))),
@@ -319,9 +319,7 @@ def export(
         abort(w(f"{output} existiert bereits (--ueberschreiben).",
                 f"{output} already exists (--overwrite)."))
     data = p.as_dict()
-    data.setdefault("angehoerige", [])
-    data.setdefault("zuweiser", [])
-    data.setdefault("aktenzeichen", [])
-    data.setdefault("begriffe", [])
+    for key in ("relatives", "referrers", "case_numbers", "terms"):
+        data.setdefault(key, [])
     output.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     typer.echo(w(f"Patientendatei geschrieben: {output}", f"Patient file written: {output}"))

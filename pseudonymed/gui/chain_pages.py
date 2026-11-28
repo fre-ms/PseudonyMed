@@ -67,7 +67,7 @@ class ReadingSettings(QGroupBox):
         self.engine.addItem(self.tr("automatisch"), "auto")
         for name in ocr_module.available_backends():
             self.engine.addItem(name, name)
-        self.engine.addItem(self.tr("aus (nur Textebene)"), "aus")
+        self.engine.addItem(self.tr("aus (nur Textebene)"), "off")
         self.engine.currentIndexChanged.connect(self._engine_changed)
         form.addRow(self.tr("OCR-Programm"), self.engine)
         self.languages = QLineEdit()
@@ -101,7 +101,7 @@ class ReadingSettings(QGroupBox):
             self.languages.setPlaceholderText("deu+eng")
             self.note.setText(self.tr("Installierte Tesseract-Sprachen: {liste}").format(
                 liste=", ".join(installed) or "–"))
-        elif name == "aus":
+        elif name == "off":
             self.languages.setPlaceholderText("")
             self.note.setText(self.tr("Es wird nur die Textebene der PDFs gelesen."))
         else:

@@ -94,7 +94,7 @@ def test_ner_spares_medical_terms(patient: Patient) -> None:
 
 
 def test_import_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path))
     terms_module.standard.cache_clear()
     listing = tmp_path / "eigene.txt"
     listing.write_text("Flantzitis\nMusterkrankheit\n", encoding="utf-8")
@@ -132,7 +132,7 @@ def test_import_and_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     r = CliRunner().invoke(app, ["fachbegriffe", "exportieren", str(tmp_path / "v.csv"),
                                  "--kategorie", "eigene"])
     assert r.exit_code == 0 and (tmp_path / "v.csv").read_text(encoding="utf-8").startswith(
-        "begriff,kategorie\nFlantzitis,eigene\n")
+        "term,category\nFlantzitis,eigene\n")
     terms_module.standard.cache_clear()
 
 
@@ -153,7 +153,7 @@ def test_body_parts_are_medical_terms() -> None:
     text = "Schmerzen in der linken Hand und im rechten Oberbauch, Knie frei."
     words = {text[a:b] for a, b in fb.spans(text)}
     assert {"linken", "Hand", "rechten", "Oberbauch", "Knie"} <= words
-    assert "Körperteile" in [q for q, _n in fb.sources] if hasattr(fb, "sources") else True
+    assert "body parts" in [q for q, _n in fb.sources]
 
 
 def test_finding_terms_are_medical_terms() -> None:
@@ -162,7 +162,7 @@ def test_finding_terms_are_medical_terms() -> None:
     for w in ("Konzentration", "Haltung", "Nierenlager", "Strichgang", "Gangbild",
               "Merkfähigkeit", "Darmgeräusche", "Procedere", "Finger-Nase-Versuch"):
         assert fb.is_medical_term(w), w
-    assert "Befundbegriffe" in [q for q, _n in fb.sources]
+    assert "findings terms" in [q for q, _n in fb.sources]
     text = "Konzentration: gut. Nierenlager: frei. Erika Hoffmann wohnt in Riesa."
     words = {text[a:b] for a, b in fb.spans(text)}
     assert {"Konzentration", "Nierenlager"} <= words and "Riesa" not in words

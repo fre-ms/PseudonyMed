@@ -10,6 +10,7 @@ from ocrdoc.ocr import available_backends
 from pseudonymed import __version__
 from pseudonymed.cli.base import (
     EXPLICIT_LANGUAGE,
+    LANGUAGE,
     StoreOption,
     app,
     command,
@@ -21,6 +22,7 @@ from pseudonymed.config import (
     load_config,
     load_settings,
 )
+from pseudonymed.core import names
 from pseudonymed.detection.codes import available as codes_available
 from pseudonymed.pseudonyms.store import (
     default_path,
@@ -43,7 +45,7 @@ def template() -> None:
     """Print the JSON template of a patient file."""
     from pseudonymed.sources.manual import template as _template
 
-    typer.echo(_template(), nl=False)
+    typer.echo(_template(LANGUAGE), nl=False)
 
 
 @command(app, "konfig", "config",
@@ -107,7 +109,7 @@ def _show_tools(settings: Settings) -> None:
                   w("nicht verfügbar (Extra 'ner' + deutsches Modell)",
                     "not available (extra 'ner' + German model)")))
     fb = terms_module.standard()
-    sources = ", ".join(f"{name} {n}" for name, n in fb.sources)
+    sources = ", ".join(f"{names.label(name, LANGUAGE)} {n}" for name, n in fb.sources)
     typer.echo(w(f"Fachbegriffe:        {fb.count} geschützte Begriffe ({sources});"
                  f" Ablage {vocab_mod.default_path()}",
                  f"Medical terms:       {fb.count} protected terms ({sources});"

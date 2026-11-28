@@ -74,7 +74,7 @@ phonetic codes alone would merge different people.
 
 The identity is hashed with **HMAC-SHA256 under a secret key** that is
 created on first use and stored next to the pseudonym database
-(`pseudonymschluessel.txt`, mode 0600; `pseudonymed konfig` shows the path).
+(`pseudonym-key.txt`, mode 0600; `pseudonymed konfig` shows the path).
 The first 25 bits of the digest become five characters of a 32-symbol
 alphabet without look-alikes (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`), and a
 sixth character is a **Luhn mod 32 check character**. Example: `Patient K7Q4MX`.
@@ -133,7 +133,7 @@ is deliberately not part of the town identity, otherwise a bare "München" in
 the running text could not share the code of "80331 München" in the address
 block; the two placeholders keep the postcode recoverable. Relatives' and
 referring physicians' addresses get their own codes (`[Straße …]` of the
-practice instead of the former `[Praxisanschrift]`).
+sender instead of a mere `[Absenderanschrift]`).
 
 Codes need the same secret key as the patient identifiers; without a key
 (for example in unit tests without a store) the placeholders fall back to

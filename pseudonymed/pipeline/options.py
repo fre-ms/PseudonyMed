@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
 
 import identicalc
 from ocrdoc import ocr as ocr_module
@@ -17,79 +16,66 @@ from pseudonymed.redaction.pdf import RedactionOptions
 class PipelineOptions:
     """Every switch of a run; the CLI options and the desktop pages map onto it."""
 
-    STORED_KEYS: ClassVar[dict[str, str]] = {
-        "date_format": "datumsform", "text_file": "textdatei", "report": "bericht",
-        "target_folder": "ziel_ordner", "matching": "abgleich", "ocr_languages": "ocr_sprachen",
-        "unreadable": "unlesbar", "medical_terms": "fachbegriffe", "identifiers": "identifikatoren",
-        "redact_drugs": "medikamente_schwaerzen", "redact_doses": "dosierungen_schwaerzen",
-        "redact_lab_tests": "laborwerte_schwaerzen", "redact_measurements": "messwerte_schwaerzen",
-        "fuzzy_text": "unscharf_text", "clean_up": "aufbereiten",
-        "remember_discarded": "verworfene_merken", "preview": "vorschau",
-        "ocr_tables": "ocr_tabellen", "vocabulary": "vokabular", "structured": "gliedern",
-        "recipient": "empfaenger", "recipient_fingerprint": "empfaenger_fingerabdruck",
-        "reference_population": "referenzpopulation", "own_places": "eigene_orte",
-        "redaction": "schwaerzen"}
-
-    date_format: str = "jahr"  # "jahr" -> [geb. 1990], "alter" -> [Alter 36]
+    date_format: str = "year"  # "year" -> [geb. 1990], "age" -> [Alter 36]
     text_file: bool = True  # write <name>_pseudonym.txt in reading order
     markdown: bool = False  # write <name>_pseudonym.md as well
-    report: bool = True  # write <name>_pseudonym.bericht.json
+    report: bool = True  # write <name>_pseudonym.report.json
     suffix: str = "_pseudonym"
     target_folder: Path | None = None
-    matching: str | None = None  # decision for an uncertain match: "neu" or "gleich:<KENNUNG>"
-    ocr: str = "auto"  # "auto", "rapidocr", "tesseract" or "aus"
+    matching: str | None = None  # decision for an uncertain match: "new" or "same:<CODE>"
+    ocr: str = "auto"  # "auto", "rapidocr", "tesseract" or "off"
     ocr_languages: str = ""  # language packs: "deu+eng" (Tesseract) or "de", "latin" (RapidOCR)
     ocr_dpi: int = ocr_module.OCR_DPI
     codes: bool = True  # blank barcodes and QR codes (zxing-cpp, with ocrdoc)
-    unreadable: str = "schwaerzen"  # lines OCR could not read: "schwaerzen" or "lassen"
+    unreadable: str = "redact"  # lines OCR could not read: "redact" or "keep"
     ner: bool = False  # people and places the rules do not know (extra "ner")
     medical_terms: bool = True  # protect medical terms from NER and fuzzy OCR matching
     identifiers: bool = True  # professions, hospitals, studies, titles (identifiers step)
-    # medical content, four levels, all off unless asked for (see erkennung.medizininhalte)
+    # medical content, four levels, all off unless asked for (see detection.medical_content)
     redact_drugs: bool = False  # the drug name
     redact_doses: bool = False  # dose and schedule next to a drug name
     redact_lab_tests: bool = False  # the lab name, the examination
     redact_measurements: bool = False  # the measurement after a lab name
     fuzzy_text: bool = True  # text files: fuzzy search for misspelt identifiers (transcripts)
-    clean_up: str = "auto"  # image-only pages: "auto" (optdoc's suggestion) or "aus"
+    clean_up: str = "auto"  # image-only pages: "auto" (optdoc's suggestion) or "off"
     remember_discarded: bool = False  # remember discarded hits per patient in the store
-    preview: str = "auto"  # "auto" (pages that needed OCR), "immer", "nie"
+    preview: str = "auto"  # "auto" (pages that needed OCR), "always", "never"
     ocr_tables: bool = True  # Tesseract: second pass for sparse text (tables), merged in
-    vocabulary: bool = True  # write <name>_pseudonym.vokabular.txt with the discarded guesses
+    vocabulary: bool = True  # write <name>_pseudonym.vocabulary.txt with the discarded guesses
     structured: bool = True  # OCR text as Markdown: paragraphs joined, headings, lists, tables
     recipient: str = ""  # armoured public key of a recipient: one-time pseudonyms + capsule
     recipient_fingerprint: str = ""
     reference_population: int = identicalc.REFERENCE_GERMANY  # people the attacker chooses from
     own_places: str = ""  # places of the sender (practice, clinic), comma-separated, not counted
     redaction: RedactionOptions = field(default_factory=RedactionOptions)
-    language: str = "de"  # of the report and the vocabulary file ("en" from the English desktop)
+    language: str = "en"  # of the report and the vocabulary file (the interface's language)
 
     def as_dict(self) -> dict[str, object]:
         """The options as the report records them (no paths, no key material)."""
         return {
-            "datumsform": self.date_format,
-            "textdatei": self.text_file,
+            "date_format": self.date_format,
+            "text_file": self.text_file,
             "markdown": self.markdown,
-            "textebene": self.redaction.text_layer,
-            "rastern": self.redaction.rasterise,
+            "text_layer": self.redaction.text_layer,
+            "rasterise": self.redaction.rasterise,
             "dpi": self.redaction.dpi if self.redaction.rasterise else None,
-            "vermerk": self.redaction.notice,
+            "notice": self.redaction.notice,
             "ocr": self.ocr,
-            "ocr_sprachen": self.ocr_languages,
+            "ocr_languages": self.ocr_languages,
             "codes": self.codes,
             "ner": self.ner,
-            "fachbegriffe": self.medical_terms,
-            "identifikatoren": self.identifiers,
-            "medikamente_schwaerzen": self.redact_drugs,
-            "dosierungen_schwaerzen": self.redact_doses,
-            "laborwerte_schwaerzen": self.redact_lab_tests,
-            "messwerte_schwaerzen": self.redact_measurements,
-            "unscharf_text": self.fuzzy_text,
-            "aufbereiten": self.clean_up,
-            "ocr_tabellen": self.ocr_tables,
-            "gliedern": self.structured,
-            "empfaenger": self.recipient_fingerprint or None,
-            "referenzpopulation": self.reference_population,
+            "medical_terms": self.medical_terms,
+            "identifiers": self.identifiers,
+            "redact_drugs": self.redact_drugs,
+            "redact_doses": self.redact_doses,
+            "redact_lab_tests": self.redact_lab_tests,
+            "redact_measurements": self.redact_measurements,
+            "fuzzy_text": self.fuzzy_text,
+            "clean_up": self.clean_up,
+            "ocr_tables": self.ocr_tables,
+            "structured": self.structured,
+            "recipient": self.recipient_fingerprint or None,
+            "reference_population": self.reference_population,
         }
 
 

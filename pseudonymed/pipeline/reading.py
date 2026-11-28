@@ -45,7 +45,7 @@ def close_documents(*docs: pymupdf.Document) -> None:
 def chain_settings(opt: PipelineOptions) -> dict[str, Any]:
     """The settings of docrepro's steps for a fresh chain under these options."""
     return docrepro_adapter.chain_settings(opt.ocr, opt.ocr_languages, opt.ocr_tables,
-                                           opt.clean_up != "aus", opt.ocr_dpi)
+                                           opt.clean_up != "off", opt.ocr_dpi)
 
 
 @dataclass

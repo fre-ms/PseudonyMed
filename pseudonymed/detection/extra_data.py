@@ -28,22 +28,28 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pseudonymed import __version__
+from pseudonymed.core import names
 from pseudonymed.core.text import english, say
 from pseudonymed.detection import identifier_lists, lexicon
 
 if TYPE_CHECKING:
     from pseudonymed.detection.identifiers import IdentifierTable
 
-SOURCE_HOSPITALS_AT = "Kliniken AT (BMASGPK)"
+SOURCE_HOSPITALS_AT = "hospitals AT (BMASGPK)"
 PAGE_HOSPITALS_AT = (
     "https://www.sozialministerium.gv.at/Themen/Gesundheit/Gesundheitssystem/Krankenanstalten/"
     "Krankenanstalten-und-selbststaendige-Ambulatorien-in-Oesterreich/"
     "Krankenanstalten-in-Oesterreich.html")
-CLINICS_AT_NOTE = (
+# the store keeps the English form as the list's copyright
+CLINICS_AT_NOTE = say(
     "Quelle: Bundesministerium für Arbeit, Soziales, Gesundheit, Pflege und Konsumentenschutz"
     " (BMASGPK), Liste der Krankenanstalten in Österreich. Das Ministerium gestattet den"
     " Nachdruck mit Quellenangabe außer zu kommerziellen Zwecken. PseudonyMed lädt die Liste nur"
-    " in Ihre lokale Datenbank und gibt sie nicht weiter.")
+    " in Ihre lokale Datenbank und gibt sie nicht weiter.",
+    "Source: Federal Ministry of Labour, Social Affairs, Health, Care and Consumer Protection"
+    " (BMASGPK), list of hospitals in Austria. The ministry permits reprinting with attribution"
+    " except for commercial purposes. PseudonyMed loads the list into your local database only"
+    " and does not pass it on.")
 AGENT = f"PseudonyMed/{__version__} (https://github.com/fre-ms/PseudonyMed)"
 _NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
@@ -66,13 +72,14 @@ class LoadReport:
 
     def description(self, language: str = "de") -> str:
         """One sentence with the count, the rows without a Gemeinde, date and origin."""
+        source = names.label(self.source, language)
         if english(language):
             part = (f", {self.without_municipality} without a municipality"
                     if self.without_municipality else "")
-            return (f"{self.source}: {self.count} entries loaded{part}"
+            return (f"{source}: {self.count} entries loaded{part}"
                     f" (as of {self.state or 'unknown'}, {self.origin}).")
         part = f", {self.without_municipality} ohne Gemeinde" if self.without_municipality else ""
-        return (f"{self.source}: {self.count} Einträge geladen{part}"
+        return (f"{source}: {self.count} Einträge geladen{part}"
                 f" (Stand {self.state or 'unbekannt'}, {self.origin}).")
 
 
@@ -187,18 +194,18 @@ def _at_names(lines: Iterator[dict[str, str]]) -> tuple[dict[str, str], dict[str
     """Gemeinde code → name and Bezirk code → name from the Austrian rows of the demography."""
     municipalities: dict[str, str] = {}
     districts: dict[str, str] = {}
-    by_level = {"gemeinde": municipalities, "kreis": districts}
+    by_level = {"municipality": municipalities, "district": districts}
     for z in lines:
-        target = by_level.get(z["ebene"]) if z["land"] == "AT" else None
+        target = by_level.get(z["level"]) if z["country"] == "AT" else None
         if target is not None:
-            target[z["kennung"]] = z["name"]
+            target[z["code"]] = z["name"]
     return municipalities, districts
 
 
 def _share(z: dict[str, str]) -> float:
     """Share of a postcode row as a number; a missing or unreadable share counts as zero."""
     try:
-        return float(z.get("anteil") or 0)
+        return float(z.get("share") or 0)
     except ValueError:
         return 0.0
 
@@ -207,20 +214,20 @@ def _at_postcode_municipalities(lines: Iterator[dict[str, str]]) -> dict[str, st
     """Postcode → Gemeinde code with the largest share, from the Austrian rows of the table."""
     best: dict[str, tuple[float, str]] = {}
     for z in lines:
-        if z.get("land") != "AT":
+        if z.get("country") != "AT":
             continue
         share = _share(z)
-        if share > best.get(z["plz"], (-1.0, ""))[0]:
-            best[z["plz"]] = (share, z["gemeinde_kennung"])
+        if share > best.get(z["postcode"], (-1.0, ""))[0]:
+            best[z["postcode"]] = (share, z["municipality_code"])
     return {postcode: code for postcode, (_a, code) in best.items()}
 
 
 def _at_tables() -> _AtTables:
     """Gemeinde code → name, Bezirk code → name (bundled demography, Statistik Austria) and
     postcode → Gemeinde code with the largest share (bundled postcode table, if present)."""
-    municipalities, districts = _at_names(_bundled_rows("demografie_dach.csv.gz"))
+    municipalities, districts = _at_names(_bundled_rows("demographics_dach.csv.gz"))
     return _AtTables(municipalities, districts,
-                     _at_postcode_municipalities(_bundled_rows("plz_dach.csv.gz")))
+                     _at_postcode_municipalities(_bundled_rows("postcodes_dach.csv.gz")))
 
 
 def _words(text: str) -> set[str]:
@@ -373,8 +380,8 @@ def _sites(raw: list[list[str]]) -> dict[str, list[_Site]]:
 def _hospital_type(sector: str, care_area: str, name: str) -> str:
     """Rehabilitation by sector, psychiatry by area or name, otherwise a general hospital."""
     if "rehab" in sector.casefold():
-        return "reha"
-    return "psychiatrie" if "psych" in (care_area + " " + name).casefold() else "krankenhaus"
+        return "rehabilitation"
+    return "psychiatry" if "psych" in (care_area + " " + name).casefold() else "hospital"
 
 
 def _beds(text: str) -> int | None:
@@ -414,12 +421,13 @@ def _sites_with_municipality(hospital: _Hospital, sites: dict[str, list[_Site]],
 
 def _lexicon_row(hospital: _Hospital, site: _Site) -> lexicon.Row:
     """The lexicon row of one site: name as term, ``AT:<code>`` as key, details as JSON."""
-    fields = {"typ": hospital.type_name, "ort": site.place, "plz": site.postcode,
-              "gemeinde": site.municipality, "land": "AT", "bundesland": hospital.federal_state,
-              "betten": hospital.beds, "traeger": hospital.owner}
+    fields = {"type": hospital.type_name, "place": site.place, "postcode": site.postcode,
+              "municipality": site.municipality, "country": "AT",
+              "state": hospital.federal_state, "beds": hospital.beds,
+              "provider": hospital.owner}
     extra = json.dumps({k: v for k, v in fields.items() if v not in ("", None)},
                        ensure_ascii=False, separators=(",", ":"))
-    return (hospital.name, "Klinik", lexicon.FEATURE, f"AT:{site.code}", extra)
+    return (hospital.name, "hospital", lexicon.FEATURE, f"AT:{site.code}", extra)
 
 
 def hospitals_at_rows(data: bytes) -> tuple[list[lexicon.Row], int]:
@@ -463,5 +471,6 @@ def load_clinics_at(table: IdentifierTable, file: Path | None = None,
     state = date.group(1) if date else ""
     rows = identifier_lists.visible((b, k, code, extra) for b, k, _r, code, extra in lines)
     n = table.install(SOURCE_HOSPITALS_AT, rows,
-                      f"{state} {hashlib.sha256(data).hexdigest()[:16]}".strip(), CLINICS_AT_NOTE)
+                      f"{state} {hashlib.sha256(data).hexdigest()[:16]}".strip(),
+                      CLINICS_AT_NOTE.en)
     return LoadReport(SOURCE_HOSPITALS_AT, n, without, state, origin)

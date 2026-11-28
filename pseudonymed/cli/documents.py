@@ -25,11 +25,11 @@ from pseudonymed.cli.base import (
     VcfOption,
     abort,
     app,
+    canonical,
     choice,
     command,
     error_message,
     flags,
-    german,
     list_metavar,
     matching_decision,
     open_store,
@@ -66,7 +66,7 @@ from pseudonymed.redaction.pdf import RedactionOptions
 
 Prepared = Preparation | TextPreparation
 
-# the help of 'pseudonymisieren', shared with its hidden former name 'anonymisieren'
+# the help of 'pseudonymisieren'
 _PSEUDONYMISE_HELP = w("Dokumente und Texte schwärzen, Pseudonyme einsetzen, Gegenprobe, Bericht.",
                        "Redact documents and texts, insert pseudonyms, re-check, report.")
 
@@ -101,11 +101,11 @@ def _choices(unreadable: str, date: str, preview: str, clean_up: str,
              ocr: str) -> tuple[str, str, str, str, str]:
     """The options that take one of a few words, each as the core knows it (the German word,
     whether that or its English one was given); an unknown value ends the command."""
-    return (choice("--unlesbar", unreadable, ("schwaerzen", "lassen")),
-            choice("--datum", date, ("jahr", "alter")),
-            choice("--vorschau", preview, ("auto", "immer", "nie")),
-            choice("--aufbereiten", clean_up, ("auto", "aus")),
-            german(ocr, ("aus",)))  # an unknown engine is the reader's to refuse
+    return (choice("--unlesbar", unreadable, ("redact", "keep")),
+            choice("--datum", date, ("year", "age")),
+            choice("--vorschau", preview, ("auto", "always", "never")),
+            choice("--aufbereiten", clean_up, ("auto", "off")),
+            canonical(ocr, ("off",)))  # an unknown engine is the reader's to refuse
 
 
 def _recipient_fields(certificate: Certificate | None) -> tuple[str, str]:
@@ -236,7 +236,7 @@ def pseudonymise(
         *flags("--ziel", "-z"), help=w("Zielordner.", "Target folder."))] = None,
     date: Annotated[str, typer.Option(
         *flags("--datum"), help=w("Geburtsdatum als 'jahr' oder 'alter'.",
-                                  "Date of birth as 'year' or 'age'."))] = value_name("jahr"),
+                                  "Date of birth as 'year' or 'age'."))] = value_name("year"),
     rasterise: Annotated[bool, typer.Option(
         *flags("--rastern"), help=w("Ausgabe vollständig rastern.",
                                     "Rasterise the output completely."))] = False,
@@ -276,7 +276,7 @@ def pseudonymise(
     unreadable: Annotated[str, typer.Option(
         *flags("--unlesbar"), help=w("Von der OCR nicht lesbare Zeilen: schwaerzen oder lassen.",
                                      "Lines the OCR cannot read: redact or keep."))]
-    = value_name("schwaerzen"),
+    = value_name("redact"),
     ner: Annotated[bool, typer.Option(
         *flags("--ner/--kein-ner"),
         help=w("Unbekannte Personen und Orte per NER suchen (Extra 'ner').",
@@ -335,16 +335,16 @@ def pseudonymise(
     = True,
     vocabulary: Annotated[bool, typer.Option(
         *flags("--vokabular/--kein-vokabular"),
-        help=w("Verworfene Rate-Treffer als <name>_pseudonym.vokabular.txt schreiben.",
-               "Write the discarded guesses as <name>_pseudonym.vokabular.txt."))] = True,
+        help=w("Verworfene Rate-Treffer als <name>_pseudonym.vocabulary.txt schreiben.",
+               "Write the discarded guesses as <name>_pseudonym.vocabulary.txt."))] = True,
     working_state: Annotated[bool, typer.Option(
         *flags("--arbeitsstand"),
         help=w("Vor dem Abschluss den Arbeitsstand neben die Ausgabe schreiben"
-               " (<name>.arbeitsstand.json mit der Kette von docrepro und das Original"
+               " (<name>.working-state.json mit der Kette von docrepro und das Original"
                " daneben, mit Klardaten): wieder aufnehmbar in der Oberfläche oder als"
                " Eingabe dieses Befehls.",
                "Before finishing, write the working state next to the output"
-               " (<name>.arbeitsstand.json with docrepro's chain, and the original beside it,"
+               " (<name>.working-state.json with docrepro's chain, and the original beside it,"
                " with clear data): it can be resumed in the desktop app or as input to this"
                " command."))] = False,
     reanalyse: Annotated[bool, typer.Option(
@@ -379,9 +379,9 @@ def pseudonymise(
         *flags("--empfaenger"),
         help=w("Öffentlicher OpenPGP-Schlüssel des Empfängers (Datei oder https-Adresse):"
                " Pseudonyme mit Einmalschlüssel, Zuordnung als verschlüsselte Kapsel"
-               " <name>_pseudonym.kapsel.asc für den Empfänger; lokal wird nichts gespeichert.",
+               " <name>_pseudonym.capsule.asc für den Empfänger; lokal wird nichts gespeichert.",
                "The recipient's public OpenPGP key (file or https address): pseudonyms with a"
-               " one-time key, the mapping as an encrypted capsule <name>_pseudonym.kapsel.asc"
+               " one-time key, the mapping as an encrypted capsule <name>_pseudonym.capsule.asc"
                " for the recipient; nothing is stored locally."))]
     = None,
 ) -> None:
@@ -424,8 +424,6 @@ def pseudonymise(
     if not all(free):
         raise typer.Exit(code=2)
 
-# the command's name until November 2026, kept for existing scripts
-app.command("anonymisieren", hidden=True, help=_PSEUDONYMISE_HELP)(pseudonymise)
 
 
 @command(app, "pruefen", "check", help=w(
@@ -478,8 +476,8 @@ def check(
     typer.echo(w(f"{file.name}: Gegenprobe NICHT bestanden ({left} Resttreffer).",
                  f"{file.name}: re-check FAILED ({left} residual hit(s))."))
     for r in g.residual_matches[:50]:
-        typer.echo(w(f"  Seite {r['seite']}: {r['regel']} ({r['quelle']})",
-                     f"  Page {r['seite']}: {r['regel']} ({r['quelle']})"))
+        typer.echo(w(f"  Seite {r['page']}: {r['rule']} ({r['source']})",
+                     f"  Page {r['page']}: {r['rule']} ({r['source']})"))
     for a in g.remarks:
         typer.echo(w(f"  Anmerkung: {shown(a)}", f"  Remark: {shown(a)}"))
     raise typer.Exit(code=2)
@@ -527,7 +525,7 @@ def _mapping_from_store(
                     f"{len(matches)} entries found; please choose one unambiguously"
                     " (see 'pseudonyms')."))
         info = matches[0]
-        return info, sp.mapping(info["schluessel"]), sp.codes()
+        return info, sp.mapping(info["patient_key"]), sp.codes()
 
 
 def _output_reidentification(r: Reidentification, output: Path | None) -> None:
@@ -563,15 +561,15 @@ def reidentify(
     form: Annotated[str, typer.Option(
         "--form", help=w("'vollname' oder 'anrede'.",
                          "'full-name' or 'salutation' (Herr or Frau with the surname)."))]
-    = value_name("vollname"),
+    = value_name("full-name"),
     output: Annotated[Path | None, typer.Option(
         *flags("--ausgabe", "-o"), help=w("Zieldatei.", "Target file."))] = None,
     store: StoreOption = None,
     capsule: Annotated[Path | None, typer.Option(
         *flags("--kapsel"), exists=True,
-        help=w("Schlüsselkapsel eines Absenders (<name>_pseudonym.kapsel.asc) statt der lokalen"
+        help=w("Schlüsselkapsel eines Absenders (<name>_pseudonym.capsule.asc) statt der lokalen"
                " Datenbank.",
-               "A sender's key capsule (<name>_pseudonym.kapsel.asc) instead of the local"
+               "A sender's key capsule (<name>_pseudonym.capsule.asc) instead of the local"
                " database."))] = None,
     private_key: Annotated[Path | None, typer.Option(
         *flags("--privater-schluessel"), exists=True,
@@ -588,7 +586,7 @@ def reidentify(
     the mapping from the local store or from a sender's capsule."""
     from pseudonymed.pseudonyms.reidentification import reidentify as _reidentify
 
-    form = choice("--form", form, ("vollname", "anrede"))
+    form = choice("--form", form, ("full-name", "salutation"))
     if capsule is not None:
         info, mapping, known = _mapping_from_capsule(capsule, private_key, passphrase, store)
     elif code or search:
@@ -608,17 +606,17 @@ def pseudonyms(store: StoreOption = None) -> None:
     """List the codes of the local store with the spellings linked to each."""
     with open_store(store) as sp:
         entries = sp.find()
-        aliases = {e["schluessel"]: sp.aliases(e["schluessel"]) for e in entries}
+        aliases = {e["patient_key"]: sp.aliases(e["patient_key"]) for e in entries}
     if not entries:
         typer.echo(w("Noch keine Pseudonyme vergeben.", "No pseudonyms issued yet."))
         return
     born_label = w("geb.", "born")
     match_label = w("Abgleich", "match")
     for e in entries:
-        born = e["geburtsdatum"] or "–"
-        typer.echo(f"{e['kennung']:>8}  {e['nachname']}, {e['vorname']}  {born_label} {born}"
-                   f"  ({e['angelegt'][:10]})")
-        for a in aliases[e["schluessel"]]:
-            typer.echo(f"{'':8}  = {a['nachname']}, {a['vorname']}"
-                       f"  {born_label} {a['geburtsdatum'] or '–'}"
+        born = e["birth_date"] or "–"
+        typer.echo(f"{e['code']:>8}  {e['surname']}, {e['first_name']}  {born_label} {born}"
+                   f"  ({e['created'][:10]})")
+        for a in aliases[e["patient_key"]]:
+            typer.echo(f"{'':8}  = {a['surname']}, {a['first_name']}"
+                       f"  {born_label} {a['birth_date'] or '–'}"
                        f"  ({match_label} {a['score']:.2f})")

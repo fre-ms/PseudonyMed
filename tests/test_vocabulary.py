@@ -1,5 +1,5 @@
 """The vocabulary in lexterm's store: seeding, editing, the overlay, CSV, the matcher's cache,
-the step.  (The take-over of the former table is in ``test_vocabulary_move.py``.)"""
+the step."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ FINDINGS, EPONYMS = vocab_mod.CATEGORY_FINDINGS, vocab_mod.CATEGORY_EPONYMS
 
 @pytest.fixture
 def fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     terms_module.standard.cache_clear()
     yield tmp_path / "daten"
     terms_module.standard.cache_clear()
@@ -67,8 +67,10 @@ def test_base_stock(fresh: Path) -> None:
     assert [(q, n) for q, n in fb.sources] == [(k, categories[k]) for k in vocab_mod.BUNDLED]
     # the pseudonym database keeps no table of the vocabulary
     with PseudonymStore() as sp:
-        tables = {r[0] for r in sp.connection.execute("SELECT name FROM sqlite_master")}
-    assert "patienten" in tables and not {"vokabular", "vokabular_meta"} & tables
+        tables = {r[0] for r in sp.connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert tables == {"patients", "aliases", "mappings", "discarded", "residual_risk",
+                      "residual_risk_documents"}
 
 
 def test_edit_and_cache(fresh: Path) -> None:
@@ -205,7 +207,7 @@ def test_csv_round_trip(fresh: Path, tmp_path: Path) -> None:
         v.add(["Alpha-Test", "Beta Begriff"], "Kat A")
         n = v.export_csv(tmp_path / "a.csv", category="Kat A")
     text = (tmp_path / "a.csv").read_text(encoding="utf-8")
-    assert n == 2 and text == "begriff,kategorie\nAlpha-Test,Kat A\nBeta Begriff,Kat A\n"
+    assert n == 2 and text == "term,category\nAlpha-Test,Kat A\nBeta Begriff,Kat A\n"
     (tmp_path / "b.csv").write_text("Begriff;Kategorie\nGamma;Kat B\nAlpha-Test;Kat A\nDelta;\n",
                                     encoding="utf-8")
     (tmp_path / "c.txt").write_text("# Liste\nEpsilon\n\nZeta Zwei\n", encoding="utf-8")
@@ -245,7 +247,7 @@ def test_a_csv_can_say_the_whole_vocabulary(fresh: Path, tmp_path: Path) -> None
 def test_categories_that_differ_in_case_only_are_one_list(fresh: Path) -> None:
     """The store names its own lists without case: no list takes the place of another."""
     with vocab_mod.Vocabulary(seed=False) as v:
-        assert v.add(["Flantzbein"], "körperteile") == 1  # before the bundled list is there
+        assert v.add(["Flantzbein"], "Body Parts") == 1  # before the bundled list is there
         assert v.seed().keys() == {MEDICINE, FINDINGS, EPONYMS}  # its place is taken
         assert v.contains("Flantzbein")
     with vocab_mod.Vocabulary() as v:
@@ -253,7 +255,7 @@ def test_categories_that_differ_in_case_only_are_one_list(fresh: Path) -> None:
         assert v.add(["Flantzoprazol"], "medikament") == 1
         assert _terms(v, "Medikament") == ["Flantzoprazol", "Marcuflantz"]
         v.replace({"medikament": ["Flantzoprazol"], "Medikament": ["Marcuflantz", "Flantzin"],
-                   "KÖRPERTEILE": ["Kopf"], "": ["Flantzwort"]})
+                   "KÖRPERTEILE": ["Kopf"], "": ["Flantzwort"]})  # German: the English list
         assert dict(v.categories()) == {BODY_PARTS: 1, "medikament": 3,
                                         vocab_mod.CATEGORY_USER: 1}
         assert _terms(v, "medikament") == ["Flantzin", "Flantzoprazol", "Marcuflantz"]
@@ -315,8 +317,9 @@ def test_vocabulary_page(qapp: QApplication, fresh: Path, tmp_path: Path) -> Non
     assert page.import_file(tmp_path / "neu.txt", "Liste") == 1
     assert page.restore_base_set() == 1  # "Wolf" comes back
     assert terms_module.standard().is_medical_term("Wolf")
-    assert "Nutzervokabular" in window.analyse.vocabulary_info.text() or \
-        window.analyse.refresh() is None
+    window.analyse.refresh()
+    info = window.analyse.vocabulary_info.text()  # the sources by their German labels
+    assert "Medizin (Wikidata)" in info and "Körperteile" in info and "body parts" not in info
     window.close()
 
 

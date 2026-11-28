@@ -52,11 +52,11 @@ def test_page_view_paints_every_kind(qapp: QApplication) -> None:
     """Every kind of mark gets its colour, the hits lie on top, and only hits and discarded
     hits are clickable."""
     view = PageView()
-    red = _matches("name.nachname", [(10, 10, 50, 20)])
+    red = _matches("name.surname", [(10, 10, 50, 20)])
     suspected = _matches("ner.person", [(10, 30, 50, 40)])
-    yellow = _matches("ocr.unlesbar", [(10, 50, 50, 60)], source="ocr")
-    add_mask = _matches("maske", [(60, 10, 90, 20)], source="manuell")
-    discarded = _matches("zuweiser1.name", [(60, 30, 90, 40), (60, 42, 90, 52)])
+    yellow = _matches("ocr.unreadable", [(10, 50, 50, 60)], source="ocr")
+    add_mask = _matches("mask", [(60, 10, 90, 20)], source="manual")
+    discarded = _matches("referrer1.name", [(60, 30, 90, 40), (60, 42, 90, 52)])
     view.display(_png(), [red, suspected, yellow, add_mask], suspected,
                  term_rects=[(100, 10, 140, 20)], discarded=[discarded],
                  uncertain=[(100, 30, 140, 40)], selection=[(100, 50, 140, 60)])
@@ -71,7 +71,7 @@ def test_page_view_paints_every_kind(qapp: QApplication) -> None:
     [g] = [k for k in boxes if k.toolTip() == "ner.person → [ner.person]"]
     assert g.pen().widthF() == 3 and g.pen().style() == Qt.PenStyle.DashLine
     assert g.brush().color().alpha() == 90
-    [r] = [k for k in boxes if k.toolTip() == "name.nachname → [name.nachname]"]
+    [r] = [k for k in boxes if k.toolTip() == "name.surname → [name.surname]"]
     assert r.pen().widthF() == 1.5 and r.pen().style() == Qt.PenStyle.SolidLine
     assert r.brush().color().alpha() == 45
     [m] = _with_colour(boxes, module.BLACK)
@@ -98,7 +98,7 @@ def test_page_view_without_marks(qapp: QApplication) -> None:
     """A page with only the image: nothing but the pixmap, nothing clickable; a second
     call replaces the first page completely."""
     view = PageView()
-    view.display(_png(), [_matches("name.vorname", [(1, 1, 5, 5)])], None)
+    view.display(_png(), [_matches("name.first_name", [(1, 1, 5, 5)])], None)
     assert len(view._items) == 1
     view.display(_png(50, 50), [], None)
     assert len(view.scene().items()) == 1 and not view._items
@@ -111,8 +111,8 @@ def test_text_view_spans(qapp: QApplication) -> None:
     view = TextView()
     text = "Die Person kam am Montag mit Kopfschmerzen in die Sprechstunde."
     a = text.index("Montag")
-    matches = _matches("muster.datum", start=a, end=a + len("Montag"))
-    empty = _matches("manuell", start=3, end=3)
+    matches = _matches("date.birth_date", start=a, end=a + len("Montag"))
+    empty = _matches("manual", start=3, end=3)
     discarded = _matches("ner.person", start=4, end=4 + len("Person"))
     k = text.index("Kopfschmerzen")
     view.display(text, [matches, empty], matches, term_spans=[(k, k + 13)],
@@ -152,10 +152,10 @@ def test_review_page_without_document(qapp: QApplication, tmp_path: Path) -> Non
     page.discard()
     page.take_up()
     page.mark_selection()
-    assert page.save_working_state(tmp_path / "x.arbeitsstand.json") is None
+    assert page.save_working_state(tmp_path / "x.working-state.json") is None
     assert page.table.rowCount() == 0 and page.note.text() == ""
     assert page._active_view() is page.view
-    assert not list(tmp_path.glob("*.arbeitsstand.*"))
+    assert not list(tmp_path.glob("*.working-state.*"))
 
 
 def test_review_page_text_file(qapp: QApplication, tmp_path: Path, patient: Patient) -> None:

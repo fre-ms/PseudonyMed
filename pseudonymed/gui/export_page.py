@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.checks.report import as_text
 from pseudonymed.document import docrepro_adapter
 from pseudonymed.gui.session import Document, Session
@@ -35,7 +34,8 @@ from pseudonymed.gui.translation import interface_language, shown
 from pseudonymed.gui.worker import Worker
 from pseudonymed.pipeline import Result
 
-TRAFFIC_LIGHT_COLOURS = {"grau": "#9a9a9a", "gruen": "#28a040", "gelb": "#e6a500", "rot": "#c81e1e"}
+TRAFFIC_LIGHT_COLOURS = {"grey": "#9a9a9a", "green": "#28a040", "yellow": "#e6a500",
+                         "red": "#c81e1e"}
 
 
 class ExportPage(QWidget):
@@ -53,7 +53,7 @@ class ExportPage(QWidget):
         self._build_traffic_lights(outer)
         self._build_options(outer)
         self._build_output(outer)
-        self._set_traffic_light("grau", self.tr("Noch nicht geprüft."))
+        self._set_traffic_light("grey", self.tr("Noch nicht geprüft."))
 
     # -- layout ------------------------------------------------------------------------------------
     def _build_traffic_lights(self, outer: QVBoxLayout) -> None:
@@ -113,7 +113,7 @@ class ExportPage(QWidget):
             "PDF vollständig rastern (nur Bild; die Textebene wird danach unsichtbar ergänzt)"))
         self.preview = QCheckBox(self.tr("Vorschaubilder immer schreiben"))
         self.vocabulary = QCheckBox(self.tr(
-            "Vokabular der verworfenen Rate-Treffer (.vokabular.txt, ein Begriff je Zeile;"
+            "Vokabular der verworfenen Rate-Treffer (.vocabulary.txt, ein Begriff je Zeile;"
             " in „3 Fachvokabular“ importierbar)"))
         self.vocabulary.setChecked(True)
         for w in (self.text_layer, self.text_file, self.markdown, self.report, self.vocabulary,
@@ -155,7 +155,7 @@ class ExportPage(QWidget):
         o.vocabulary = self.vocabulary.isChecked()
         o.redaction.notice = self.notice.isChecked()
         o.redaction.rasterise = self.rasterise.isChecked()
-        o.preview = "immer" if self.preview.isChecked() else "auto"
+        o.preview = "always" if self.preview.isChecked() else "auto"
 
     def _documents_ready_to_check(self) -> list[Document]:
         """The documents analysed and not yet exported."""
@@ -177,7 +177,7 @@ class ExportPage(QWidget):
         """Colour the residual-risk light from the control step's estimate; the confirming
         tick box appears only for red and is cleared otherwise."""
         total, earlier = self.session.control()
-        self.risk_colour = risk_module.light_colour(total) if total is not None else "grau"
+        self.risk_colour = total.light if total is not None else "grey"
         self.risk_traffic_light.setStyleSheet(
             f"background: {TRAFFIC_LIGHT_COLOURS[self.risk_colour]}; border-radius: 14px;"
             " border: 1px solid #555;")
@@ -186,15 +186,15 @@ class ExportPage(QWidget):
         else:
             self.risk_text.setText(total.short(interface_language()) + (
                 self.tr(" (mit {n} früheren Dokumenten)").format(n=earlier) if earlier else ""))
-        self.risk_confirmed.setVisible(self.risk_colour == "rot")
-        if self.risk_colour != "rot":
+        self.risk_confirmed.setVisible(self.risk_colour == "red")
+        if self.risk_colour != "red":
             self.risk_confirmed.setChecked(False)
 
     def _update_button(self) -> None:
         """Enable the export button only for green or yellow, and for a red residual risk
         only once it is confirmed."""
-        free = self.colour in ("gruen", "gelb")
-        red = getattr(self, "risk_colour", "grau") == "rot"
+        free = self.colour in ("green", "yellow")
+        red = getattr(self, "risk_colour", "grey") == "red"
         if red and not self.risk_confirmed.isChecked():
             free = False
         self.button.setEnabled(free)
@@ -203,7 +203,7 @@ class ExportPage(QWidget):
         """Called when the step is shown: run the re-check for everything that needs it."""
         colour, text = self.session.traffic_light()
         self._set_traffic_light(colour, shown(text))
-        if colour == "grau" and any(d.ready_to_check and not d.precheck_current
+        if colour == "grey" and any(d.ready_to_check and not d.precheck_current
                                     for d in self.session.documents):
             self.check()
 
@@ -222,7 +222,7 @@ class ExportPage(QWidget):
         self._phase = "pruefen"
         self._queue = list(documents)
         self.output.clear()
-        self._set_traffic_light("grau", self.tr("Erneute Prüfung läuft …"))
+        self._set_traffic_light("grey", self.tr("Erneute Prüfung läuft …"))
         self._run_next()
 
     def _after_check(self) -> None:
@@ -230,11 +230,11 @@ class ExportPage(QWidget):
         residual hits per document."""
         colour, text = self.session.traffic_light()
         self._set_traffic_light(colour, shown(text))
-        if colour == "rot":
+        if colour == "red":
             self._notify_abort()
-        elif colour == "gelb":
+        elif colour == "yellow":
             self.status.setText(self.tr("Bereit; bitte die Warnungen lesen."))
-        elif colour == "gruen":
+        elif colour == "green":
             self.status.setText(self.tr("Bereit zum Export."))
 
     def _notify_abort(self) -> None:
@@ -258,7 +258,7 @@ class ExportPage(QWidget):
                 continue
             g = d.precheck.report.recheck
             remaining = g.residual_matches if g is not None else []
-            short = ", ".join(f"Seite {r['seite']}: {r['regel']}" for r in remaining[:8])
+            short = ", ".join(f"Seite {r['page']}: {r['rule']}" for r in remaining[:8])
             lines.append(f"{d.path.name}: {len(remaining)} Resttreffer ({short})")
         return lines
 
@@ -296,7 +296,7 @@ class ExportPage(QWidget):
                 raise RuntimeError("Erneute Prüfung nicht bestanden; nichts exportiert.")
             return False
         self._set_risk()
-        if self.risk_colour == "rot" and not self.risk_confirmed.isChecked():
+        if self.risk_colour == "red" and not self.risk_confirmed.isChecked():
             self.status.setText(self.tr("Rotes Restrisiko: bitte in „8 Kontrolle“ nacharbeiten"
                                         " oder den Export ausdrücklich bestätigen."))
             if self.synchronous:

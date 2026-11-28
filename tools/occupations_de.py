@@ -1,4 +1,4 @@
-"""Build ``pseudonymed/daten/berufe_de.csv.gz``: German occupations and employment status.
+"""Build ``pseudonymed/data/occupations_de.csv.gz``: German occupations and employment status.
 
 Sources
 -------
@@ -37,7 +37,7 @@ itself a term of the directory.  Gender forms are resolved: "Lehrer/in" → Lehr
 "Fachangestellte/r" → Fachangestellter, Fachangestellte; "Kaufmann/-frau" → Kaufmann,
 Kauffrau; "Gemüsebauer/-bäuerin" → Gemüsebauer, Gemüsebäuerin; "Arzt/Ärztin" and
 "Kinderkrankenschwester/-pfleger" (female form first) are oriented by their endings.
-``grundform`` is the masculine form (the lemma of the pair); gender-neutral terms
+``base_form`` is the masculine form (the lemma of the pair); gender-neutral terms
 ("Fachkraft") are their own base form.  A term that occurs in several Benennungen gets the
 KldB code of the Benennung that consists of the bare term alone if there is one, otherwise
 the code that occurs most often (ties: lowest code).  A handful of typing errors and
@@ -83,7 +83,10 @@ URL_BFS = "https://dam-api.bfs.admin.ch/hub/api/dam/assets/36752522/master"
 ENDPOINT = "https://query.wikidata.org/sparql"
 AGENT = ("PseudonyMed/0.1 (open-source medical de-identification;"
          " https://github.com/fre-ms/PseudonyMed)")
-TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "berufe_de.csv.gz"
+TARGET = Path(__file__).resolve().parent.parent / "pseudonymed" / "data" / "occupations_de.csv.gz"
+HEADER = ["term", "class", "code", "base_form", "surname"]
+OCCUPATION, EMPLOYMENT_STATUS = "occupation", "employment_status"
+CLASSES = (OCCUPATION, EMPLOYMENT_STATUS)  # in the order of the file
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
 BFS_THRESHOLD = 100       # bearers in German-speaking Switzerland (population about 6 million)
@@ -308,7 +311,8 @@ FEMALE_ENDINGS = ("in", "frau", "mutter", "schwester", "hebamme", "dame", "ess",
 _FOLDING = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "é": "e", "è": "e", "ß": "s"})
 _MARKER = re.compile(r"/(?:-|[a-zäöüß])")
 _VALID = re.compile(r"^[0-9A-ZÄÖÜ][^/()]*[^-]$")
-# Academic degrees listed as Benennungen ("Bachelor of Science - Physik"): left to titel_de.py.
+# Academic degrees listed as Benennungen ("Bachelor of Science - Physik"): left to
+# tools/titles_de.py.
 _DEGREES = re.compile(r"^(?:Bachelor|Master|European Master|Magister|Magistra)\b")
 
 
@@ -614,7 +618,7 @@ def occupations(pairs: list[tuple[str, str]]) -> tuple[dict[str, tuple[str, str]
     for notation, reference in EVERYDAY_OCCUPATIONS:
         if reference.startswith("="):
             if reference[1:] not in result:
-                print(f"  Verweis fehlt: {reference[1:]}", file=sys.stderr)
+                print(f"  reference missing: {reference[1:]}", file=sys.stderr)
             kldb_code = result.get(reference[1:], ("", ""))[0]
         else:
             kldb_code = reference
@@ -667,10 +671,10 @@ def query(sparql: str, attempts: int = 5) -> list[dict[str, str]]:
             return list(csv.DictReader(io.StringIO(text)))
         except Exception as e:  # noqa: BLE001 - retry on timeouts and 429
             wait_time = 15 * (attempt + 1)
-            print(f"  Versuch {attempt + 1} fehlgeschlagen ({e}); warte {wait_time}s",
+            print(f"  attempt {attempt + 1} failed ({e}); waiting {wait_time}s",
                   file=sys.stderr)
             time.sleep(wait_time)
-    raise RuntimeError("Wikidata-Abfrage wiederholt fehlgeschlagen")
+    raise RuntimeError("Wikidata query failed repeatedly")
 
 
 def _literal(text: str) -> str:
@@ -687,8 +691,8 @@ def wikidata_surnames(terms: list[str]) -> dict[str, int]:
                   "?item wdt:P31 wd:Q101352 . }")
         for z in query(sparql):
             items[z["l"]].add(z["item"].rsplit("/", 1)[-1])
-        print(f"  Familiennamen gesucht: {min(i + 200, len(terms))}/{len(terms)},"
-              f" gefunden {len(items)}", file=sys.stderr)
+        print(f"  family names looked up: {min(i + 200, len(terms))}/{len(terms)},"
+              f" found {len(items)}", file=sys.stderr)
         time.sleep(1)
     all_items = sorted({q for qs in items.values() for q in qs})
     states = " ".join(f"wd:{q}" for q in DACH_STATES)
@@ -700,10 +704,51 @@ def wikidata_surnames(terms: list[str]) -> dict[str, int]:
                   " GROUP BY ?item")
         for z in query(sparql):
             count[z["item"].rsplit("/", 1)[-1]] = int(z["n"])
-        print(f"  Namensträger gezählt: {min(i + 20, len(all_items))}/{len(all_items)}",
+        print(f"  bearers counted: {min(i + 20, len(all_items))}/{len(all_items)}",
               file=sys.stderr)
         time.sleep(1)
     return {b: sum(count.get(q, 0) for q in qs) for b, qs in items.items()}
+
+
+def header_line(kldb_date: str, bfs_year: str, today: str) -> str:
+    """The provenance line at the top of the file: sources, licences and date."""
+    return ("# Source: Statistik der Bundesagentur für Arbeit (statistics of the Federal"
+            " Employment Agency), Klassifikation der Berufe 2010 – überarbeitete Fassung 2020,"
+            " Alphabetisches Verzeichnis der Berufsbenennungen (German Classification of"
+            " Occupations 2010, revised version 2020, alphabetical directory of occupational"
+            f" titles; as of {kldb_date}), https://statistik.arbeitsagentur.de, own calculations"
+            " (gender forms resolved, additions shortened, one code per term); everyday"
+            " occupations and employment status: curated lists of PseudonyMed with Wikidata"
+            " QIDs or assigned KldB codes; column surname:"
+            f" BFS STATPOP {bfs_year}, Nachnamen der ständigen Wohnbevölkerung nach"
+            " Sprachregion (surnames of the permanent resident population by language region;"
+            f" German-speaking Switzerland ≥ {BFS_THRESHOLD}), opendata.swiss, and Wikidata"
+            f" (≥ {WIKIDATA_THRESHOLD} people with a DACH citizenship); Licence: BA terms of use"
+            " (redistribution with attribution, own calculations marked as such), BFS"
+            " opendata.swiss (attribution compulsory), Wikidata CC0 1.0; As of: " + today + "\n")
+
+
+def rows(lines: dict[str, tuple[str, str, str]], surname: set[str]) -> list[list[str | int]]:
+    """The rows of the file from {term: (class, code, base form)}: occupations first, then
+    the employment status, each by term."""
+    order = sorted(lines, key=lambda b: (CLASSES.index(lines[b][0]), b.casefold(), b))
+    return [[b, *lines[b], int(b in surname)] for b in order]
+
+
+def write(target: Path, header: str, sorted_rows: list[list[str | int]]) -> None:
+    """Write the provenance line, the column names and the rows, gzip-compressed with
+    reproducible bytes."""
+    buffer = io.StringIO()
+    buffer.write(header)
+    w = csv.writer(buffer, lineterminator="\n")
+    w.writerow(HEADER)
+    w.writerows(sorted_rows)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # no file name and no time stamp in the gzip header, the text compressed in one piece:
+    # reproducible bytes
+    with (open(target, "wb") as raw,
+          gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz):
+        gz.write(buffer.getvalue().encode("utf-8"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -721,12 +766,12 @@ def main(argv: list[str] | None = None) -> int:
     kldb_date, pairs = read_kldb(_load(URL_KLDB, args.kldb))
     occupation, failures = occupations(pairs)
     status = employment_status()
-    print(f"KldB (Stand {kldb_date}): {len(pairs)} Benennungen, {len(occupation)} Begriffe,"
-          f" {len(failures)} nicht aufgelöst")
+    print(f"KldB (as of {kldb_date}): {len(pairs)} Benennungen, {len(occupation)} terms,"
+          f" {len(failures)} not resolved")
     for a in failures:
-        print(f"  nicht aufgelöst: {a}", file=sys.stderr)
-    lines = {b: ("Beruf", k, g) for b, (k, g) in occupation.items() if b not in status}
-    lines.update({b: ("Erwerbsstatus", k, g) for b, (k, g) in status.items()})
+        print(f"  not resolved: {a}", file=sys.stderr)
+    lines = {b: (OCCUPATION, k, g) for b, (k, g) in occupation.items() if b not in status}
+    lines.update({b: (EMPLOYMENT_STATUS, k, g) for b, (k, g) in status.items()})
 
     bfs_year, bfs = bfs_frequencies(_load(URL_BFS, args.bfs))
     name_like = sorted(b for b in lines if re.fullmatch(r"[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ]"
@@ -736,53 +781,32 @@ def main(argv: list[str] | None = None) -> int:
     if not args.without_wikidata:
         if store and store.exists():
             stored = json.loads(store.read_text(encoding="utf-8"))
-            missing = sorted(set(name_like) - set(stored["abgefragt"]))
-            wd = stored["anzahl"] | (wikidata_surnames(missing) if missing else {})
+            missing = sorted(set(name_like) - set(stored["queried"]))
+            wd = stored["counts"] | (wikidata_surnames(missing) if missing else {})
         else:
             wd = wikidata_surnames(name_like)
         if store:
-            store.write_text(json.dumps({"abgefragt": name_like, "anzahl": wd},
+            store.write_text(json.dumps({"queried": name_like, "counts": wd},
                                         ensure_ascii=False, indent=0), encoding="utf-8")
     surname = {b for b in name_like
                if bfs.get(b, 0) >= BFS_THRESHOLD or wd.get(b, 0) >= WIKIDATA_THRESHOLD}
     if args.log:
         with open(args.log, "w", encoding="utf-8", newline="") as f:
             w = csv.writer(f, lineterminator="\n")
-            w.writerow(["begriff", "klasse", "bfs_deutschschweiz", "wikidata_dach", "nachname"])
+            w.writerow(["term", "class", "bfs_german_speaking_switzerland", "wikidata_dach",
+                        "surname"])
             for b in name_like:
                 if b in bfs or b in wd:
                     w.writerow([b, lines[b][0], bfs.get(b, 0), wd.get(b, ""),
                                 int(b in surname)])
 
-    today = dt.date.today().isoformat()
-    header = ("# Quelle: Statistik der Bundesagentur für Arbeit, Klassifikation der Berufe 2010 –"
-              " überarbeitete Fassung 2020, Alphabetisches Verzeichnis der Berufsbenennungen"
-              f" (Stand {kldb_date}), https://statistik.arbeitsagentur.de, eigene Berechnungen"
-              " (Geschlechterformen aufgelöst, Zusätze gekürzt, ein Code je Begriff);"
-              " Alltagsberufe und Erwerbsstatus: kuratierte Listen PseudonyMed mit Wikidata-QIDs"
-              " bzw. zugeordneten KldB-Codes; Spalte nachname:"
-              f" BFS STATPOP {bfs_year}, Nachnamen der ständigen Wohnbevölkerung nach"
-              " Sprachregion (Deutschschweiz ≥ "
-              f"{BFS_THRESHOLD}), opendata.swiss, und Wikidata (≥ {WIKIDATA_THRESHOLD} Personen"
-              " mit DACH-Staatsangehörigkeit); Lizenz: BA-Nutzungsbedingungen (Weitergabe mit"
-              " Quellenangabe, eigene Berechnungen kenntlich), BFS opendata.swiss"
-              " (Quellenangabe Pflicht), Wikidata CC0 1.0; Stand: " + today + "\n")
     target = Path(args.target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # no file name and no time stamp in the gzip header: reproducible bytes
-    with (open(target, "wb") as raw,
-          gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as gz,
-          io.TextIOWrapper(gz, encoding="utf-8", newline="") as f):
-        f.write(header)
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow(["begriff", "klasse", "kennung", "grundform", "nachname"])
-        for b in sorted(lines, key=lambda b: (lines[b][0], b.casefold(), b)):
-            category, kldb_code, base = lines[b]
-            w.writerow([b, category, kldb_code, base, int(b in surname)])
+    write(target, header_line(kldb_date, bfs_year, dt.date.today().isoformat()),
+          rows(lines, surname))
     count = collections.Counter(k for k, _, _ in lines.values())
-    print(f"Berufe {count['Beruf']}, Erwerbsstatus {count['Erwerbsstatus']},"
-          f" Nachnamenkonflikte {len(surname)}")
-    print(f"geschrieben: {target} ({target.stat().st_size / 1024:.0f} KB)")
+    print(f"occupations {count[OCCUPATION]}, employment status {count[EMPLOYMENT_STATUS]},"
+          f" clashes with surnames {len(surname)}")
+    print(f"written: {target} ({target.stat().st_size / 1024:.0f} KB)")
     return 0
 
 

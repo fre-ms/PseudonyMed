@@ -171,7 +171,7 @@ def test_list_shows_the_work_states(qapp: QApplication, tmp_path: Path, report_p
     page.refresh()
     assert page.listing.item(0).text().endswith("  –  geändert: bitte erneut analysieren")
     pdf.changed = False
-    pdf.working_state = tmp_path / "befund.arbeitsstand.json"  # restored from a saved state
+    pdf.working_state = tmp_path / "befund.working-state.json"  # restored from a saved state
     page.refresh()
     assert "  –  Arbeitsstand, " in page.listing.item(0).text()
     pdf.working_state = None

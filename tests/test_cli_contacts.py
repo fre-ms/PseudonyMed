@@ -37,12 +37,12 @@ def test_show_and_export(carddav_environment: FakeCardDAV, patient: Patient,
     assert patient.insurance_number in r.output and "Herr" in r.output
     r = runner.invoke(app, ["kontakte", "zeigen", patient.surname, "--json"])
     data = json.loads(r.output)
-    assert data["nachname"] == patient.surname
-    assert data["geburtsdatum"] == patient.birth_date.isoformat()
+    assert data["surname"] == patient.surname
+    assert data["birth_date"] == patient.birth_date.isoformat()
     target = tmp_path / "patient.json"
     r = runner.invoke(app, ["kontakte", "export", patient.surname, "-o", str(target)])
     assert r.exit_code == 0 and target.exists()
-    assert json.loads(target.read_text(encoding="utf-8"))["angehoerige"] == []
+    assert json.loads(target.read_text(encoding="utf-8"))["relatives"] == []
     r = runner.invoke(app, ["kontakte", "export", patient.surname, "-o", str(target)])
     assert r.exit_code == 1 and "existiert" in r.output
 
@@ -87,7 +87,7 @@ def test_ambiguous_and_nr(carddav_environment: FakeCardDAV, report_pdf: Path, pa
 def test_setup_and_config(fake_carddav: FakeCardDAV, tmp_path: Path,
                           monkeypatch) -> None:
     monkeypatch.delenv("PSEUDONYMED_CARDDAV_URL", raising=False)
-    config = tmp_path / "konfig.toml"
+    config = tmp_path / "config.toml"
     r = runner.invoke(app, ["kontakte", "einrichten", "--url", fake_carddav.url, "--benutzer",
                             fake_carddav.user, "--adressbuch", "medifed-patients", "--konfig",
                             str(config), "--kein-schluesselbund"],
@@ -99,7 +99,7 @@ def test_setup_and_config(fake_carddav: FakeCardDAV, tmp_path: Path,
                             fake_carddav.user, "--konfig", str(config),
                             "--kein-schluesselbund"], input="falsch\n")
     assert r.exit_code == 1 and "Anmeldung abgelehnt" in r.output
-    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORT", fake_carddav.password)
+    monkeypatch.setenv("PSEUDONYMED_CARDDAV_PASSWORD", fake_carddav.password)
     r = runner.invoke(app, ["kontakte", "adressbuecher", "--konfig", str(config)])
     assert r.exit_code == 0 and "Patienten" in r.output
     r = runner.invoke(app, ["kontakte", "adressbuecher", "--konfig", str(tmp_path / "fehlt.toml")])

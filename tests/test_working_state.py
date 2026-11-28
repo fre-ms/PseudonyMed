@@ -35,7 +35,7 @@ from tests.test_ocr import _scan
 def _prepared(report_pdf: Path, patient: Patient, store: PseudonymStore):
     """A reviewed preparation: one hit discarded, a box, a mask, one word taken up."""
     v = prepare(report_pdf, patient, PipelineOptions(), store=store)
-    target = next(f for f in v.hits if f.rule == "zuweiser1.name")
+    target = next(f for f in v.hits if f.rule == "referrer1.name")
     v.discard(target)
     v.box(0, (56, 300, 400, 320), "[Kasten]")
     v.add_mask(0, (56, 330, 400, 345))
@@ -50,11 +50,11 @@ def test_round_trip_pdf(tmp_path: Path, report_pdf: Path, patient: Patient,
                         store: PseudonymStore) -> None:
     v = _prepared(report_pdf, patient, store)
     document, configuration = state_mod.save(v, tmp_path / "ablage")  # a folder
-    assert document.name == "befund.arbeitsstand.pdf"
-    assert configuration.name == "befund.arbeitsstand.json"
+    assert document.name == "befund.working-state.pdf"
+    assert configuration.name == "befund.working-state.json"
     data = json.loads(configuration.read_text(encoding="utf-8"))
-    assert data[state_mod.FORMAT_MARK] == state_mod.VERSION and data["kennung"] == v.code
-    assert data["patient"]["nachname"] == patient.surname  # clear data, by design
+    assert data[state_mod.FORMAT_MARK] == state_mod.VERSION and data["code"] == v.code
+    assert data["patient"]["surname"] == patient.surname  # clear data, by design
     assert state_mod.is_working_state(document) == configuration
     assert state_mod.is_working_state(configuration) == configuration
     assert state_mod.is_working_state(report_pdf) is None
@@ -63,9 +63,9 @@ def test_round_trip_pdf(tmp_path: Path, report_pdf: Path, patient: Patient,
     v2 = state_mod.preparation_from(a, store=store)
     assert v2.source.name == "befund.pdf" and v2.code == v.code
     assert [f.as_dict() for f in v2.hits] == [f.as_dict() for f in v.hits]
-    assert [f.rule for f in v2.discarded] == ["zuweiser1.name"]
+    assert [f.rule for f in v2.discarded] == ["referrer1.name"]
     assert v2.medical_term_count == v.medical_term_count
-    assert any("Arbeitsstand aus befund.arbeitsstand.json" in h for h in v2.notes)
+    assert any("Arbeitsstand aus befund.working-state.json" in h for h in v2.notes)
     e1 = finalise(v, final=False)
     e2 = finalise(v2, final=False)
     assert e1.released and e2.released, as_text(e2.report)
@@ -81,8 +81,8 @@ def test_round_trip_text_file(tmp_path: Path, patient: Patient, store: Pseudonym
     v = prepare(source, patient, PipelineOptions(), store=store)
     i = v.text.index("Hypertonie")
     v.take_up(0, i, i + len("Hypertonie"))  # a protected term, taken up on purpose
-    document, configuration = state_mod.save(v, tmp_path / "x.arbeitsstand.json")
-    assert document.name == "x.arbeitsstand.srt"
+    document, configuration = state_mod.save(v, tmp_path / "x.working-state.json")
+    assert document.name == "x.working-state.srt"
     v2 = state_mod.preparation_from(state_mod.read(configuration), store=store)
     assert v2.is_text and v2.output_extension == ".srt" and v2.text == v.text
     e1, e2 = finalise(v, final=False), finalise(v2, final=False)
@@ -98,30 +98,25 @@ def test_changed_document_and_foreign_file(tmp_path: Path, report_pdf: Path, pat
     document.write_bytes(document.read_bytes() + b"\n")
     with pytest.raises(state_mod.WorkingStateError, match="verändert"):
         state_mod.read(configuration)
-    foreign = tmp_path / "fremd.arbeitsstand.json"
+    foreign = tmp_path / "fremd.working-state.json"
     foreign.write_text('{"foo": 1}', encoding="utf-8")
     assert state_mod.is_working_state(foreign) is None
     with pytest.raises(state_mod.WorkingStateError):
         state_mod.read(foreign)
 
 
-def test_superseded_format_refused(tmp_path: Path, report_pdf: Path, patient: Patient,
-                                   store: PseudonymStore) -> None:
-    """A state of version 1 (PseudonyMed's own clean-up plans and OCR words) is not read:
-    the message says so in both languages."""
+def test_newer_format_refused(tmp_path: Path, report_pdf: Path, patient: Patient,
+                              store: PseudonymStore) -> None:
+    """A state of a newer PseudonyMed is not read: the message says so in both languages."""
     v = _prepared(report_pdf, patient, store)
     _document, configuration = state_mod.save(v, tmp_path)
     v.close()
     data = json.loads(configuration.read_text(encoding="utf-8"))
-    data[state_mod.FORMAT_MARK] = 1
-    configuration.write_text(json.dumps(data), encoding="utf-8")
-    with pytest.raises(state_mod.WorkingStateError, match="abgelösten Format 1") as caught:
-        state_mod.read(configuration)
-    assert "superseded format 1" in caught.value.args[0].en
     data[state_mod.FORMAT_MARK] = state_mod.VERSION + 1
     configuration.write_text(json.dumps(data), encoding="utf-8")
-    with pytest.raises(state_mod.WorkingStateError, match="neueren"):
+    with pytest.raises(state_mod.WorkingStateError, match="neueren") as caught:
         state_mod.read(configuration)
+    assert "newer PseudonyMed" in caught.value.args[0].en
 
 
 def test_recipient_mode_refused(report_pdf: Path, patient: Patient) -> None:
@@ -145,9 +140,9 @@ def test_reanalysis_adopts_decisions(report_pdf: Path, patient: Patient,
     v3 = analyse(reading, patient, PipelineOptions(identifiers=False), store=store)
     n = state_mod.adopt_decisions(old, v3)
     assert n == 5  # box (two lines), mask, take-up, one discard
-    assert [f.rule for f in v3.discarded] == ["zuweiser1.name"]
-    assert sorted(f.rule for f in v3.hits if f.source == "manuell") == [
-        "aufnahme", "manuell", "manuell", "maske"]
+    assert [f.rule for f in v3.discarded] == ["referrer1.name"]
+    assert sorted(f.rule for f in v3.hits if f.source == "manual") == [
+        "manual", "manual", "mask", "taken_up"]
     assert state_mod.adopt_decisions(old, v3) == 0  # idempotent
     e = finalise(v3, final=False)
     assert e.released and "[Kasten]" in e.text and "[Begriff " in e.text
@@ -222,13 +217,13 @@ def test_photo_round_trip_byte_for_byte(tmp_path: Path, report_pdf: Path, patien
     assert v.ocr_pages == [1] and v.cleaned_up and len(v.hits) > 5
     v.set_ocr_text(0, v.ocr_text(0).rstrip("\n") + "\nZusatz: von Hand.\n")
     document, configuration = state_mod.save(v, tmp_path / "ablage")
-    assert document.name == "foto.arbeitsstand.jpg"
+    assert document.name == "foto.working-state.jpg"
     assert document.read_bytes() == photo.read_bytes()  # the original, byte for byte
     data = json.loads(configuration.read_text(encoding="utf-8"))
-    assert data["kette"]["format"] == "docrepro-chain" and "aufbereitung" not in data
-    assert [s["tool"] for s in data["kette"]["steps"] if s["used"]] == [
+    assert data["chain"]["format"] == "docrepro-chain" and "clean_up" not in data
+    assert [s["tool"] for s in data["chain"]["steps"] if s["used"]] == [
         "typdoc", "optdoc", "ocrdoc"]
-    assert not any("ocr" in page or "text" in page for page in data["seiten"])
+    assert not any("ocr" in page or "text" in page for page in data["pages"])
     before = _results(DocumentChain.open(photo, document=v.chain))
     a = state_mod.read(configuration)
     after = _results(state_mod.open_chain(a))
@@ -258,7 +253,7 @@ def test_word_at_and_take_up(report_pdf: Path, patient: Patient,
     assert v.word_at(0, 5.0, 5.0) is None  # the margin
     before = len(v.hits)
     f = v.take_up(0, *span)
-    assert f.pseudonym.startswith("[Begriff ") and f.rects and f.source == "manuell"
+    assert f.pseudonym.startswith("[Begriff ") and f.rects and f.source == "manual"
     assert len(v.hits) == before + 1
     g = v.take_up(0, span[0], span[1], "[Wort]")  # replaces the first take-up
     assert g.pseudonym == "[Wort]" and len(v.hits) == before + 1
@@ -273,7 +268,7 @@ def test_interface(qapp: QApplication, tmp_path: Path, report_pdf: Path,  # noqa
     from pseudonymed.gui.main_window import MainWindow
     from pseudonymed.gui.session import Session
 
-    monkeypatch.setenv("PSEUDONYMED_DATENORDNER", str(tmp_path / "daten"))
+    monkeypatch.setenv("PSEUDONYMED_DATA_FOLDER", str(tmp_path / "daten"))
     db = tmp_path / "s.sqlite"
     with PseudonymStore(db) as sp:
         v = _prepared(report_pdf, patient, sp)
@@ -292,7 +287,7 @@ def test_interface(qapp: QApplication, tmp_path: Path, report_pdf: Path,  # noqa
     assert d.working_state == configuration and d.preparation is not None and not d.error
     assert len(d.preparation.hits) == count and len(d.preparation.discarded) == 1
     assert session.patient is not None and session.patient.surname == patient.surname
-    assert window.patient.f["nachname"].text() == patient.surname  # step 1 filled in
+    assert window.patient.f["surname"].text() == patient.surname  # step 1 filled in
     assert "Arbeitsstand" in window.documents.listing.item(0).text()
     assert window.current_page() is window.check  # straight to the review
     rv = window.check
@@ -312,7 +307,7 @@ def test_interface(qapp: QApplication, tmp_path: Path, report_pdf: Path,  # noqa
     assert rv.selection is not None and rv.selection[0] == i and rv.selection[1] > i + 9
     rv.take_up()
     assert rv.selection is None and rv.selected is not None
-    assert rv.selected.rule == "aufnahme" and rv.selected.pseudonym.startswith("[Begriff ")
+    assert rv.selected.rule == "taken_up" and rv.selected.pseudonym.startswith("[Begriff ")
     rv.point(5.0, 5.0)  # the margin clears the selection
     assert rv.selection is None and not rv.mark_button.isEnabled()
 
@@ -321,12 +316,12 @@ def test_interface(qapp: QApplication, tmp_path: Path, report_pdf: Path,  # noqa
     window.analyse.analyse(again=True)
     qapp.processEvents()
     assert d.preparation is not None and not d.error
-    assert [f.rule for f in d.preparation.discarded] == ["zuweiser1.name"]
-    assert sorted(f.rule for f in d.preparation.hits if f.source == "manuell") == [
-        "aufnahme", "aufnahme", "manuell", "maske"]  # the take-up replaced one box line
+    assert [f.rule for f in d.preparation.discarded] == ["referrer1.name"]
+    assert sorted(f.rule for f in d.preparation.hits if f.source == "manual") == [
+        "manual", "mask", "taken_up", "taken_up"]  # the take-up replaced one box line
     rv.document = d
-    paths = rv.save_working_state(tmp_path / "variante.arbeitsstand.json")
-    assert paths is not None and paths[1].name == "variante.arbeitsstand.json"
+    paths = rv.save_working_state(tmp_path / "variante.working-state.json")
+    assert paths is not None and paths[1].name == "variante.working-state.json"
     assert "Arbeitsstand gespeichert" in rv.note.text()
     window.close()
 
@@ -340,14 +335,14 @@ def test_command_line(tmp_path: Path, report_pdf: Path, patient: Patient) -> Non
                             str(_patient_file(tmp_path, patient)), "--speicher", str(db),
                             "--arbeitsstand", "--ziel", str(tmp_path / "aus")])
     assert r.exit_code == 0, r.output
-    configuration = tmp_path / "aus" / "befund.arbeitsstand.json"
+    configuration = tmp_path / "aus" / "befund.working-state.json"
     assert configuration.exists() and "Arbeitsstand:" in r.output
     assert (tmp_path / "aus" / "befund_pseudonym.pdf").exists()
     r = runner.invoke(app, ["pseudonymisieren", str(configuration), "--speicher", str(db),
                             "--ziel", str(tmp_path / "wie-gespeichert")])
     assert r.exit_code == 0, r.output  # no --patient needed: the state carries it
     text = (tmp_path / "wie-gespeichert" / "befund_pseudonym.txt").read_text("utf-8")
-    assert "[geb. " in text and "Arbeitsstand befund.arbeitsstand.json" in r.output
+    assert "[geb. " in text and "Arbeitsstand befund.working-state.json" in r.output
     r = runner.invoke(app, ["pseudonymisieren", str(configuration), "--speicher", str(db),
                             "--ziel", str(tmp_path / "variante"), "--datum", "alter",
                             "--neu-analysieren"])
@@ -368,7 +363,7 @@ class _Reanalysis(PreparationBase):
         return [f for s in self.pages for f in s.hits]
 
 
-def _matches(start: int, end: int, rule: str = "patient.nachname", source: str = "text",
+def _matches(start: int, end: int, rule: str = "patient.surname", source: str = "text",
              text: str | None = None,
              rects: list[tuple[float, float, float, float]] | None = None) -> Hit:
     """A synthetic hit on page 0; the text is filler unless given."""
@@ -384,15 +379,15 @@ def _page(*hits: Hit) -> PageEntry:
 
 
 def test_mark_again_displaces_only_analysis_matches_beneath() -> None:
-    page = _page(_matches(0, 10), _matches(20, 30), _matches(40, 50, source="manuell"))
-    mark = _matches(25, 45, rule="aufnahme", source="manuell")
+    page = _page(_matches(0, 10), _matches(20, 30), _matches(40, 50, source="manual"))
+    mark = _matches(25, 45, rule="taken_up", source="manual")
     state_mod._mark_again(page, mark)
     assert [(f.start, f.end) for f in page.hits] == [(0, 10), (40, 50), (25, 45)]
-    box = _matches(0, 0, rule="manuell", source="manuell", rects=[(1.0, 2.0, 3.0, 4.0)])
+    box = _matches(0, 0, rule="manual", source="manual", rects=[(1.0, 2.0, 3.0, 4.0)])
     state_mod._mark_again(page, box)  # a box without a span replaces nothing
     assert len(page.hits) == 4
     assert state_mod._already_marked(box, page.hits)
-    other = _matches(0, 0, rule="manuell", source="manuell", rects=[(1.0, 2.0, 3.0, 5.0)])
+    other = _matches(0, 0, rule="manual", source="manual", rects=[(1.0, 2.0, 3.0, 5.0)])
     assert not state_mod._already_marked(other, page.hits)
 
 
@@ -418,7 +413,7 @@ def test_boxes_stay_off_pages_that_lie_otherwise_now(tmp_path: Path, report_pdf:
     v2 = analyse(read_chain(chain, PipelineOptions()), patient, PipelineOptions(), store=store)
     assert state_mod.moved_pages(old, v2) == {0}
     state_mod.adopt_decisions(old, v2)
-    assert [f.page for f in v2.hits if f.rule == "maske"] == [1]
+    assert [f.page for f in v2.hits if f.rule == "mask"] == [1]
     assert any("Seite(n) 1 liegen nach der Aufbereitung anders" in w for w in v2.warnings)
     v2.close()
     chain.close()
@@ -428,15 +423,15 @@ def test_adopt_decisions_counts_and_skips_missing_pages() -> None:
     page = _page(_matches(0, 7, text="Treffer"), _matches(22, 28))
     new = _Reanalysis([page])
     old = state_mod.WorkingState(data={
-        "seiten": [
-            {"nummer": 0, "fundstellen": [
-                _matches(20, 30, rule="aufnahme", source="manuell").as_dict(),
+        "pages": [
+            {"number": 0, "hits": [
+                _matches(20, 30, rule="taken_up", source="manual").as_dict(),
                 _matches(50, 55).as_dict(),  # an analysis hit is never carried over
             ]},
-            {"nummer": 3, "fundstellen": [_matches(0, 5, source="manuell").as_dict()]},
+            {"number": 3, "hits": [_matches(0, 5, source="manual").as_dict()]},
         ],
-        "verworfen": [{"regel": "patient.nachname", "text": " treffer"},  # normalised match
-                      {"regel": "patient.vorname", "text": ""}],  # no text: nothing to match
+        "discarded": [{"rule": "patient.surname", "text": " treffer"},  # normalised match
+                      {"rule": "patient.first_name", "text": ""}],  # no text: nothing to match
     }, document=b"")
     assert state_mod.adopt_decisions(old, new) == 2  # the mark and the discard
     assert [(f.start, f.end) for f in page.hits] == [(20, 30)]  # (22, 28) lay underneath

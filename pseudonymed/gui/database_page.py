@@ -131,7 +131,7 @@ class DatabasePage(QWidget):
         line.addWidget(self.export_target, 1)
         line.addWidget(choose_button)
         ef.addRow(self.tr("Ziel"), line)
-        self.with_config = QCheckBox(self.tr("Konfiguration (konfig.toml) einschließen"))
+        self.with_config = QCheckBox(self.tr("Konfiguration (config.toml) einschließen"))
         self.with_config.setChecked(True)
         self.with_vocabulary = QCheckBox(self.tr("Fachvokabular einschließen"))
         self.with_vocabulary.setChecked(True)
@@ -297,7 +297,7 @@ class DatabasePage(QWidget):
         self.table.setRowCount(len(lines))
         for i, (feature, value) in enumerate(lines):
             self.table.setItem(i, 0, QTableWidgetItem(shown(feature)))
-            self.table.setItem(i, 1, QTableWidgetItem(value))
+            self.table.setItem(i, 1, QTableWidgetItem(shown(value)))
         return st
 
     def _notify(self, title: str, text: str, error: bool = False) -> None:
@@ -456,7 +456,7 @@ class DatabasePage(QWidget):
                 "Es gibt analysierte, noch nicht exportierte Dokumente. Bitte zuerst exportieren"
                 " oder entfernen, dann importieren."), True)
             return None
-        mode = "ersetzen" if self.mode_replace.isChecked() else "zusammenfuehren"
+        mode = "replace" if self.mode_replace.isChecked() else "merge"
         if not self._import_confirmed(mode):
             return None
         try:
@@ -479,7 +479,7 @@ class DatabasePage(QWidget):
         if self.synchronous:
             return True
         question = (self.tr("Datenbank und Schlüssel durch das Archiv ersetzen? Die jetzigen"
-                            " werden vorher daneben gesichert.") if mode == "ersetzen" else
+                            " werden vorher daneben gesichert.") if mode == "replace" else
                     self.tr("Einträge des Archivs in die lokale Datenbank übernehmen?"))
         return QMessageBox.question(self, self.tr("Importieren"), question) == \
             QMessageBox.StandardButton.Yes

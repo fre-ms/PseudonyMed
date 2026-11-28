@@ -25,7 +25,7 @@ _REST_PATTERN = [
     re.compile(r"\bDr\.\s*Z\d+(?!\d)"),
     re.compile(r"\[(?:geb\.|Alter|Wohnort|Straße|Strasse|PLZ Ort|Ort|Telefon|E-Mail|"
                r"Versichertennummer|Patienten-ID|Aktenzeichen|IBAN|Begriff|Geburtsdatum|"
-               r"Praxisanschrift)[^\]\n]{0,30}\]"),
+               r"Absenderanschrift)[^\]\n]{0,30}\]"),
 ]
 
 
@@ -44,10 +44,10 @@ def _person_from(info: dict[str, Any] | None) -> Person | None:
     if not info:
         return None
     return Person(
-        surname=info.get("nachname", ""),
-        first_name=info.get("vorname", ""),
-        sex=info.get("geschlecht", ""),
-        title=info.get("titel", ""),
+        surname=info.get("surname", ""),
+        first_name=info.get("first_name", ""),
+        sex=info.get("sex", ""),
+        title=info.get("title", ""),
     )
 
 
@@ -56,16 +56,16 @@ def _replacer(pseudonym: str, plaintext: str, person: Person | None, form: str):
     m = _PATIENT.match(pseudonym)
     if m:
         word, b = m.groups()
-        muster = re.compile(rf"\b(?:Patient(in|en)?|Pat\.)\s+{re.escape(b)}(?![\w])")
+        pattern = re.compile(rf"\b(?:Patient(in|en)?|Pat\.)\s+{re.escape(b)}(?![\w])")
 
         def replace(t: re.Match[str]) -> str:
             """The full name, or "Herr/Herrn/Frau Nachname" by case when asked and known."""
-            if form == "anrede" and person is not None and (person.female or person.male):
-                grammatical_case = "obliquus" if t.group(1) == "en" else "nominativ"
+            if form == "salutation" and person is not None and (person.female or person.male):
+                grammatical_case = "oblique" if t.group(1) == "en" else "nominative"
                 return person.salutation_form(grammatical_case)
             return plaintext.split("; ")[0]
 
-        return muster, replace
+        return pattern, replace
     m = _PERSON.match(pseudonym)
     if m:
         code = m.group(1)
@@ -101,12 +101,12 @@ def reidentify(
     text: str,
     mapping: dict[str, str],
     info: dict[str, Any] | None = None,
-    form: str = "vollname",
+    form: str = "full-name",
     known_codes: list[str] | None = None,
 ) -> Reidentification:
     """Replace every known pseudonym in ``text`` by its clear data.
 
-    ``form`` is "vollname" (always the full name) or "anrede" ("Herr/Herrn/Frau
+    ``form`` is "full-name" (always the full name) or "salutation" ("Herr/Herrn/Frau
     Nachname" by grammatical case when the gender is known).  Pseudonyms that
     look like ours but are not in the mapping are reported in ``remaining``;
     for hash codes the check character tells whether the model mangled the
@@ -126,16 +126,16 @@ def _replace_all(
     the number of replacements."""
     replaced = 0
     for pseudonym in sorted(mapping, key=len, reverse=True):
-        muster, replace = _replacer(pseudonym, mapping[pseudonym], person, form)
-        text, n = muster.subn(replace, text)
+        pattern, replace = _replacer(pseudonym, mapping[pseudonym], person, form)
+        text, n = pattern.subn(replace, text)
         replaced += n
     return text, replaced
 
 
 def _leftovers(text: str) -> list[str]:
     """Leftovers that look like our pseudonyms, each once, in order of first discovery."""
-    return list(dict.fromkeys(m.group(0) for muster in _REST_PATTERN
-                              for m in muster.finditer(text)))
+    return list(dict.fromkeys(m.group(0) for pattern in _REST_PATTERN
+                              for m in pattern.finditer(text)))
 
 
 def _notes_for(remaining: list[str], known: list[str]) -> dict[str, str]:

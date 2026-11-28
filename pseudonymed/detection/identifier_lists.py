@@ -1,4 +1,4 @@
-"""Identifier rows as packages of lexident's store, and the tables they were kept in.
+"""Identifier rows as packages of lexident's store.
 
 An identifier row says a term, its class, the source's identifier of what it names (a KldB
 code, the number of a hospital or of a study; none for an entry of the user's own) and what
@@ -8,38 +8,30 @@ the GeMTeX type of the row's class (a class of the user's own stays as it is), a
 addition becomes properties of the concept.  Where the terms of a concept differ in what
 their rows say (the base form of an occupation, the abbreviation of a title), the property
 holds a JSON object from term to value (:func:`fold`, :func:`unfold`).
-
-Until November 2026 the rows were the ``merkmal`` rows of the table ``lexikon`` of the
-pseudonym database; :func:`former_tables` reads them for the one-time move
-(:meth:`pseudonymed.detection.identifiers.IdentifierTable.adopt`).
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 from collections.abc import Iterable, Mapping
-from contextlib import closing
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from lexcor import Concept, Package, Term
 from lexident.types import HOSPITAL_TOWN, OTHER
 
 from pseudonymed.detection import lexicon
 
-CATEGORY_HOSPITAL = "Klinik"
-CATEGORY_STUDY = "Studie"
-CATEGORY_OTHER = "Sonstiges"
+CATEGORY_HOSPITAL = "hospital"
+CATEGORY_STUDY = "study"
+CATEGORY_OTHER = "other"
 # PseudonyMed's class of an identifier and its type in the GeMTeX guideline, lexident's class
 TYPES = {category: gemtex for category, gemtex in lexicon.GEMTEX.items() if gemtex} | {
     CATEGORY_OTHER: OTHER}
 _CATEGORIES = {gemtex: category for category, gemtex in TYPES.items()}
 TOWNS = "hospital towns"  # the list of the towns that have a hospital, made from the hospitals
 LANGUAGE = "de"
-_HIDDEN = "Erwerbsstatus"  # no type of the guideline: never shown, never looked for
+_HIDDEN = "employment_status"  # no type of the guideline: never shown, never looked for
 key = lexicon.key  # what makes two spellings one term of a row
-Deletion = tuple[str, str, str]  # term, class, identifier of a bundled row the user deleted
 
 
 @dataclass(frozen=True)
@@ -51,16 +43,6 @@ class Row:
     category: str
     code: str = ""
     addition: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class Former:
-    """What the tables of a pseudonym database held: the identifier rows by source, the
-    state of each source's data and the bundled rows the user deleted."""
-
-    rows: dict[str, list[Row]]
-    states: dict[str, str]
-    deleted: list[Deletion]
 
 
 def cls_of(category: str) -> str:
@@ -85,7 +67,7 @@ def addition_of(extra: str) -> dict[str, str]:
 
 def town_of(addition: Mapping[str, str]) -> str:
     """The town a hospital's addition names ("" without one)."""
-    return str(addition.get("ort") or "")
+    return str(addition.get("place") or "")
 
 
 def fold(additions: Mapping[str, Mapping[str, str]]) -> dict[str, str]:
@@ -175,42 +157,3 @@ def rows_of(concepts: Iterable[Concept], category: str | None = None) -> list[Ro
                 "" if concept.code == term.value else concept.code,
                 unfold(concept.properties, term.value))
             for concept in concepts for term in concept.terms]
-
-
-# -- the former tables -----------------------------------------------------------------------------
-def _has(connection: sqlite3.Connection, table: str) -> bool:
-    return connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-                              (table,)).fetchone() is not None
-
-
-def former_tables(database: Path) -> Former | None:
-    """The identifier rows of the tables a pseudonym database kept them in until November
-    2026, by source, with the state of each source and the deletions; None when the
-    database is not there or has no such table."""
-    if not Path(database).is_file():
-        return None
-    with closing(sqlite3.connect(f"{Path(database).resolve().as_uri()}?mode=ro",
-                                 uri=True)) as connection:
-        if not _has(connection, "lexikon"):
-            return None
-        by_source: dict[str, list[Line]] = {}
-        for term, category, source, code, extra in connection.execute(
-                "SELECT begriff, klasse, quelle, kennung, zusatz FROM lexikon"
-                " WHERE rolle = 'merkmal'"):
-            by_source.setdefault(source, []).append((term, category, code, extra))
-        states = dict(connection.execute("SELECT quelle, stand FROM lexikon_meta")) \
-            if _has(connection, "lexikon_meta") else {}
-        deleted = [tuple(row) for row in connection.execute(
-            "SELECT begriff, klasse, kennung FROM lexikon_geloescht")] \
-            if _has(connection, "lexikon_geloescht") else []
-    rows = {source: visible(found, studies=source == "Studien")
-            for source, found in by_source.items()}
-    return Former({source: found for source, found in rows.items() if found}, states, deleted)
-
-
-def drop_tables(database: Path) -> None:
-    """Remove the former tables of the lexicon from a pseudonym database."""
-    with closing(sqlite3.connect(str(database))) as connection:
-        connection.executescript(
-            "DROP TABLE IF EXISTS lexikon; DROP TABLE IF EXISTS lexikon_meta;"
-            " DROP TABLE IF EXISTS lexikon_geloescht; DROP TABLE IF EXISTS lexikon_version;")

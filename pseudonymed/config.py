@@ -1,6 +1,6 @@
 """User configuration (TOML in the config folder) and the CardDAV app password.
 
-The password comes from the environment variable ``PSEUDONYMED_CARDDAV_PASSWORT``, from
+The password comes from the environment variable ``PSEUDONYMED_CARDDAV_PASSWORD``, from
 the operating system's keyring (extra ``carddav``) or, only when the user chose so
 because no keyring is available, from the configuration file itself (mode 0600).
 """
@@ -16,8 +16,7 @@ from urllib.parse import urlsplit
 from pseudonymed import environment
 
 SERVICE = "PseudonyMed CardDAV"
-FORMER_SERVICE = "AnonyMed CardDAV"  # keyring entries made before the renaming
-PASSWORD_ENV_VAR = "PSEUDONYMED_CARDDAV_PASSWORT"
+PASSWORD_ENV_VAR = "PSEUDONYMED_CARDDAV_PASSWORD"
 
 
 @dataclass
@@ -43,16 +42,16 @@ class CardDAVConfig:
 
 
 def config_path() -> Path:
-    """Configuration file in the user config folder; PSEUDONYMED_DATENORDNER overrides the
+    """Configuration file in the user config folder; PSEUDONYMED_DATA_FOLDER overrides the
     folder."""
-    return environment.config_folder() / "konfig.toml"
+    return environment.config_folder() / "config.toml"
 
 
 @dataclass
 class Settings:
     """The non-CardDAV part of the configuration file."""
 
-    ocr_backend: str = "auto"  # auto, rapidocr, tesseract, aus
+    ocr_backend: str = "auto"  # auto, rapidocr, tesseract, off
     tesseract_path: str = ""  # explicit path to the tesseract program
     tesseract_languages: str = ""  # e.g. "deu+eng"; empty = whatever of deu/eng is installed
     gui_language: str = ""  # "de", "en" or empty = system locale
@@ -69,70 +68,85 @@ class Settings:
     own_places: str = ""  # places of the sender that are not the patient's, comma-separated
 
 
-def _read_toml(path: Path) -> dict:
-    """The parsed file, or an empty mapping when there is no file yet."""
+# German names of sections and keys, understood when the file was written by hand in German
+_GERMAN_SECTIONS = {"empfaenger": "recipient", "speicher": "store", "adressbuch": "address_book",
+                    "kontrolle": "control"}
+_GERMAN_KEYS = {"benutzer": "user", "adressbuch": "address_book", "passwort": "password",
+                "sprachen": "languages", "sprache": "language", "schluessel": "key",
+                "fingerabdruck": "fingerprint", "privater_schluessel": "private_key",
+                "datenbank": "database", "lokal": "local", "mac_adressbuecher": "mac_address_books",
+                "referenzpopulation": "reference_population", "eigene_orte": "own_places"}
+
+
+def _read_toml(path: Path) -> dict[str, dict]:
+    """The parsed file with English section and key names (German ones translated), or an
+    empty mapping when there is no file yet."""
     if not path.exists():
         return {}
     with path.open("rb") as f:
-        return tomllib.load(f)
+        data = tomllib.load(f)
+    return {_GERMAN_SECTIONS.get(name, name):
+            {_GERMAN_KEYS.get(k, k): v for k, v in section.items()}
+            for name, section in data.items() if isinstance(section, dict)}
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
-    """[ocr] and [gui] sections; PSEUDONYMED_OCR and PSEUDONYMED_SPRACHE override."""
+    """Everything but [carddav]; PSEUDONYMED_OCR, PSEUDONYMED_TESSERACT and
+    PSEUDONYMED_LANGUAGE override."""
     data = _read_toml(Path(path) if path else config_path())
     ocr = data.get("ocr", {})
     gui = data.get("gui", {})
-    recipient = data.get("empfaenger", {})
+    recipient = data.get("recipient", {})
     pgp = data.get("pgp", {})
-    store = data.get("speicher", {})
-    address_book = data.get("adressbuch", {})
-    control = data.get("kontrolle", {})
+    store = data.get("store", {})
+    address_book = data.get("address_book", {})
+    control = data.get("control", {})
     e = Settings(
         ocr_backend=str(ocr.get("backend", "auto")),
         tesseract_path=str(ocr.get("tesseract", "")),
-        tesseract_languages=str(ocr.get("sprachen", "")),
-        gui_language=str(gui.get("sprache", "")),
-        recipient_key=str(recipient.get("schluessel", "")),
-        recipient_fingerprint=str(recipient.get("fingerabdruck", "")),
-        pgp_private_key=str(pgp.get("privater_schluessel", "")),
-        store_database=str(store.get("datenbank", "")),
-        store_key=str(store.get("schluessel", "")),
-        local_address_book=str(address_book.get("lokal", "")),
+        tesseract_languages=str(ocr.get("languages", "")),
+        gui_language=str(gui.get("language", "")),
+        recipient_key=str(recipient.get("key", "")),
+        recipient_fingerprint=str(recipient.get("fingerprint", "")),
+        pgp_private_key=str(pgp.get("private_key", "")),
+        store_database=str(store.get("database", "")),
+        store_key=str(store.get("key", "")),
+        local_address_book=str(address_book.get("local", "")),
         mac_contacts=address_book.get("mac") is True,
-        mac_address_books=[str(b) for b in address_book.get("mac_adressbuecher", [])
+        mac_address_books=[str(b) for b in address_book.get("mac_address_books", [])
                            if str(b).strip()],
-        reference_population=int(control.get("referenzpopulation", 83_600_000) or 83_600_000),
-        own_places=str(control.get("eigene_orte", "")),
+        reference_population=int(control.get("reference_population", 83_600_000) or 83_600_000),
+        own_places=str(control.get("own_places", "")),
     )
     e.ocr_backend = (environment.variable("OCR", e.ocr_backend) or "").strip() or "auto"
     e.tesseract_path = (environment.variable("TESSERACT", e.tesseract_path) or "").strip()
-    e.gui_language = (environment.variable("SPRACHE", e.gui_language) or "").strip()
+    e.gui_language = (environment.variable("LANGUAGE", e.gui_language) or "").strip()
     return e
 
 
 def _write(path: Path, carddav: dict, e: Settings) -> Path:
-    """Write the whole file, every section in a fixed order, and keep it private (0600)
-    because it may hold the app password; chmod failures (Windows) are tolerated."""
+    """Write the whole file in English, every section in a fixed order, and keep it private
+    (0600) because it may hold the app password; chmod failures (Windows) are tolerated."""
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["[carddav]"]
-    for k in ("url", "benutzer", "adressbuch"):
+    for k in ("url", "user", "address_book"):
         lines.append(f"{k} = {_toml_value(str(carddav.get(k, '')))}")
-    if carddav.get("passwort"):
-        lines.append(f"passwort = {_toml_value(str(carddav['passwort']))}")
+    if carddav.get("password"):
+        lines.append(f"password = {_toml_value(str(carddav['password']))}")
     lines += ["", "[ocr]", f"backend = {_toml_value(e.ocr_backend)}",
               f"tesseract = {_toml_value(e.tesseract_path)}",
-              f"sprachen = {_toml_value(e.tesseract_languages)}",
-              "", "[gui]", f"sprache = {_toml_value(e.gui_language)}",
-              "", "[empfaenger]", f"schluessel = {_toml_value(e.recipient_key)}",
-              f"fingerabdruck = {_toml_value(e.recipient_fingerprint)}",
-              "", "[pgp]", f"privater_schluessel = {_toml_value(e.pgp_private_key)}",
-              "", "[speicher]", f"datenbank = {_toml_value(e.store_database)}",
-              f"schluessel = {_toml_value(e.store_key)}",
-              "", "[adressbuch]", f"lokal = {_toml_value(e.local_address_book)}",
+              f"languages = {_toml_value(e.tesseract_languages)}",
+              "", "[gui]", f"language = {_toml_value(e.gui_language)}",
+              "", "[recipient]", f"key = {_toml_value(e.recipient_key)}",
+              f"fingerprint = {_toml_value(e.recipient_fingerprint)}",
+              "", "[pgp]", f"private_key = {_toml_value(e.pgp_private_key)}",
+              "", "[store]", f"database = {_toml_value(e.store_database)}",
+              f"key = {_toml_value(e.store_key)}",
+              "", "[address_book]", f"local = {_toml_value(e.local_address_book)}",
               f"mac = {'true' if e.mac_contacts else 'false'}",
-              "mac_adressbuecher = [" + ", ".join(map(_toml_value, e.mac_address_books)) + "]",
-              "", "[kontrolle]", f"referenzpopulation = {int(e.reference_population)}",
-              f"eigene_orte = {_toml_value(e.own_places)}"]
+              "mac_address_books = [" + ", ".join(map(_toml_value, e.mac_address_books)) + "]",
+              "", "[control]", f"reference_population = {int(e.reference_population)}",
+              f"own_places = {_toml_value(e.own_places)}"]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     try:
         os.chmod(path, 0o600)
@@ -142,23 +156,23 @@ def _write(path: Path, carddav: dict, e: Settings) -> Path:
 
 
 def save_settings(e: Settings, path: str | Path | None = None) -> Path:
-    """Write [ocr], [gui], [empfaenger] and [pgp], keeping [carddav] as it is."""
+    """Write every section but [carddav], keeping [carddav] as it is."""
     path = Path(path) if path else config_path()
     return _write(path, _read_toml(path).get("carddav", {}), e)
 
 
 def load_config(path: str | Path | None = None) -> CardDAVConfig:
-    """File values, overridden by PSEUDONYMED_CARDDAV_URL/BENUTZER/ADRESSBUCH."""
+    """File values, overridden by PSEUDONYMED_CARDDAV_URL/USER/ADDRESS_BOOK."""
     data = _read_toml(Path(path) if path else config_path()).get("carddav", {})
     k = CardDAVConfig(
         url=str(data.get("url", "")),
-        user=str(data.get("benutzer", "")),
-        address_book=str(data.get("adressbuch", "")),
-        password_in_file=str(data.get("passwort", "")),
+        user=str(data.get("user", "")),
+        address_book=str(data.get("address_book", "")),
+        password_in_file=str(data.get("password", "")),
     )
     k.url = (environment.variable("CARDDAV_URL", k.url) or "").strip()
-    k.user = (environment.variable("CARDDAV_BENUTZER", k.user) or "").strip()
-    k.address_book = (environment.variable("CARDDAV_ADRESSBUCH", k.address_book) or "").strip()
+    k.user = (environment.variable("CARDDAV_USER", k.user) or "").strip()
+    k.address_book = (environment.variable("CARDDAV_ADDRESS_BOOK", k.address_book) or "").strip()
     return k
 
 
@@ -171,21 +185,20 @@ def save_config(k: CardDAVConfig, path: str | Path | None = None) -> Path:
     """Write the [carddav] section, keeping the other sections as they are."""
     path = Path(path) if path else config_path()
     e = load_settings(path) if path.exists() else Settings()
-    return _write(path, {"url": k.url, "benutzer": k.user, "adressbuch": k.address_book,
-                         "passwort": k.password_in_file}, e)
+    return _write(path, {"url": k.url, "user": k.user, "address_book": k.address_book,
+                         "password": k.password_in_file}, e)
 
 
 def load_password(k: CardDAVConfig) -> str | None:
-    """The app password: environment variable, else the keyring (under the current and
-    then the former service name), else the one kept in the file, else None."""
-    from_environment = environment.variable("CARDDAV_PASSWORT")
+    """The app password: environment variable, else the keyring, else the one kept in the
+    file, else None."""
+    from_environment = environment.variable("CARDDAV_PASSWORD")
     if from_environment:
         return from_environment
     try:
         import keyring
 
-        stored = (keyring.get_password(SERVICE, k.code)
-                  or keyring.get_password(FORMER_SERVICE, k.code))
+        stored = keyring.get_password(SERVICE, k.code)
     except Exception:  # no keyring, or a backend raising its own error type
         stored = None
     return stored or (k.password_in_file or None)

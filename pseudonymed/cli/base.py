@@ -115,27 +115,28 @@ def flag(name: str) -> str:
     return name
 
 
-# the German words that options take as their value, and the English ones that stand for them
-VALUES_EN = {
-    "alter": "age", "anrede": "salutation", "aus": "off",
-    "buchstabe": "letter", "ersetzen": "replace", "immer": "always", "jahr": "year",
-    "kliniken-at": "hospitals-at", "lassen": "keep", "liste": "list", "nie": "never",
-    "schwaerzen": "redact", "vollname": "full-name", "zusammenfuehren": "merge",
+# the words options take as their value, in English as the core knows them, and their German
+# equivalents, which the command line understands as well
+VALUES_DE = {
+    "age": "alter", "salutation": "anrede", "off": "aus",
+    "letter": "buchstabe", "replace": "ersetzen", "always": "immer", "year": "jahr",
+    "hospitals-at": "kliniken-at", "keep": "lassen", "list": "liste", "never": "nie",
+    "redact": "schwaerzen", "full-name": "vollname", "merge": "zusammenfuehren",
 }
 
 
 def value_name(word: str) -> str:
     """A value of an option as the command line's language calls it (help, defaults,
     messages)."""
-    return VALUES_EN.get(word, word) if english(LANGUAGE) else word
+    return word if english(LANGUAGE) else VALUES_DE.get(word, word)
 
 
-def german(given: str, allowed: tuple[str, ...]) -> str:
+def canonical(given: str, allowed: tuple[str, ...]) -> str:
     """The word the core knows for a value given in either language: the one of ``allowed``
-    whose English word was given, every other value as it came."""
+    whose German word was given, every other value as it came."""
     if given not in allowed:
         for word in allowed:
-            if VALUES_EN.get(word) == given:
+            if VALUES_DE.get(word) == given:
                 return word
     return given
 
@@ -299,7 +300,7 @@ def choice(option: str, given: str, allowed: tuple[str, ...]) -> str:
     """The value of an option that takes one of a few words, as the core knows it: the
     German word, whether that or its English one was given.  Any other value stops the
     command with "--option muss 'a', 'b' oder 'c' sein."."""
-    word = german(given, allowed)
+    word = canonical(given, allowed)
     if word in allowed:
         return word
     quoted = [f"'{value_name(a)}'" for a in allowed]
@@ -319,13 +320,13 @@ def open_store(path: Path | None, schema: str = "hash") -> PseudonymStore:
 
 
 def matching_decision(new: bool, same: str | None) -> str | None:
-    """The decision for an uncertain match as the store expects it: "neu", "gleich:<KENNUNG>"
+    """The decision for an uncertain match as the store expects it: "new", "same:<CODE>"
     or None."""
     if new and same:
         abort(w("Bitte nur --neu oder --gleich angeben.", "Please give only --new or --same."))
     if new:
-        return "neu"
-    return f"gleich:{same.strip().upper()}" if same else None
+        return "new"
+    return f"same:{same.strip().upper()}" if same else None
 
 
 def report_uncertain(p: Patient, uncertain: UncertainMatch) -> None:
@@ -454,9 +455,9 @@ def resolve_patient(
 def _main_command(
     language: Annotated[str | None, typer.Option(
         *flags("--sprache"), metavar=w("SPRACHE", "LANGUAGE"),
-        help=w("Sprache der Ausgaben: de oder en (sonst PSEUDONYMED_SPRACHE, Konfiguration,"
+        help=w("Sprache der Ausgaben: de oder en (sonst PSEUDONYMED_LANGUAGE, Konfiguration,"
                " Systemsprache).",
-               "Language of the output: de or en (else PSEUDONYMED_SPRACHE, configuration,"
+               "Language of the output: de or en (else PSEUDONYMED_LANGUAGE, configuration,"
                " system language)."))] = None,
 ) -> None:
     """The group of all commands; the language option was read before Typer started (see

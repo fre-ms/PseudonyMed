@@ -10,11 +10,11 @@ from typing import Any, cast
 
 import identicalc
 from doccor.pictures import SUFFIXES as PICTURE_SUFFIXES
-from identicalc import Estimate
+from identicalc import Estimate, Feature
 
 from pseudonymed import working_state as state_mod
-from pseudonymed.checks import residual_risk as risk_module
 from pseudonymed.core.model import Patient
+from pseudonymed.core.stored import as_stored, field_values
 from pseudonymed.core.text import Text, say
 from pseudonymed.document.chain import DocumentChain
 from pseudonymed.document.text_file import TEXT_EXTENSIONS, is_text_file
@@ -239,7 +239,7 @@ def _copy_outputs(source: Result, target_folder: Path) -> Result:
     return copy
 
 
-_TRAFFIC_LIGHT_GREEN = ("gruen",
+_TRAFFIC_LIGHT_GREEN = ("green",
                         say("Erneute Prüfung bestanden: nichts mehr gefunden, bereit zum Export.",
                             "Re-check passed: nothing found any more, ready for the export."))
 
@@ -248,7 +248,7 @@ def _traffic_light_check_pending(pending: list[Document]) -> tuple[str, str] | N
     """Grey while a document's pre-check is missing or older than its review."""
     if all(d.precheck_current for d in pending):
         return None
-    return "grau", say("Erneute Prüfung steht aus.", "The re-check is still to come.")
+    return "grey", say("Erneute Prüfung steht aus.", "The re-check is still to come.")
 
 
 def _traffic_light_remaining_matches(pending: list[Document]) -> tuple[str, str] | None:
@@ -256,7 +256,7 @@ def _traffic_light_remaining_matches(pending: list[Document]) -> tuple[str, str]
     red = sum(1 for d in pending if d.precheck is not None and not d.precheck.released)
     if not red:
         return None
-    return "rot", say(f"Identifikatoren noch gefunden in {red} Dokument(en): nichts wird"
+    return "red", say(f"Identifikatoren noch gefunden in {red} Dokument(en): nichts wird"
                       " exportiert.",
                       f"Identifiers still found in {red} document(s): nothing will be exported.")
 
@@ -266,7 +266,7 @@ def _traffic_light_warnings(pending: list[Document]) -> tuple[str, str] | None:
     yellow = sum(1 for d in pending if d.precheck is not None and d.precheck.report.warnings)
     if not yellow:
         return None
-    return "gelb", say(f"Erneute Prüfung bestanden; {yellow} Dokument(e) mit Warnungen, bitte"
+    return "yellow", say(f"Erneute Prüfung bestanden; {yellow} Dokument(e) mit Warnungen, bitte"
                        " lesen.",
                        f"Re-check passed; {yellow} document(s) with warnings, please read them.")
 
@@ -501,9 +501,9 @@ class Session:
         v.close()
 
     def traffic_light(self) -> tuple[str, str]:
-        """Traffic light for the export step: "gruen" (re-check clean, ready), "gelb"
-        (released with warnings), "rot" (identifiers still found, nothing exported),
-        "grau" (not checked yet)."""
+        """Traffic light for the export step: "green" (re-check clean, ready), "yellow"
+        (released with warnings), "red" (identifiers still found, nothing exported),
+        "grey" (not checked yet)."""
         pending = [d for d in self.documents if d.ready_to_check]
         if not pending:
             return self._traffic_light_after_export()
@@ -514,8 +514,8 @@ class Session:
         """Without open documents: green once every finished one was released, else grey."""
         done = [d.result for d in self.documents if d.result is not None]
         if done and all(e.released for e in done):
-            return "gruen", say("Exportiert.", "Exported.")
-        return "grau", say("Keine analysierten Dokumente.", "No analysed documents.")
+            return "green", say("Exportiert.", "Exported.")
+        return "grey", say("Keine analysierten Dokumente.", "No analysed documents.")
 
     def control(self) -> tuple[Estimate | None, int]:
         """All checked documents of the session together with what earlier released
@@ -530,7 +530,7 @@ class Session:
             try:
                 with self.store() as sp:
                     stored, count = sp.earlier_residual_risks(self.patient)
-                earlier = [risk_module.feature_from_stored(m) for m in stored]
+                earlier = [Feature(**field_values(Feature, m)) for m in stored]
             except Exception:  # noqa: BLE001
                 earlier, count = [], 0
         return identicalc.merge(risks, earlier, count), count
@@ -546,7 +546,7 @@ class Session:
         try:
             with self.store() as sp:
                 sp.remember_residual_risk(self.patient, d.path.name,
-                                          [risk_module.stored_feature(m) for m in r.features],
+                                          [as_stored(m) for m in r.features],
                                           r.bits, r.lam)
         except Exception:  # noqa: BLE001
             pass

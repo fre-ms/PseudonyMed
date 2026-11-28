@@ -43,27 +43,24 @@ NOT_MESSAGES = {
     "detection/extra_data.py": {"träger"},  # a column name of the ministry's workbook
     "detection/fuzzy.py": {"März"},
     "detection/identifiers.py": {"Beruf"},
-    "detection/lexicon.py": {"Körperteile", "ja", "Beruf"},
     "detection/ner.py": {"sjögren"},
     "detection/number_words.py": {"ein", "eine", "einer", "und"},
     "detection/rules.py": {"[geschwärzt]"},
     "detection/variants.py": {"von", "der", "den", "zu", "und", "Jänner", "März", "Mär", "ß"},
-    "detection/vocabulary.py": {"Körperteile"},
     "document/text_file.py": {"[Anhänge, nicht enthalten: "},
     "pipeline/pages.py": {"=== Seite ", "--- Bildtext (OCR, ungeprüft) ---",
                           "\n\n--- Bildtext (OCR, ungeprüft) ---\n\n",
                           "## Bildtext (OCR, ungeprüft)"},
     "pipeline/preparation.py": {"[geschwärzt]"},
-    "pipeline/reading.py": {"aus"},
-    "cli/documents.py": {"aus"},  # a value of --aufbereiten
+    "cli/base.py": {"aus"},  # the German equivalent of the value "off"
     "pipeline/text_files.py": {"[geschwärzt]"},
     "pseudonyms/assignment.py": {"Patient"},
-    "pseudonyms/backup.py": {"verworfen"},  # a table name
     "pseudonyms/statistics.py": {"Patient", "Patient ", "Angehörige", "[Straße ", "Straße",
                                  "PLZ und Ort", "[Beruf", "Beruf"},  # category labels (words)
     "pseudonyms/patient_code.py": {"von", "der", "den", "zu", "dem", "im", "in", "bei", "auf"},
     "redaction/pdf.py": {"pseudonymisiert mit PseudonyMed"},
     "core/__init__.py": {"Patient"},
+    "core/names.py": {"Beruf", "Körperteile"},  # the German labels beside the English ones
 }
 # literals by their beginning: the citation stored with the ministry's rows (data, like the
 # citations in the first line of every bundled file)
@@ -254,8 +251,8 @@ def test_a_run_speaks_both_languages(tmp_path: Path, report_pdf: Path, patient: 
                 assert word not in text, (word, text)
             assert "audit report" in text and "Re-check: passed" in text
             stored = json.loads(res.target_report.read_text(encoding="utf-8"))
-            assert stored["gegenprobe"]["geprueft"][0] == "Name" and "hinweise" in stored
-            assert all(in_language(m, "en") in stored["hinweise"] for m in res.report.notes)
+            assert stored["recheck"]["checked"][0] == "Name" and "notes" in stored
+            assert all(in_language(m, "en") in stored["notes"] for m in res.report.notes)
             german = as_text(res.report)  # the command line's report is unchanged
             assert "Prüfbericht" in german and "Gegenprobe: bestanden" in german
 
@@ -275,7 +272,7 @@ def test_a_resumed_review_keeps_the_english_form(tmp_path: Path, report_pdf: Pat
         _, json_path = state_mod.save(v, tmp_path / "stand")
         v.close()
         data = json.loads(json_path.read_text(encoding="utf-8"))
-        assert len(data["hinweise_en"]) == len(data["hinweise"])
+        assert len(data["notes_en"]) == len(data["notes"])
         again = state_mod.preparation_from(state_mod.read(json_path), sp)
         try:
             assert again.notes and all(isinstance(n, Text) for n in again.notes)
@@ -325,7 +322,7 @@ def test_the_english_desktop_reports_in_english(qapp: object, tmp_path: Path,  #
                 result = session.documents[0].result
                 assert result is not None and result.released
                 stored = json.loads(result.target_report.read_text(encoding="utf-8"))
-                assert stored["gegenprobe"]["geprueft"][1] == "Surname"
+                assert stored["recheck"]["checked"][1] == "Surname"
             else:  # the weights of the first document come back from the store
                 assert "earlier" in ko.risk_text.text()
             window.close()
